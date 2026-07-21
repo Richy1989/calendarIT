@@ -1,0 +1,18 @@
+# Keep line endings sane. Files that run inside Linux containers MUST stay LF,
+# or their shebang/scripts break when checked out on Windows (autocrlf).
+* text=auto
+
+*.sh            text eol=lf
+entrypoint.sh   text eol=lf
+Dockerfile      text eol=lf
+*.Dockerfile    text eol=lf
+nginx.conf      text eol=lf
+
+# Windows-only scripts stay CRLF.
+*.ps1           text eol=crlf
+
+# Don't touch binaries.
+*.png           binary
+*.jpg           binary
+*.ico           binary
+*.woff2         binary

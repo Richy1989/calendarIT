@@ -105,6 +105,26 @@ export default function CalendarView() {
   const [menu, setMenu] = useState<ContextMenu | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const lastClick = useRef<{ dateStr: string; time: number } | null>(null)
+  const calendarRef = useRef<FullCalendar>(null)
+
+  // Left/Right arrow keys page the calendar (prev/next), matching the toolbar buttons.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      if (draft || menu) return // don't steal keys from the editor / context menu
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (target?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      const api = calendarRef.current?.getApi()
+      if (!api) return
+      e.preventDefault()
+      if (e.key === 'ArrowRight') api.next()
+      else api.prev()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [draft, menu])
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['events'] })
   const createMut = useMutation({ mutationFn: createEvent, onSuccess: invalidate })
@@ -241,6 +261,7 @@ export default function CalendarView() {
   return (
     <>
       <FullCalendar
+        ref={calendarRef}
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
         initialView="dayGridMonth"
         customButtons={{ addEvent: { text: '+  New', click: openNew } }}

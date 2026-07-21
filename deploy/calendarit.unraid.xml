@@ -1,0 +1,111 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>CalendarIT</Name>
+  <Repository>richy1989/calendarit:latest</Repository>
+  <Registry>https://hub.docker.com/r/richy1989/calendarit</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Richy1989/calendarIT/issues</Support>
+  <Project>https://github.com/Richy1989/calendarIT</Project>
+  <Overview>A lightweight, modern, self-hosted calendar. Make events (one-off and recurring), get email reminders, colour-code your events, import/export iCalendar (.ics), and sync to your phone with CalDAV/DAVx5. It does what you want — and just that.</Overview>
+  <Category>Productivity:</Category>
+  <WebUI>http://[IP]:[PORT:80]/</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/Richy1989/calendarIT/main/public/logo.svg</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Description>CalendarIT — a lightweight, self-hosted calendar (React web UI + ASP.NET Core REST API). Recurring events (RRULE) with correct time zones and DST, per-event colours, email reminders, and iCalendar (.ics) import/export. This single-container build runs the React UI behind nginx and the API together in one image, storing data in a built-in SQLite database (or point it at your own Postgres). Mount /data to your appdata share so your events and uploaded avatars survive container updates. A JWT signing key is auto-generated and persisted under /data on first run; set your own JWT Signing Key to override.</Description>
+  <Networking>
+    <Mode>bridge</Mode>
+    <Publish>
+      <Port>
+        <HostPort>8080</HostPort>
+        <ContainerPort>80</ContainerPort>
+        <Protocol>tcp</Protocol>
+      </Port>
+    </Publish>
+  </Networking>
+  <Data>
+    <Volume>
+      <HostDir>/mnt/user/appdata/calendarit</HostDir>
+      <ContainerDir>/data</ContainerDir>
+      <Mode>rw</Mode>
+    </Volume>
+  </Data>
+  <Environment>
+    <Variable>
+      <Value></Value>
+      <Name>JWT_SIGNING_KEY</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>Production</Value>
+      <Name>ASPNETCORE_ENVIRONMENT</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>Sqlite</Value>
+      <Name>DATABASE_PROVIDER</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>POSTGRES_CONNECTION</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SMTP_HOST</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>587</Value>
+      <Name>SMTP_PORT</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SMTP_USER</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SMTP_PASSWORD</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SMTP_FROM</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>false</Value>
+      <Name>SMTP_USE_SSL</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>Information</Value>
+      <Name>Serilog__MinimumLevel__Default</Name>
+      <Mode/>
+    </Variable>
+  </Environment>
+  <Config Name="WebUI Port" Target="80" Default="8080" Mode="tcp" Description="Host port for the CalendarIT web UI. Browse to http://[Unraid-IP]:[this port]." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="App Data" Target="/data" Default="/mnt/user/appdata/calendarit" Mode="rw" Description="Host folder where CalendarIT stores its SQLite database, uploaded avatars, and the auto-generated JWT signing key. Point this at your appdata share to persist data across updates." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/calendarit</Config>
+  <Config Name="JWT Signing Key" Target="JWT_SIGNING_KEY" Default="" Description="Optional. Secret (at least 32 characters) used to sign login tokens. LEAVE EMPTY to auto-generate one and persist it under /data (recommended). Set your own only if you need a fixed key across multiple instances; changing it later signs everyone out." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Environment" Target="ASPNETCORE_ENVIRONMENT" Default="Production" Description="Production (default) or Development. Development also exposes the OpenAPI document at /openapi/v1.json." Type="Variable" Display="advanced" Required="false" Mask="false">Production</Config>
+  <Config Name="Database Provider" Target="DATABASE_PROVIDER" Default="Sqlite" Description="Sqlite (built-in, default — recommended for most self-hosters) or Postgres. If set to Postgres, also fill in the Postgres Connection string." Type="Variable" Display="advanced" Required="false" Mask="false">Sqlite</Config>
+  <Config Name="Postgres Connection" Target="POSTGRES_CONNECTION" Default="" Description="Optional. Full Npgsql connection string, required only when Database Provider is Postgres. Example: Host=192.168.1.10;Port=5432;Database=calendarit;Username=calendarit;Password=secret. Ignored while Database Provider is Sqlite." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="SMTP Host" Target="SMTP_HOST" Default="" Description="Optional. SMTP server for email reminders. LEAVE EMPTY to run without email — reminders then land in the container log instead. Setting this enables email delivery (then also set SMTP From)." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="SMTP Port" Target="SMTP_PORT" Default="587" Description="SMTP port — 587 for STARTTLS (default), 465 for implicit TLS (also set Use SSL to true). Ignored while SMTP Host is empty." Type="Variable" Display="advanced" Required="false" Mask="false">587</Config>
+  <Config Name="SMTP Username" Target="SMTP_USER" Default="" Description="Optional SMTP login username. Leave empty for an unauthenticated relay. Ignored while SMTP Host is empty." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="SMTP Password" Target="SMTP_PASSWORD" Default="" Description="Optional SMTP login password, paired with SMTP Username. Ignored while SMTP Host is empty." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="SMTP From" Target="SMTP_FROM" Default="" Description="From address for outgoing email, e.g. calendarit@example.com. Required once SMTP Host is set; ignored while SMTP Host is empty." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="SMTP Use SSL" Target="SMTP_USE_SSL" Default="false" Description="false = STARTTLS on port 587 (default); true = implicit TLS on port 465. Ignored while SMTP Host is empty." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="Log Level" Target="Serilog__MinimumLevel__Default" Default="Information" Description="Minimum log level written to the container log: Verbose, Debug, Information (default), Warning, Error, or Fatal." Type="Variable" Display="advanced" Required="false" Mask="false">Information</Config>
+</Container>
