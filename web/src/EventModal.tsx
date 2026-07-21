@@ -10,6 +10,8 @@ export type EventDraft = {
   /** Hex color. Default swatches are CSS3 named colors so they sync losslessly via
    *  the iCalendar COLOR property (RFC 7986); custom hex snaps to the nearest name. */
   color: string
+  location: string
+  description: string
 }
 
 // Each swatch value is an exact CSS3 color name's hex, for lossless CalDAV COLOR sync.
@@ -42,6 +44,9 @@ export default function EventModal({
   const [start, setStart] = useState(draft.start)
   const [end, setEnd] = useState(draft.end)
   const [color, setColor] = useState(draft.color)
+  const [location, setLocation] = useState(draft.location)
+  const [description, setDescription] = useState(draft.description)
+  const [expanded, setExpanded] = useState(Boolean(draft.location || draft.description))
   const isEdit = Boolean(draft.id)
   const isCustom = !SWATCHES.some((s) => s.hex.toLowerCase() === color.toLowerCase())
 
@@ -66,7 +71,7 @@ export default function EventModal({
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
-    onSave({ id: draft.id, title: title.trim(), start, end, allDay, color })
+    onSave({ id: draft.id, title: title.trim(), start, end, allDay, color, location, description })
   }
 
   const inputType = allDay ? 'date' : 'datetime-local'
@@ -132,6 +137,48 @@ export default function EventModal({
             </label>
           </div>
         </div>
+
+        <button
+          type="button"
+          className="details-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <span className={'chev' + (expanded ? ' open' : '')} aria-hidden="true">
+            ▸
+          </span>
+          {expanded ? 'Fewer details' : 'Add details'}
+        </button>
+
+        {expanded && (
+          <div className="details">
+            <div className="field">
+              <label htmlFor="ev-location">Location</label>
+              <input
+                id="ev-location"
+                value={location}
+                placeholder="Where is it?"
+                onChange={(e) => setLocation(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="ev-desc">Description</label>
+              <textarea
+                id="ev-desc"
+                rows={3}
+                value={description}
+                placeholder="Notes, agenda, links…"
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+            <div className="field is-disabled">
+              <label>
+                Guests <span className="badge-soon">Not implemented</span>
+              </label>
+              <input disabled placeholder="Invite people by email — coming soon" />
+            </div>
+          </div>
+        )}
 
         <div className="modal-actions">
           {isEdit && onDelete && (

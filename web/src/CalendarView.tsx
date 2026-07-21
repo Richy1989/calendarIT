@@ -93,15 +93,16 @@ export default function CalendarView() {
   }
 
   const openNewOn = (date: Date, allDay: boolean) => {
+    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '' }
     if (allDay) {
       const day = toLocalInput(date).slice(0, 10)
-      setDraft({ title: '', start: day, end: day, allDay: true, color: DEFAULT_COLOR })
+      setDraft({ ...blank, start: day, end: day, allDay: true })
       return
     }
     const start = new Date(date)
     if (start.getHours() === 0 && start.getMinutes() === 0) start.setHours(9) // sensible default for day cells
     const end = new Date(start.getTime() + 60 * 60 * 1000)
-    setDraft({ title: '', start: toLocalInput(start), end: toLocalInput(end), allDay: false, color: DEFAULT_COLOR })
+    setDraft({ ...blank, start: toLocalInput(start), end: toLocalInput(end), allDay: false })
   }
 
   // Single click highlights the cell; a second click within the window creates.
@@ -134,6 +135,8 @@ export default function CalendarView() {
       start: allDay ? startStr.slice(0, 10) : startStr,
       end: allDay ? endStr.slice(0, 10) : endStr,
       color,
+      location: (e.extendedProps?.location as string) ?? '',
+      description: (e.extendedProps?.description as string) ?? '',
     })
   }
 
@@ -146,6 +149,11 @@ export default function CalendarView() {
         end: d.end || undefined,
         allDay: d.allDay,
         ...colorProps(d.color),
+        extendedProps: {
+          color: d.color,
+          location: d.location || undefined,
+          description: d.description || undefined,
+        },
       }
       return d.id ? prev.map((e) => (e.id === d.id ? { ...e, ...next } : e)) : [...prev, next]
     })

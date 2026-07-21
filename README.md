@@ -14,6 +14,8 @@ reminded, sync to your phone. That's the whole pitch.
 
 ---
 
+[<img src="public/bymeacoffee.png" alt="Buy Me A Coffee" height="60">](https://buymeacoffee.com/spaceelephant)
+
 ## Why
 
 Most calendar apps grew into something else — a mail client, a meeting marketplace, an
@@ -116,14 +118,23 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 
 - ✅ Foundations: solution, logging, health checks, Docker skeleton
 - ✅ Accounts & auth: Identity + JWT with rotating refresh tokens
-- ✅ Web UI shell: calendar views, event editor, color picker (currently in-browser only)
+- ✅ Web UI shell: calendar views, event editor (title, time, color, location,
+  description), color picker (currently in-browser only)
 - 🚧 Persisting events to the API, recurrence, time zones
 - 🚧 Reminders (email + Web Push)
 - 🚧 iCal import/export and the CalDAV server (DAVx⁵ sync)
+- ❌ **Inviting guests / attendees — not implemented** (the event editor shows the
+  field as a disabled, clearly-labelled stub)
 
 Not everything above is wired end-to-end yet — check the roadmap before relying on a
 feature.
 
+## Support
+
+keepIT is free and self-hosted — no accounts, no subscriptions. If it's useful to you and you'd
+like to say thanks, you can [**buy me a coffee** ☕](https://buymeacoffee.com/spaceelephant). Much
+appreciated, but never expected.
+
 ## License
 
-TBD.
+[MIT](./LICENSE) © 2026 Richy Leopold

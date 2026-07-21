@@ -222,7 +222,8 @@
   color: var(--text-faint);
 }
 
-.field input {
+.field input,
+.field textarea {
   background: var(--bg-2);
   border: 1px solid var(--hairline);
   border-radius: 10px;
@@ -233,14 +234,80 @@
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.field input::placeholder {
+.field textarea {
+  resize: vertical;
+  min-height: 2.6rem;
+  line-height: 1.45;
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
   color: var(--text-faint);
 }
 
-.field input:focus {
+.field input:focus,
+.field textarea:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: var(--ring);
+}
+
+/* Expandable details ("Add details") */
+.details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  align-self: flex-start;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.1rem 0;
+}
+
+.details-toggle:hover {
+  color: var(--text);
+}
+
+.details-toggle .chev {
+  display: inline-block;
+  transition: transform 0.15s ease;
+  color: var(--text-faint);
+}
+
+.details-toggle .chev.open {
+  transform: rotate(90deg);
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  animation: rise 0.2s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.field.is-disabled {
+  opacity: 0.7;
+}
+
+.field.is-disabled input {
+  cursor: not-allowed;
+}
+
+.badge-soon {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--surface-3);
+  border: 1px solid var(--hairline);
+  vertical-align: middle;
 }
 
 .form {
