@@ -28,6 +28,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     {
         base.OnModelCreating(builder);
 
+        builder.Entity<ApplicationUser>(entity =>
+        {
+            entity.Property(u => u.AvatarContentType).HasMaxLength(100);
+        });
+
         builder.Entity<RefreshToken>(entity =>
         {
             entity.HasKey(t => t.Id);

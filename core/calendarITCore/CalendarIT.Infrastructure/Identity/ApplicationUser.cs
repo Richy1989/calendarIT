@@ -9,4 +9,9 @@ namespace CalendarIT.Infrastructure.Identity;
 /// </summary>
 public sealed class ApplicationUser : IdentityUser<Guid>
 {
+    /// <summary>Raw bytes of the user's profile picture (null = none).</summary>
+    public byte[]? AvatarData { get; set; }
+
+    /// <summary>MIME type of <see cref="AvatarData"/> (e.g. image/png).</summary>
+    public string? AvatarContentType { get; set; }
 }

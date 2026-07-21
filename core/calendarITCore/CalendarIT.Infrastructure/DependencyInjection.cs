@@ -3,8 +3,10 @@ using CalendarIT.Application.Calendars;
 using CalendarIT.Infrastructure.Auth;
 using CalendarIT.Infrastructure.Calendars;
 using CalendarIT.Infrastructure.Identity;
+using CalendarIT.Application.Profile;
 using CalendarIT.Infrastructure.Notifications;
 using CalendarIT.Infrastructure.Persistence;
+using CalendarIT.Infrastructure.Profile;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -42,6 +44,7 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IEventService, EventService>();
         services.AddScoped<ICalendarIoService, CalendarIoService>();
+        services.AddScoped<IProfileService, ProfileService>();
 
         AddReminders(services, configuration);
 

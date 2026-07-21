@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { api } from './api/client'
-import { exportIcs, importIcs } from './api/events'
+import { getProfile } from './api/profile'
 import { getTokens, setTokens, type AuthTokens } from './auth/authStorage'
 import CalendarView from './CalendarView'
+import ProfileMenu from './ProfileMenu'
+import SettingsPage from './SettingsPage'
 import Logo from './Logo'
 import './App.css'
 
@@ -13,9 +15,8 @@ export default function App() {
   // All hooks must run unconditionally and in a stable order — keep them above any
   // early return, or the hook count changes between logged-out/in renders and React throws.
   const [tokens, setAuth] = useState<AuthTokens | null>(getTokens())
-  const queryClient = useQueryClient()
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
+  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: getProfile, enabled: !!tokens })
 
   const persist = (t: AuthTokens | null) => {
     setTokens(t)
@@ -30,40 +31,12 @@ export default function App() {
     return () => window.removeEventListener('auth-expired', onExpired)
   }, [])
 
-  const flash = (message: string) => {
-    setNotice(message)
-    window.setTimeout(() => setNotice(null), 4000)
-  }
-
-  const handleExport = async () => {
-    try {
-      const blob = await exportIcs()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'calendarit.ics'
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch {
-      flash('Export failed.')
-    }
-  }
-
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = '' // allow re-selecting the same file
-    if (!file) return
-    try {
-      const result = await importIcs(await file.text())
-      await queryClient.invalidateQueries({ queryKey: ['events'] })
-      flash(`Imported ${result.imported}, skipped ${result.skipped}.`)
-    } catch {
-      flash('Import failed — is it a valid .ics file?')
-    }
-  }
-
   if (!tokens) {
     return <AuthGate onAuthenticated={persist} />
+  }
+
+  if (showSettings) {
+    return <SettingsPage onBack={() => setShowSettings(false)} onLogout={() => persist(null)} />
   }
 
   const today = new Date().toLocaleDateString(undefined, {
@@ -82,17 +55,12 @@ export default function App() {
           </span>
         </div>
         <div className="header-actions">
-          {notice && <span className="notice">{notice}</span>}
-          <button className="btn-ghost" onClick={handleExport}>
-            Export
-          </button>
-          <button className="btn-ghost" onClick={() => fileRef.current?.click()}>
-            Import
-          </button>
-          <input ref={fileRef} type="file" accept=".ics,text/calendar" hidden onChange={handleImportFile} />
-          <button className="btn-ghost" onClick={() => persist(null)}>
-            Log out
-          </button>
+          <ProfileMenu
+            email={profile?.email}
+            avatarUrl={profile?.avatarDataUrl}
+            onOpenSettings={() => setShowSettings(true)}
+            onLogout={() => persist(null)}
+          />
         </div>
       </header>
       <main className="app-main">
