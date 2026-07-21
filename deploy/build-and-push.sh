@@ -29,10 +29,16 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
 tags=(-t "${IMAGE}:latest")
-[[ "$TAG" != "latest" ]] && tags+=(-t "${IMAGE}:${TAG}")
+build_args=()
+if [[ "$TAG" != "latest" ]]; then
+    tags+=(-t "${IMAGE}:${TAG}")
+    # Stamp a real version only for version tags. Passing VERSION=latest would break the
+    # build: Docker exposes the ARG as an env var and MSBuild reads it as the project's
+    # $(Version), which NuGet then fails to parse during restore.
+    build_args+=(--build-arg VERSION="${TAG#v}")
+fi
 
 echo "Building and pushing ${IMAGE}:${TAG} for linux/amd64 (Unraid)..."
-docker buildx build --platform linux/amd64 -f deploy/Dockerfile \
-    --build-arg VERSION="${TAG#v}" "${tags[@]}" --push .
+docker buildx build --platform linux/amd64 -f deploy/Dockerfile "${build_args[@]}" "${tags[@]}" --push .
 
 echo "Done. On Unraid, pull/refresh: ${IMAGE}:${TAG}"

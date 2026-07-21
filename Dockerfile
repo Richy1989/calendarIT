@@ -16,7 +16,9 @@ RUN npm run build            # outputs /src/web/dist
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api
 WORKDIR /src
 COPY core/calendarITCore/ ./
-RUN dotnet restore calendarITCore.slnx
+# Restore/publish the host project directly (not the .slnx) — restoring the solution trips a
+# GA-SDK bug ("'latest' is not a valid version string") and pulls in the unneeded test project.
+RUN dotnet restore calendarITCore/calendarITCore.csproj
 RUN dotnet publish calendarITCore/calendarITCore.csproj -c Release -o /app/publish --no-restore
 
 # --- Stage 3: runtime ---------------------------------------------------------

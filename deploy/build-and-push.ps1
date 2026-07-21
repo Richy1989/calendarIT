@@ -21,13 +21,18 @@ $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 Push-Location $root
 try {
     $tags = @("${Image}:latest")
-    if ($Tag -ne 'latest') { $tags += "${Image}:$Tag" }
+    $buildArgs = @()
+    if ($Tag -ne 'latest') {
+        $tags += "${Image}:$Tag"
+        # Stamp a real version only for version tags. Passing VERSION=latest would break the
+        # build: Docker exposes the ARG as an env var and MSBuild reads it as the project's
+        # $(Version), which NuGet then fails to parse during restore.
+        $buildArgs = @('--build-arg', "VERSION=$($Tag.TrimStart('v'))")
+    }
     $tagArgs = $tags | ForEach-Object { @('-t', $_) } | ForEach-Object { $_ }
 
-    $version = $Tag.TrimStart('v')
-
     Write-Host "Building and pushing $($tags -join ', ') for linux/amd64 (Unraid)..." -ForegroundColor Cyan
-    docker buildx build --platform linux/amd64 -f deploy/Dockerfile --build-arg VERSION="$version" @tagArgs --push .
+    docker buildx build --platform linux/amd64 -f deploy/Dockerfile @buildArgs @tagArgs --push .
     if ($LASTEXITCODE -ne 0) { throw "docker buildx build failed with exit code $LASTEXITCODE" }
 
     Write-Host "Done. On Unraid, pull/refresh: ${Image}:$Tag" -ForegroundColor Green

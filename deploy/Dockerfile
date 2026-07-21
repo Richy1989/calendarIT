@@ -30,9 +30,11 @@ ARG VERSION=0.0.0-dev
 ARG COMMIT=
 WORKDIR /src
 COPY core/calendarITCore/ ./
-RUN dotnet restore calendarITCore.slnx
+# Restore/publish the host project directly (not the .slnx). Restoring the solution trips a
+# GA-SDK bug ("'latest' is not a valid version string") and would also pull in the test project.
+RUN dotnet restore calendarITCore/calendarITCore.csproj
 RUN INFOVERSION="$VERSION"; [ -n "$COMMIT" ] && INFOVERSION="$VERSION+$COMMIT"; \
-    dotnet publish calendarITCore/calendarITCore.csproj -c Release -o /app/publish /p:UseAppHost=false \
+    dotnet publish calendarITCore/calendarITCore.csproj -c Release -o /app/publish --no-restore /p:UseAppHost=false \
       /p:Version="$VERSION" /p:InformationalVersion="$INFOVERSION"
 
 # ---- 3. Runtime: API + nginx in one image ----
