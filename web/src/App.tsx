@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from './api/client'
 import { exportIcs, importIcs } from './api/events'
@@ -16,6 +16,14 @@ export default function App() {
     setTokens(t)
     setAuth(t)
   }
+
+  // If the refresh token has also expired, session.ts clears storage and fires this —
+  // drop back to the login screen instead of leaving a dead session.
+  useEffect(() => {
+    const onExpired = () => setAuth(null)
+    window.addEventListener('auth-expired', onExpired)
+    return () => window.removeEventListener('auth-expired', onExpired)
+  }, [])
 
   if (!tokens) {
     return <AuthGate onAuthenticated={persist} />

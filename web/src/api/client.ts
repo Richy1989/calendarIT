@@ -1,11 +1,11 @@
 import createClient, { type Middleware } from 'openapi-fetch'
 import type { paths } from './schema'
-import { getAccessToken } from '../auth/authStorage'
+import { ensureAccessToken } from '../auth/session'
 
-// Attaches the stored JWT access token to every outgoing request.
+// Attaches a valid JWT to every request, refreshing it first if it's about to expire.
 const authMiddleware: Middleware = {
-  onRequest({ request }) {
-    const token = getAccessToken()
+  async onRequest({ request }) {
+    const token = await ensureAccessToken()
     if (token) {
       request.headers.set('Authorization', `Bearer ${token}`)
     }

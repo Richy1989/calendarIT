@@ -1,19 +1,19 @@
 import { api } from './client'
 import type { components } from './schema'
-import { getAccessToken } from '../auth/authStorage'
+import { ensureAccessToken } from '../auth/session'
 
 export type EventDto = components['schemas']['EventDto']
 export type SaveEventRequest = components['schemas']['SaveEventRequest']
 export type ImportResult = components['schemas']['ImportResult']
 
-function authHeaders(): Record<string, string> {
-  const token = getAccessToken()
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await ensureAccessToken()
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 /** Downloads the user's whole calendar as an .ics blob. */
 export async function exportIcs(): Promise<Blob> {
-  const res = await fetch('/api/events/export.ics', { headers: authHeaders() })
+  const res = await fetch('/api/events/export.ics', { headers: await authHeaders() })
   if (!res.ok) throw new Error('Export failed')
   return res.blob()
 }
@@ -22,7 +22,7 @@ export async function exportIcs(): Promise<Blob> {
 export async function importIcs(ics: string): Promise<ImportResult> {
   const res = await fetch('/api/events/import', {
     method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'text/calendar' },
+    headers: { ...(await authHeaders()), 'Content-Type': 'text/calendar' },
     body: ics,
   })
   if (!res.ok) throw new Error('Import failed')
