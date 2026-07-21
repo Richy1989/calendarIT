@@ -137,4 +137,4 @@ appreciated, but never expected.
 
 ## License
 
-[MIT](./LICENSE) © 2026 Richy Leopold
+Released under the [MIT](./LICENSE) © 2026 Richard Leopold. Free to use, modify, and distribute; just keep the copyright and license notice.
