@@ -10,7 +10,12 @@ import './App.css'
 type Mode = 'login' | 'register'
 
 export default function App() {
+  // All hooks must run unconditionally and in a stable order — keep them above any
+  // early return, or the hook count changes between logged-out/in renders and React throws.
   const [tokens, setAuth] = useState<AuthTokens | null>(getTokens())
+  const queryClient = useQueryClient()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   const persist = (t: AuthTokens | null) => {
     setTokens(t)
@@ -24,20 +29,6 @@ export default function App() {
     window.addEventListener('auth-expired', onExpired)
     return () => window.removeEventListener('auth-expired', onExpired)
   }, [])
-
-  if (!tokens) {
-    return <AuthGate onAuthenticated={persist} />
-  }
-
-  const today = new Date().toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  })
-
-  const queryClient = useQueryClient()
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [notice, setNotice] = useState<string | null>(null)
 
   const flash = (message: string) => {
     setNotice(message)
@@ -70,6 +61,16 @@ export default function App() {
       flash('Import failed — is it a valid .ics file?')
     }
   }
+
+  if (!tokens) {
+    return <AuthGate onAuthenticated={persist} />
+  }
+
+  const today = new Date().toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  })
 
   return (
     <div className="app">
