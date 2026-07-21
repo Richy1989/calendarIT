@@ -6,6 +6,7 @@ import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin from '@fullcalendar/interaction'
 import type { DateClickArg } from '@fullcalendar/interaction'
 import type {
+  DatesSetArg,
   DayCellMountArg,
   EventMountArg,
   EventClickArg,
@@ -13,18 +14,16 @@ import type {
   EventInput,
 } from '@fullcalendar/core'
 import EventModal, { type EventDraft } from './EventModal'
-import { createEvent, deleteEvent, listEvents, updateEvent, type EventDto, type SaveEventRequest } from './api/events'
+import { createEvent, deleteEvent, getEvent, listEvents, updateEvent, type EventDto, type SaveEventRequest } from './api/events'
 
 const DEFAULT_COLOR = '#7B68EE' // mediumslateblue
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
-// 'YYYY-MM-DDTHH:mm' in local time, for datetime-local inputs.
 function toLocalInput(date: Date): string {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`
 }
 
-// Local day key 'YYYY-MM-DD', for matching the highlighted cell.
 function dayKey(date: Date): string {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
 }
@@ -38,23 +37,32 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
-// API DTO (UTC times) → FullCalendar input. Base color lives in extendedProps so it
-// round-trips into the edit modal.
+const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+// API DTO → FullCalendar input. Recurring occurrences get a unique render id but carry
+// the master id (seriesId) for edit/delete, and are not drag-editable in this phase.
 function dtoToInput(dto: EventDto): EventInput {
   const color = dto.color ?? DEFAULT_COLOR
   return {
-    id: dto.id,
+    id: dto.recurring ? `${dto.id}__${dto.start}` : dto.id,
     title: dto.title,
     start: dto.allDay ? dto.start.slice(0, 10) : dto.start,
     end: dto.end ? (dto.allDay ? dto.end.slice(0, 10) : dto.end) : undefined,
     allDay: dto.allDay,
+    editable: !dto.recurring,
     backgroundColor: hexToRgba(color, 0.18),
     borderColor: color,
-    extendedProps: { color, location: dto.location ?? '', description: dto.description ?? '' },
+    extendedProps: {
+      seriesId: dto.id,
+      recurring: dto.recurring,
+      occurrenceStart: dto.start,
+      color,
+      location: dto.location ?? '',
+      description: dto.description ?? '',
+    },
   }
 }
 
-// Local input string → UTC ISO 8601 for the API.
 function toApiIso(local: string, allDay: boolean): string {
   return allDay
     ? new Date(`${local.slice(0, 10)}T00:00:00Z`).toISOString()
@@ -70,18 +78,25 @@ function draftToRequest(d: EventDraft): SaveEventRequest {
     start: toApiIso(d.start, d.allDay),
     end: d.end ? toApiIso(d.end, d.allDay) : null,
     allDay: d.allDay,
+    recurrence: d.recurrence || null,
+    timeZone: browserTz,
   }
 }
 
 type ContextMenu =
   | { kind: 'date'; x: number; y: number; date: Date }
-  | { kind: 'event'; x: number; y: number; eventId: string }
+  | { kind: 'event'; x: number; y: number; seriesId: string; recurring: boolean; occurrenceStart: string }
 
 const DOUBLE_CLICK_MS = 350
 
 export default function CalendarView() {
   const queryClient = useQueryClient()
-  const { data: dtos = [] } = useQuery({ queryKey: ['events'], queryFn: listEvents })
+  const [range, setRange] = useState<{ from: string; to: string } | null>(null)
+  const { data: dtos = [] } = useQuery({
+    queryKey: ['events', range?.from, range?.to],
+    queryFn: () => listEvents(range!.from, range!.to),
+    enabled: !!range,
+  })
   const events = useMemo(() => dtos.map(dtoToInput), [dtos])
 
   const [draft, setDraft] = useState<EventDraft | null>(null)
@@ -95,9 +110,11 @@ export default function CalendarView() {
     mutationFn: (v: { id: string; body: SaveEventRequest }) => updateEvent(v.id, v.body),
     onSuccess: invalidate,
   })
-  const deleteMut = useMutation({ mutationFn: deleteEvent, onSuccess: invalidate })
+  const deleteMut = useMutation({
+    mutationFn: (v: { id: string; occurrence?: string }) => deleteEvent(v.id, v.occurrence),
+    onSuccess: invalidate,
+  })
 
-  // Dismiss the context menu on scroll / resize / Escape.
   useEffect(() => {
     if (!menu) return
     const close = () => setMenu(null)
@@ -120,7 +137,7 @@ export default function CalendarView() {
   }
 
   const openNewOn = (date: Date, allDay: boolean) => {
-    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '' }
+    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '' }
     if (allDay) {
       const day = toLocalInput(date).slice(0, 10)
       setDraft({ ...blank, start: day, end: day, allDay: true })
@@ -132,7 +149,6 @@ export default function CalendarView() {
     setDraft({ ...blank, start: toLocalInput(start), end: toLocalInput(end), allDay: false })
   }
 
-  // Single click highlights the cell; a second click within the window creates.
   const handleDateClick = (arg: DateClickArg) => {
     setSelectedDate(dayKey(arg.date))
     const now = Date.now()
@@ -145,16 +161,12 @@ export default function CalendarView() {
     }
   }
 
-  const openEventById = (id: string) => {
-    const dto = dtos.find((d) => d.id === id)
-    if (!dto) return
+  // Always load the master (unexpanded) event so editing a recurring occurrence edits the series.
+  const openForEdit = async (masterId: string) => {
+    const dto = await getEvent(masterId)
     const allDay = dto.allDay
     const startLocal = allDay ? dto.start.slice(0, 10) : toLocalInput(new Date(dto.start))
-    const endLocal = dto.end
-      ? allDay
-        ? dto.end.slice(0, 10)
-        : toLocalInput(new Date(dto.end))
-      : startLocal
+    const endLocal = dto.end ? (allDay ? dto.end.slice(0, 10) : toLocalInput(new Date(dto.end))) : startLocal
     setDraft({
       id: dto.id,
       title: dto.title,
@@ -164,6 +176,7 @@ export default function CalendarView() {
       color: dto.color ?? DEFAULT_COLOR,
       location: dto.location ?? '',
       description: dto.description ?? '',
+      recurrence: dto.recurrence ?? '',
     })
   }
 
@@ -174,12 +187,12 @@ export default function CalendarView() {
     setDraft(null)
   }
 
-  const remove = (id: string) => {
-    deleteMut.mutate(id)
+  const remove = (id: string, occurrence?: string) => {
+    deleteMut.mutate({ id, occurrence })
     setDraft(null)
   }
 
-  // Persist a drag/resize.
+  // Only fires for single events (recurring occurrences are not drag-editable).
   const applyChange = (info: EventChangeArg) => {
     const ev = info.event
     const body: SaveEventRequest = {
@@ -190,8 +203,10 @@ export default function CalendarView() {
       start: ev.allDay ? toApiIso(ev.startStr, true) : (ev.start ?? new Date()).toISOString(),
       end: ev.end ? (ev.allDay ? toApiIso(ev.endStr, true) : ev.end.toISOString()) : null,
       allDay: ev.allDay,
+      recurrence: null,
+      timeZone: browserTz,
     }
-    updateMut.mutate({ id: ev.id, body })
+    updateMut.mutate({ id: ev.extendedProps.seriesId as string, body })
   }
 
   const onDateCellMount = (arg: DayCellMountArg) => {
@@ -205,7 +220,14 @@ export default function CalendarView() {
     arg.el.addEventListener('contextmenu', (e) => {
       e.preventDefault()
       e.stopPropagation()
-      setMenu({ kind: 'event', x: e.clientX, y: e.clientY, eventId: arg.event.id })
+      setMenu({
+        kind: 'event',
+        x: e.clientX,
+        y: e.clientY,
+        seriesId: arg.event.extendedProps.seriesId,
+        recurring: arg.event.extendedProps.recurring,
+        occurrenceStart: arg.event.extendedProps.occurrenceStart,
+      })
     })
   }
 
@@ -225,9 +247,10 @@ export default function CalendarView() {
         editable
         dayMaxEvents={4}
         events={events}
+        datesSet={(arg: DatesSetArg) => setRange({ from: arg.start.toISOString(), to: arg.end.toISOString() })}
         dateClick={handleDateClick}
         dayCellClassNames={(arg) => (selectedDate && dayKey(arg.date) === selectedDate ? ['is-selected'] : [])}
-        eventClick={(info: EventClickArg) => openEventById(info.event.id)}
+        eventClick={(info: EventClickArg) => openForEdit(info.event.extendedProps.seriesId)}
         eventChange={applyChange}
         dayCellDidMount={onDateCellMount}
         eventDidMount={onEventMount}
@@ -244,7 +267,7 @@ export default function CalendarView() {
         >
           <div
             className="ctx-menu"
-            style={{ left: Math.min(menu.x, window.innerWidth - 200), top: Math.min(menu.y, window.innerHeight - 110) }}
+            style={{ left: Math.min(menu.x, window.innerWidth - 200), top: Math.min(menu.y, window.innerHeight - 140) }}
             onMouseDown={(e) => e.stopPropagation()}
           >
             {menu.kind === 'date' ? (
@@ -258,12 +281,23 @@ export default function CalendarView() {
               </>
             ) : (
               <>
-                <button className="ctx-item" onClick={() => { openEventById(menu.eventId); setMenu(null) }}>
-                  Edit
+                <button className="ctx-item" onClick={() => { openForEdit(menu.seriesId); setMenu(null) }}>
+                  {menu.recurring ? 'Edit series' : 'Edit'}
                 </button>
-                <button className="ctx-item danger" onClick={() => { remove(menu.eventId); setMenu(null) }}>
-                  Delete
-                </button>
+                {menu.recurring ? (
+                  <>
+                    <button className="ctx-item" onClick={() => { remove(menu.seriesId, menu.occurrenceStart); setMenu(null) }}>
+                      Delete this occurrence
+                    </button>
+                    <button className="ctx-item danger" onClick={() => { remove(menu.seriesId); setMenu(null) }}>
+                      Delete series
+                    </button>
+                  </>
+                ) : (
+                  <button className="ctx-item danger" onClick={() => { remove(menu.seriesId); setMenu(null) }}>
+                    Delete
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -274,7 +308,7 @@ export default function CalendarView() {
         <EventModal
           draft={draft}
           onSave={save}
-          onDelete={draft.id ? remove : undefined}
+          onDelete={draft.id ? (id) => remove(id) : undefined}
           onClose={() => setDraft(null)}
         />
       )}

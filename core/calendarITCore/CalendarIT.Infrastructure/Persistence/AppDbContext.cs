@@ -65,6 +65,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(e => e.Location).HasMaxLength(500);
             entity.Property(e => e.Color).HasMaxLength(32);
             entity.Property(e => e.TimeZoneId).HasMaxLength(64);
+            entity.Property(e => e.RRule).HasMaxLength(1000);
 
             entity.HasIndex(e => e.CalendarId);
             entity.HasIndex(e => new { e.CalendarId, e.StartUtc });

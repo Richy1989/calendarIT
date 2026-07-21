@@ -12,7 +12,18 @@ export type EventDraft = {
   color: string
   location: string
   description: string
+  /** iCalendar RRULE, or '' for a one-off event. */
+  recurrence: string
 }
+
+const REPEATS: { label: string; value: string }[] = [
+  { label: 'Does not repeat', value: '' },
+  { label: 'Daily', value: 'FREQ=DAILY' },
+  { label: 'Every weekday (Mon–Fri)', value: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' },
+  { label: 'Weekly', value: 'FREQ=WEEKLY' },
+  { label: 'Monthly', value: 'FREQ=MONTHLY' },
+  { label: 'Yearly', value: 'FREQ=YEARLY' },
+]
 
 // Each swatch value is an exact CSS3 color name's hex, for lossless CalDAV COLOR sync.
 const SWATCHES: { name: string; hex: string }[] = [
@@ -44,6 +55,7 @@ export default function EventModal({
   const [start, setStart] = useState(draft.start)
   const [end, setEnd] = useState(draft.end)
   const [color, setColor] = useState(draft.color)
+  const [recurrence, setRecurrence] = useState(draft.recurrence)
   const [location, setLocation] = useState(draft.location)
   const [description, setDescription] = useState(draft.description)
   const [expanded, setExpanded] = useState(Boolean(draft.location || draft.description))
@@ -71,7 +83,7 @@ export default function EventModal({
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
-    onSave({ id: draft.id, title: title.trim(), start, end, allDay, color, location, description })
+    onSave({ id: draft.id, title: title.trim(), start, end, allDay, color, location, description, recurrence })
   }
 
   const inputType = allDay ? 'date' : 'datetime-local'
@@ -112,6 +124,21 @@ export default function EventModal({
             <label htmlFor="ev-end">Ends</label>
             <input id="ev-end" type={inputType} value={end} required onChange={(e) => setEnd(e.target.value)} />
           </div>
+        </div>
+
+        <div className="field">
+          <label htmlFor="ev-repeat">Repeats</label>
+          <select id="ev-repeat" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
+            {REPEATS.map((r) => (
+              <option key={r.value || 'none'} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+            {recurrence !== '' && !REPEATS.some((r) => r.value === recurrence) && (
+              <option value={recurrence}>Custom rule</option>
+            )}
+          </select>
+          {isEdit && recurrence !== '' && <p className="field-hint">Saving updates the whole series.</p>}
         </div>
 
         <div className="field">

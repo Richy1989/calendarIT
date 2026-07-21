@@ -75,11 +75,18 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.Property<DateTime?>("EndUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ExDates")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsAllDay")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Location")
                         .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RRule")
+                        .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("StartUtc")

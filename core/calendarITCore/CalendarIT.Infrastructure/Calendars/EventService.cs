@@ -1,7 +1,9 @@
+using System.Globalization;
 using CalendarIT.Application.Calendars;
 using CalendarIT.Domain;
 using CalendarIT.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Calendar = CalendarIT.Domain.Calendar;
 
 namespace CalendarIT.Infrastructure.Calendars;
 
@@ -11,24 +13,53 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
     public async Task<IReadOnlyList<EventDto>> GetEventsAsync(
         Guid userId, DateTimeOffset? from, DateTimeOffset? to, CancellationToken cancellationToken = default)
     {
-        var query = db.Events
-            .AsNoTracking()
-            .Where(e => e.Calendar!.OwnerUserId == userId);
+        var fromUtc = from?.UtcDateTime;
+        var toUtc = to?.UtcDateTime;
+        var results = new List<EventDto>();
 
-        // Overlap filter: event starts before the window ends and ends at/after it begins.
-        if (to is not null)
+        // Single (non-recurring) events: filter by range in SQL.
+        var singles = db.Events.AsNoTracking().Where(e => e.Calendar!.OwnerUserId == userId && e.RRule == null);
+        if (toUtc is not null)
         {
-            var toUtc = to.Value.UtcDateTime;
-            query = query.Where(e => e.StartUtc < toUtc);
+            singles = singles.Where(e => e.StartUtc < toUtc);
         }
-        if (from is not null)
+        if (fromUtc is not null)
         {
-            var fromUtc = from.Value.UtcDateTime;
-            query = query.Where(e => (e.EndUtc ?? e.StartUtc) >= fromUtc);
+            singles = singles.Where(e => (e.EndUtc ?? e.StartUtc) >= fromUtc);
+        }
+        results.AddRange((await singles.ToListAsync(cancellationToken)).Select(ToDto));
+
+        // Recurring series: fetch masters, expand within the window (needs a bounded range).
+        if (fromUtc is not null && toUtc is not null)
+        {
+            var masters = await db.Events.AsNoTracking()
+                .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule != null)
+                .ToListAsync(cancellationToken);
+
+            foreach (var m in masters)
+            {
+                var end = m.EndUtc ?? m.StartUtc.AddHours(1);
+                var exDates = ParseExDates(m.ExDates);
+                foreach (var occ in RecurrenceExpander.Expand(m.StartUtc, end, m.TimeZoneId, m.RRule!, exDates, fromUtc.Value, toUtc.Value))
+                {
+                    results.Add(new EventDto(
+                        m.Id, m.Title, m.Description, m.Location, m.Color,
+                        new DateTimeOffset(occ.StartUtc, TimeSpan.Zero),
+                        new DateTimeOffset(occ.EndUtc, TimeSpan.Zero),
+                        m.IsAllDay, Recurring: true, Recurrence: m.RRule));
+                }
+            }
         }
 
-        var rows = await query.OrderBy(e => e.StartUtc).ToListAsync(cancellationToken);
-        return rows.Select(ToDto).ToList();
+        return results.OrderBy(r => r.Start).ToList();
+    }
+
+    public async Task<EventDto?> GetByIdAsync(Guid userId, Guid eventId, CancellationToken cancellationToken = default)
+    {
+        var entity = await db.Events.AsNoTracking()
+            .Where(e => e.Id == eventId && e.Calendar!.OwnerUserId == userId)
+            .SingleOrDefaultAsync(cancellationToken);
+        return entity is null ? null : ToDto(entity);
     }
 
     public async Task<EventDto> CreateAsync(Guid userId, SaveEventRequest request, CancellationToken cancellationToken = default)
@@ -65,12 +96,30 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
         return ToDto(entity);
     }
 
-    public async Task<bool> DeleteAsync(Guid userId, Guid eventId, CancellationToken cancellationToken = default)
+    public async Task<bool> DeleteAsync(Guid userId, Guid eventId, DateTimeOffset? occurrence, CancellationToken cancellationToken = default)
     {
-        var deleted = await db.Events
+        var entity = await db.Events
             .Where(e => e.Id == eventId && e.Calendar!.OwnerUserId == userId)
-            .ExecuteDeleteAsync(cancellationToken);
-        return deleted > 0;
+            .SingleOrDefaultAsync(cancellationToken);
+        if (entity is null)
+        {
+            return false;
+        }
+
+        // Exclude a single occurrence of a series (EXDATE) rather than deleting everything.
+        if (occurrence is not null && entity.RRule is not null)
+        {
+            var exDates = ParseExDates(entity.ExDates);
+            exDates.Add(TruncateToSeconds(occurrence.Value.UtcDateTime));
+            entity.ExDates = FormatExDates(exDates);
+            entity.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+
+        db.Events.Remove(entity);
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     private static void Apply(CalendarEvent entity, SaveEventRequest request, DateTime now)
@@ -82,6 +131,9 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
         entity.StartUtc = request.Start.UtcDateTime;
         entity.EndUtc = request.End?.UtcDateTime;
         entity.IsAllDay = request.AllDay;
+        entity.TimeZoneId = string.IsNullOrWhiteSpace(request.TimeZone) ? null : request.TimeZone;
+        entity.RRule = string.IsNullOrWhiteSpace(request.Recurrence) ? null : request.Recurrence.Trim();
+        entity.ExDates = null; // editing the series resets any per-occurrence exclusions
         entity.UpdatedAt = now;
     }
 
@@ -90,7 +142,30 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
             e.Id, e.Title, e.Description, e.Location, e.Color,
             new DateTimeOffset(DateTime.SpecifyKind(e.StartUtc, DateTimeKind.Utc)),
             e.EndUtc is null ? null : new DateTimeOffset(DateTime.SpecifyKind(e.EndUtc.Value, DateTimeKind.Utc)),
-            e.IsAllDay);
+            e.IsAllDay, Recurring: e.RRule is not null, Recurrence: e.RRule);
+
+    private static HashSet<DateTime> ParseExDates(string? raw)
+    {
+        var set = new HashSet<DateTime>();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return set;
+        }
+        foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (DateTime.TryParse(line, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var dt))
+            {
+                set.Add(TruncateToSeconds(DateTime.SpecifyKind(dt, DateTimeKind.Utc)));
+            }
+        }
+        return set;
+    }
+
+    private static string FormatExDates(IEnumerable<DateTime> exDates) =>
+        string.Join('\n', exDates.Select(d => d.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture)));
+
+    private static DateTime TruncateToSeconds(DateTime dt) =>
+        new(dt.Ticks - (dt.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc);
 
     private async Task<Calendar> GetOrCreateDefaultCalendarAsync(Guid userId, CancellationToken cancellationToken)
     {

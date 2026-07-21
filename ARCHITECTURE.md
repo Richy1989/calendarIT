@@ -368,6 +368,16 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
      boundary. Per-event IANA `TimeZoneId` column exists but full per-zone/DST handling is
      Phase 3.
 3. **Recurrence** — RRULE store + expand-on-read, edit modes, exceptions; heavy tests.
+   - ✅ *Done:* `RRule` + `ExDates` on the event; **server-side expansion via Ical.Net**
+     (timezone/DST-correct — verified across a Europe/Berlin spring-forward); range query
+     returns one occurrence per date; `GET /api/events/{id}` returns the unexpanded master
+     for editing; **delete one occurrence (EXDATE) or the whole series**; migrations for
+     both providers. Frontend: "Repeats" presets (daily/weekday/weekly/monthly/yearly),
+     range-scoped loading via `datesSet`, series edit, this-occurrence/series delete;
+     recurring occurrences aren't drag-editable yet.
+   - ⬜ *Deferred:* editing a **single occurrence** (override) and **this-and-following**;
+     richer RRULE UI (interval/until/count/BYDAY picker). Arbitrary imported RRULEs rely on
+     Ical.Net for full fidelity (comes with iCal import, Phase 4).
 4. **iCal import/export** — Ical.Net round-trip.
 5. **Reminders** — Quartz.NET jobs, email (SMTP), Web Push (VAPID), reminder UI.
 6. **CalDAV** — library spike, protocol endpoints, app-password auth, DAVx⁵ validation.

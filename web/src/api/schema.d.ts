@@ -279,7 +279,41 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["EventDto"];
+                        "application/json": components["schemas"]["EventDto"];
+                        "text/json": components["schemas"]["EventDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
         put: {
             parameters: {
                 query?: never;
@@ -324,7 +358,9 @@ export interface paths {
         post?: never;
         delete: {
             parameters: {
-                query?: never;
+                query?: {
+                    occurrence?: string;
+                };
                 header?: never;
                 path: {
                     id: string;
@@ -382,6 +418,8 @@ export interface components {
             /** Format: date-time */
             end: null | string;
             allDay: boolean;
+            recurring: boolean;
+            recurrence: null | string;
         };
         LoginRequest: {
             email: string;
@@ -415,6 +453,8 @@ export interface components {
             /** Format: date-time */
             end?: null | string;
             allDay?: boolean;
+            recurrence?: null | string;
+            timeZone?: null | string;
         };
     };
     responses: never;

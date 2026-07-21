@@ -19,12 +19,21 @@ public sealed class EventsController(IEventService events) : ControllerBase
         CancellationToken cancellationToken)
         => await events.GetEventsAsync(User.GetUserId(), from, to, cancellationToken);
 
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType<EventDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
+    {
+        var found = await events.GetByIdAsync(User.GetUserId(), id, cancellationToken);
+        return found is null ? NotFound() : Ok(found);
+    }
+
     [HttpPost]
     [ProducesResponseType<EventDto>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(SaveEventRequest request, CancellationToken cancellationToken)
     {
         var created = await events.CreateAsync(User.GetUserId(), request, cancellationToken);
-        return CreatedAtAction(nameof(List), new { id = created.Id }, created);
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
     [HttpPut("{id:guid}")]
@@ -39,9 +48,12 @@ public sealed class EventsController(IEventService events) : ControllerBase
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> Delete(
+        Guid id,
+        [FromQuery] DateTimeOffset? occurrence,
+        CancellationToken cancellationToken)
     {
-        var deleted = await events.DeleteAsync(User.GetUserId(), id, cancellationToken);
+        var deleted = await events.DeleteAsync(User.GetUserId(), id, occurrence, cancellationToken);
         return deleted ? NoContent() : NotFound();
     }
 }

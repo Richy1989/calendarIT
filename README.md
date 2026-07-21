@@ -120,7 +120,8 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Accounts & auth: Identity + JWT with rotating refresh tokens
 - ✅ Web UI shell: calendar views, event editor (title, time, color, location, description)
 - ✅ Events persist to the database — create / edit / delete / drag, scoped per user
-- 🚧 Recurring events (RRULE) and richer time-zone handling
+- ✅ Recurring events (RRULE) with timezone/DST-correct expansion; delete a single
+  occurrence or the whole series (editing a single occurrence is still on the list)
 - 🚧 Reminders (email + Web Push)
 - 🚧 iCal import/export and the CalDAV server (DAVx⁵ sync)
 - ❌ **Inviting guests / attendees — not implemented** (the event editor shows the

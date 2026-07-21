@@ -2,7 +2,12 @@ using System.ComponentModel.DataAnnotations;
 
 namespace CalendarIT.Application.Calendars;
 
-/// <summary>An event as returned to the client. Times are UTC (ISO 8601 with offset).</summary>
+/// <summary>
+/// An event as returned to the client. Times are UTC (ISO 8601 with offset). For a
+/// recurring series, the range query returns one DTO per expanded occurrence — all share
+/// the master <see cref="Id"/>, carry <see cref="Recurring"/> = true, and the series'
+/// <see cref="Recurrence"/> (RRULE).
+/// </summary>
 public sealed record EventDto(
     Guid Id,
     string Title,
@@ -11,7 +16,9 @@ public sealed record EventDto(
     string? Color,
     DateTimeOffset Start,
     DateTimeOffset? End,
-    bool AllDay);
+    bool AllDay,
+    bool Recurring,
+    string? Recurrence);
 
 /// <summary>Create/update payload for an event. Used for both POST and PUT.</summary>
 public sealed class SaveEventRequest
@@ -35,4 +42,12 @@ public sealed class SaveEventRequest
     public DateTimeOffset? End { get; init; }
 
     public bool AllDay { get; init; }
+
+    /// <summary>iCalendar RRULE (e.g. "FREQ=WEEKLY"). Null/empty = a single event.</summary>
+    [MaxLength(1000)]
+    public string? Recurrence { get; init; }
+
+    /// <summary>IANA time zone (e.g. "Europe/Berlin") the event was authored in.</summary>
+    [MaxLength(64)]
+    public string? TimeZone { get; init; }
 }

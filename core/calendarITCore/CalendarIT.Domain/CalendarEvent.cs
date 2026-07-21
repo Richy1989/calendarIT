@@ -34,6 +34,12 @@ public class CalendarEvent
 
     public string? TimeZoneId { get; set; }
 
+    /// <summary>iCalendar RRULE string (e.g. "FREQ=WEEKLY;BYDAY=MO"). Null = single event.</summary>
+    public string? RRule { get; set; }
+
+    /// <summary>Excluded occurrence starts (UTC), newline-separated ISO 8601. Maps to EXDATE.</summary>
+    public string? ExDates { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
