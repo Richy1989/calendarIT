@@ -379,6 +379,14 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
      richer RRULE UI (interval/until/count/BYDAY picker). Arbitrary imported RRULEs rely on
      Ical.Net for full fidelity (comes with iCal import, Phase 4).
 4. **iCal import/export** — Ical.Net round-trip.
+   - ✅ *Done:* `GET /api/events/export.ics` (VCALENDAR of all the user's events) and
+     `POST /api/events/import` (parses .ics into the default calendar, UID-dedup /
+     idempotent). Round-trips SUMMARY/DESCRIPTION/LOCATION, DTSTART/DTEND with `TZID`,
+     all-day `VALUE=DATE`, `RRULE`, `UID`, and **COLOR** (hex → nearest CSS3 name on
+     export via `CssColorMap`, name → hex on import). Frontend: Export downloads the
+     `.ics`; Import uploads a file and refetches. Verified round-trip incl. re-import dedup.
+   - ⬜ *Deferred:* reading **EXDATE back on import** (export writes it; Ical.Net v5's
+     `ExceptionDates` shape needs extra plumbing) and multi-VALARM/attendee mapping.
 5. **Reminders** — Quartz.NET jobs, email (SMTP), Web Push (VAPID), reminder UI.
 6. **CalDAV** — library spike, protocol endpoints, app-password auth, DAVx⁵ validation.
 7. **Hardening & deploy** — sample compose, docs, env-var config, migrations on startup.

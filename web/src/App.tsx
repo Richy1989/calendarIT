@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useRef, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from './api/client'
+import { exportIcs, importIcs } from './api/events'
 import { getTokens, setTokens, type AuthTokens } from './auth/authStorage'
 import CalendarView from './CalendarView'
 import Logo from './Logo'
@@ -26,6 +27,42 @@ export default function App() {
     day: 'numeric',
   })
 
+  const queryClient = useQueryClient()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const flash = (message: string) => {
+    setNotice(message)
+    window.setTimeout(() => setNotice(null), 4000)
+  }
+
+  const handleExport = async () => {
+    try {
+      const blob = await exportIcs()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'calendarit.ics'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      flash('Export failed.')
+    }
+  }
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file
+    if (!file) return
+    try {
+      const result = await importIcs(await file.text())
+      await queryClient.invalidateQueries({ queryKey: ['events'] })
+      flash(`Imported ${result.imported}, skipped ${result.skipped}.`)
+    } catch {
+      flash('Import failed — is it a valid .ics file?')
+    }
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -35,9 +72,19 @@ export default function App() {
             Calendar<b>IT</b>
           </span>
         </div>
-        <button className="btn-ghost" onClick={() => persist(null)}>
-          Log out
-        </button>
+        <div className="header-actions">
+          {notice && <span className="notice">{notice}</span>}
+          <button className="btn-ghost" onClick={handleExport}>
+            Export
+          </button>
+          <button className="btn-ghost" onClick={() => fileRef.current?.click()}>
+            Import
+          </button>
+          <input ref={fileRef} type="file" accept=".ics,text/calendar" hidden onChange={handleImportFile} />
+          <button className="btn-ghost" onClick={() => persist(null)}>
+            Log out
+          </button>
+        </div>
       </header>
       <main className="app-main">
         <div className="section-lead">

@@ -23,6 +23,19 @@
   border-bottom: 1px solid var(--hairline);
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.header-actions .notice {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--cyan);
+  margin-right: 0.25rem;
+}
+
 .app-main {
   flex: 1;
   min-height: 0;

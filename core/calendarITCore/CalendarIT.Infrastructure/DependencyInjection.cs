@@ -39,6 +39,7 @@ public static class DependencyInjection
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IEventService, EventService>();
+        services.AddScoped<ICalendarIoService, CalendarIoService>();
 
         return services;
     }

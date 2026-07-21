@@ -122,8 +122,9 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Events persist to the database — create / edit / delete / drag, scoped per user
 - ✅ Recurring events (RRULE) with timezone/DST-correct expansion; delete a single
   occurrence or the whole series (editing a single occurrence is still on the list)
+- ✅ iCal (.ics) import / export — round-trips title, time + zone, all-day, color, RRULE
 - 🚧 Reminders (email + Web Push)
-- 🚧 iCal import/export and the CalDAV server (DAVx⁵ sync)
+- 🚧 CalDAV server (DAVx⁵ two-way sync)
 - ❌ **Inviting guests / attendees — not implemented** (the event editor shows the
   field as a disabled, clearly-labelled stub)
 
