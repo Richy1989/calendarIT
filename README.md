@@ -118,9 +118,9 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 
 - ✅ Foundations: solution, logging, health checks, Docker skeleton
 - ✅ Accounts & auth: Identity + JWT with rotating refresh tokens
-- ✅ Web UI shell: calendar views, event editor (title, time, color, location,
-  description), color picker (currently in-browser only)
-- 🚧 Persisting events to the API, recurrence, time zones
+- ✅ Web UI shell: calendar views, event editor (title, time, color, location, description)
+- ✅ Events persist to the database — create / edit / delete / drag, scoped per user
+- 🚧 Recurring events (RRULE) and richer time-zone handling
 - 🚧 Reminders (email + Web Push)
 - 🚧 iCal import/export and the CalDAV server (DAVx⁵ sync)
 - ❌ **Inviting guests / attendees — not implemented** (the event editor shows the

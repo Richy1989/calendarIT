@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
@@ -12,38 +13,9 @@ import type {
   EventInput,
 } from '@fullcalendar/core'
 import EventModal, { type EventDraft } from './EventModal'
+import { createEvent, deleteEvent, listEvents, updateEvent, type EventDto, type SaveEventRequest } from './api/events'
 
-const DEFAULT_COLOR = '#7B68EE' // mediumslateblue (CSS3 name → clean CalDAV COLOR sync)
-
-// Translucent fill + solid border from a base hex; base color kept in extendedProps
-// so it round-trips into the edit modal (and, later, the API + iCalendar COLOR property).
-function hexToRgba(hex: string, alpha: number): string {
-  const h = hex.replace('#', '')
-  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
-  const r = parseInt(full.slice(0, 2), 16)
-  const g = parseInt(full.slice(2, 4), 16)
-  const b = parseInt(full.slice(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
-
-function colorProps(hex: string): EventInput {
-  return { backgroundColor: hexToRgba(hex, 0.18), borderColor: hex, extendedProps: { color: hex } }
-}
-
-// Dated relative to today so the demo always looks populated. Replaced by API data in Phase 2.
-function iso(offsetDays: number, time?: string) {
-  const d = new Date()
-  d.setDate(d.getDate() + offsetDays)
-  const day = d.toISOString().slice(0, 10)
-  return time ? `${day}T${time}` : day
-}
-
-const initialEvents: EventInput[] = [
-  { id: 'seed-1', title: 'Sync review', start: iso(0, '10:00'), end: iso(0, '11:00'), ...colorProps('#7B68EE') },
-  { id: 'seed-2', title: 'Deploy window', start: iso(1, '14:30'), end: iso(1, '16:00'), ...colorProps('#40E0D0') },
-  { id: 'seed-3', title: 'Design critique', start: iso(3, '09:30'), end: iso(3, '10:30'), ...colorProps('#3CB371') },
-  { id: 'seed-4', title: 'Release', allDay: true, start: iso(5), ...colorProps('#DAA520') },
-]
+const DEFAULT_COLOR = '#7B68EE' // mediumslateblue
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
@@ -57,6 +29,50 @@ function dayKey(date: Date): string {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '')
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
+  const r = parseInt(full.slice(0, 2), 16)
+  const g = parseInt(full.slice(2, 4), 16)
+  const b = parseInt(full.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+// API DTO (UTC times) → FullCalendar input. Base color lives in extendedProps so it
+// round-trips into the edit modal.
+function dtoToInput(dto: EventDto): EventInput {
+  const color = dto.color ?? DEFAULT_COLOR
+  return {
+    id: dto.id,
+    title: dto.title,
+    start: dto.allDay ? dto.start.slice(0, 10) : dto.start,
+    end: dto.end ? (dto.allDay ? dto.end.slice(0, 10) : dto.end) : undefined,
+    allDay: dto.allDay,
+    backgroundColor: hexToRgba(color, 0.18),
+    borderColor: color,
+    extendedProps: { color, location: dto.location ?? '', description: dto.description ?? '' },
+  }
+}
+
+// Local input string → UTC ISO 8601 for the API.
+function toApiIso(local: string, allDay: boolean): string {
+  return allDay
+    ? new Date(`${local.slice(0, 10)}T00:00:00Z`).toISOString()
+    : new Date(local).toISOString()
+}
+
+function draftToRequest(d: EventDraft): SaveEventRequest {
+  return {
+    title: d.title,
+    description: d.description || null,
+    location: d.location || null,
+    color: d.color,
+    start: toApiIso(d.start, d.allDay),
+    end: d.end ? toApiIso(d.end, d.allDay) : null,
+    allDay: d.allDay,
+  }
+}
+
 type ContextMenu =
   | { kind: 'date'; x: number; y: number; date: Date }
   | { kind: 'event'; x: number; y: number; eventId: string }
@@ -64,11 +80,22 @@ type ContextMenu =
 const DOUBLE_CLICK_MS = 350
 
 export default function CalendarView() {
-  const [events, setEvents] = useState<EventInput[]>(initialEvents)
+  const queryClient = useQueryClient()
+  const { data: dtos = [] } = useQuery({ queryKey: ['events'], queryFn: listEvents })
+  const events = useMemo(() => dtos.map(dtoToInput), [dtos])
+
   const [draft, setDraft] = useState<EventDraft | null>(null)
   const [menu, setMenu] = useState<ContextMenu | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const lastClick = useRef<{ dateStr: string; time: number } | null>(null)
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['events'] })
+  const createMut = useMutation({ mutationFn: createEvent, onSuccess: invalidate })
+  const updateMut = useMutation({
+    mutationFn: (v: { id: string; body: SaveEventRequest }) => updateEvent(v.id, v.body),
+    onSuccess: invalidate,
+  })
+  const deleteMut = useMutation({ mutationFn: deleteEvent, onSuccess: invalidate })
 
   // Dismiss the context menu on scroll / resize / Escape.
   useEffect(() => {
@@ -100,7 +127,7 @@ export default function CalendarView() {
       return
     }
     const start = new Date(date)
-    if (start.getHours() === 0 && start.getMinutes() === 0) start.setHours(9) // sensible default for day cells
+    if (start.getHours() === 0 && start.getMinutes() === 0) start.setHours(9)
     const end = new Date(start.getTime() + 60 * 60 * 1000)
     setDraft({ ...blank, start: toLocalInput(start), end: toLocalInput(end), allDay: false })
   }
@@ -112,74 +139,59 @@ export default function CalendarView() {
     const prev = lastClick.current
     if (prev && prev.dateStr === arg.dateStr && now - prev.time < DOUBLE_CLICK_MS) {
       lastClick.current = null
-      // Double-click always drafts a timed appointment; all-day is offered via right-click.
       openNewOn(arg.date, false)
     } else {
       lastClick.current = { dateStr: arg.dateStr, time: now }
     }
   }
 
-  const openFromEvent = (info: EventClickArg) => openEventById(info.event.id)
-
   const openEventById = (id: string) => {
-    const e = events.find((x) => x.id === id)
-    if (!e) return
-    const allDay = Boolean(e.allDay)
-    const startStr = String(e.start)
-    const endStr = e.end ? String(e.end) : startStr
-    const color = (e.extendedProps?.color as string) ?? (e.borderColor as string) ?? DEFAULT_COLOR
+    const dto = dtos.find((d) => d.id === id)
+    if (!dto) return
+    const allDay = dto.allDay
+    const startLocal = allDay ? dto.start.slice(0, 10) : toLocalInput(new Date(dto.start))
+    const endLocal = dto.end
+      ? allDay
+        ? dto.end.slice(0, 10)
+        : toLocalInput(new Date(dto.end))
+      : startLocal
     setDraft({
-      id,
-      title: (e.title as string) ?? '',
+      id: dto.id,
+      title: dto.title,
       allDay,
-      start: allDay ? startStr.slice(0, 10) : startStr,
-      end: allDay ? endStr.slice(0, 10) : endStr,
-      color,
-      location: (e.extendedProps?.location as string) ?? '',
-      description: (e.extendedProps?.description as string) ?? '',
+      start: startLocal,
+      end: endLocal,
+      color: dto.color ?? DEFAULT_COLOR,
+      location: dto.location ?? '',
+      description: dto.description ?? '',
     })
   }
 
   const save = (d: EventDraft) => {
-    setEvents((prev) => {
-      const next: EventInput = {
-        id: d.id ?? crypto.randomUUID(),
-        title: d.title,
-        start: d.start,
-        end: d.end || undefined,
-        allDay: d.allDay,
-        ...colorProps(d.color),
-        extendedProps: {
-          color: d.color,
-          location: d.location || undefined,
-          description: d.description || undefined,
-        },
-      }
-      return d.id ? prev.map((e) => (e.id === d.id ? { ...e, ...next } : e)) : [...prev, next]
-    })
+    const body = draftToRequest(d)
+    if (d.id) updateMut.mutate({ id: d.id, body })
+    else createMut.mutate(body)
     setDraft(null)
   }
 
   const remove = (id: string) => {
-    setEvents((prev) => prev.filter((e) => e.id !== id))
+    deleteMut.mutate(id)
     setDraft(null)
   }
 
-  // Persist drag/resize back into state so it survives re-render.
+  // Persist a drag/resize.
   const applyChange = (info: EventChangeArg) => {
     const ev = info.event
-    setEvents((prev) =>
-      prev.map((e) =>
-        e.id === ev.id
-          ? {
-              ...e,
-              start: ev.allDay ? ev.startStr : toLocalInput(ev.start ?? new Date()),
-              end: ev.end ? (ev.allDay ? ev.endStr : toLocalInput(ev.end)) : undefined,
-              allDay: ev.allDay,
-            }
-          : e,
-      ),
-    )
+    const body: SaveEventRequest = {
+      title: ev.title,
+      description: (ev.extendedProps.description as string) || null,
+      location: (ev.extendedProps.location as string) || null,
+      color: (ev.extendedProps.color as string) ?? DEFAULT_COLOR,
+      start: ev.allDay ? toApiIso(ev.startStr, true) : (ev.start ?? new Date()).toISOString(),
+      end: ev.end ? (ev.allDay ? toApiIso(ev.endStr, true) : ev.end.toISOString()) : null,
+      allDay: ev.allDay,
+    }
+    updateMut.mutate({ id: ev.id, body })
   }
 
   const onDateCellMount = (arg: DayCellMountArg) => {
@@ -215,7 +227,7 @@ export default function CalendarView() {
         events={events}
         dateClick={handleDateClick}
         dayCellClassNames={(arg) => (selectedDate && dayKey(arg.date) === selectedDate ? ['is-selected'] : [])}
-        eventClick={openFromEvent}
+        eventClick={(info: EventClickArg) => openEventById(info.event.id)}
         eventChange={applyChange}
         dayCellDidMount={onDateCellMount}
         eventDidMount={onEventMount}

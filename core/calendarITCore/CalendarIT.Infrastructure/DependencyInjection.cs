@@ -1,5 +1,7 @@
 using CalendarIT.Application.Auth;
+using CalendarIT.Application.Calendars;
 using CalendarIT.Infrastructure.Auth;
+using CalendarIT.Infrastructure.Calendars;
 using CalendarIT.Infrastructure.Identity;
 using CalendarIT.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -36,6 +38,7 @@ public static class DependencyInjection
 
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IEventService, EventService>();
 
         return services;
     }

@@ -205,6 +205,159 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    from?: string;
+                    to?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["EventDto"][];
+                        "application/json": components["schemas"]["EventDto"][];
+                        "text/json": components["schemas"]["EventDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveEventRequest"];
+                    "text/json": components["schemas"]["SaveEventRequest"];
+                    "application/*+json": components["schemas"]["SaveEventRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["EventDto"];
+                        "application/json": components["schemas"]["EventDto"];
+                        "text/json": components["schemas"]["EventDto"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveEventRequest"];
+                    "text/json": components["schemas"]["SaveEventRequest"];
+                    "application/*+json": components["schemas"]["SaveEventRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["EventDto"];
+                        "application/json": components["schemas"]["EventDto"];
+                        "text/json": components["schemas"]["EventDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -216,6 +369,19 @@ export interface components {
             refreshToken: string;
             /** Format: date-time */
             refreshTokenExpiresAt: string;
+        };
+        EventDto: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            description: null | string;
+            location: null | string;
+            color: null | string;
+            /** Format: date-time */
+            start: string;
+            /** Format: date-time */
+            end: null | string;
+            allDay: boolean;
         };
         LoginRequest: {
             email: string;
@@ -238,6 +404,17 @@ export interface components {
         RegisterRequest: {
             email: string;
             password: string;
+        };
+        SaveEventRequest: {
+            title: string;
+            description?: null | string;
+            location?: null | string;
+            color?: null | string;
+            /** Format: date-time */
+            start: string;
+            /** Format: date-time */
+            end?: null | string;
+            allDay?: boolean;
         };
     };
     responses: never;

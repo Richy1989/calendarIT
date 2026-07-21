@@ -358,6 +358,15 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
      files authored but `docker build` unverified.
 2. **Core calendar** — Calendars + Events CRUD, timezone-correct storage, FullCalendar
    views, event editor.
+   - ✅ *Done:* `Calendar` + `CalendarEvent` entities, per-user default calendar
+     (auto-created), events REST API (`/api/events` GET/POST/PUT/DELETE, `[Authorize]`,
+     range filter), EF migrations for both providers, frontend wired via TanStack Query
+     (in-memory state replaced by real persistence — create/edit/delete/drag). Verified
+     end-to-end incl. survival across restart.
+   - **Note:** times stored as **UTC `DateTime`** (not `DateTimeOffset`) — SQLite can't
+     `ORDER BY`/compare `DateTimeOffset` in SQL; `DateTimeOffset` is used only at the API
+     boundary. Per-event IANA `TimeZoneId` column exists but full per-zone/DST handling is
+     Phase 3.
 3. **Recurrence** — RRULE store + expand-on-read, edit modes, exceptions; heavy tests.
 4. **iCal import/export** — Ical.Net round-trip.
 5. **Reminders** — Quartz.NET jobs, email (SMTP), Web Push (VAPID), reminder UI.

@@ -63,6 +63,11 @@ appdata/
 *.db-shm
 *.db-wal
 *.sqlite
+*.sqlite3
+# Git matches ignores case-insensitively on Windows/macOS, so "*.sqlite" above also
+# matches the SQLite migrations PROJECT directory (…Migrations.Sqlite). Re-include the
+# directory node so git descends into it; bin/ and obj/ below still exclude build output.
+!**/*.Sqlite/
 
 # --- OS noise ---
 .DS_Store
