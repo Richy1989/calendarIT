@@ -1,6 +1,12 @@
-# CalendarIT
+<p align="center">
+  <img src="public/logo.svg" alt="CalendarIT" width="88" height="88" />
+</p>
 
-**A lightweight, modern calendar. It does what you want — and just that.**
+<h1 align="center">CalendarIT</h1>
+
+<p align="center"><b>A lightweight, modern calendar. It does what you want — and just that.</b></p>
+
+---
 
 No feeds to scroll, no AI to argue with, no "productivity suite" to sign up for.
 CalendarIT is a self-hosted calendar you run on your own box: make events, get

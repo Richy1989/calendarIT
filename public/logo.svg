@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="CalendarIT">
+  <defs>
+    <linearGradient id="calit-grad" x1="2" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C6BFF"/>
+      <stop offset="0.52" stop-color="#5B8DEF"/>
+      <stop offset="1" stop-color="#35E0D4"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#0A0D14"/>
+  <rect x="6" y="7.5" width="20" height="18.5" rx="4.5" fill="none" stroke="url(#calit-grad)" stroke-width="1.8"/>
+  <path d="M6 13H26" stroke="url(#calit-grad)" stroke-width="1.8"/>
+  <path d="M12 5V9M20 5V9" stroke="url(#calit-grad)" stroke-width="1.8" stroke-linecap="round"/>
+  <rect x="15.6" y="17.4" width="5.2" height="5.2" rx="1.4" fill="url(#calit-grad)"/>
+</svg>

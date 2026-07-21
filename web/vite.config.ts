@@ -9,6 +9,9 @@ const apiTarget = process.env.VITE_API_TARGET ?? 'http://localhost:5299'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // Static assets (incl. the favicon) live in the repo-root public/ folder — one source
+  // shared by the app and the README.
+  publicDir: '../public',
   server: {
     proxy: {
       '/api': { target: apiTarget, changeOrigin: true },

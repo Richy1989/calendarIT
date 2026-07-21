@@ -2,11 +2,15 @@
 
 # --- Stage 1: build the React SPA ---------------------------------------------
 FROM node:22-alpine AS web
-WORKDIR /web
+WORKDIR /src
+# Shared static assets (favicon/logo) live in the repo-root public/ — Vite's publicDir
+# points here (../public relative to web/), so it must be present at build time.
+COPY public/ ./public/
+WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --legacy-peer-deps
 COPY web/ ./
-RUN npm run build            # outputs /web/dist
+RUN npm run build            # outputs /src/web/dist
 
 # --- Stage 2: build & publish the ASP.NET Core API ----------------------------
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api
@@ -20,7 +24,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 COPY --from=api /app/publish ./
 # The API serves the SPA from wwwroot.
-COPY --from=web /web/dist ./wwwroot
+COPY --from=web /src/web/dist ./wwwroot
 
 # Container serves plain HTTP; the operator's reverse proxy terminates TLS.
 ENV ASPNETCORE_URLS=http://+:8080
