@@ -100,6 +100,7 @@ Everything is set through environment variables (12-factor):
 | `JWT_SIGNING_KEY`                         | **Required.** ≥ 32 chars                         |
 | `JWT_ISSUER` / `JWT_AUDIENCE`             | Token issuer / audience                          |
 | `Serilog__MinimumLevel__Default`          | Log level (console-only, to stdout). Default `Information` |
+| `SMTP_HOST` / `PORT` / `USER` / `PASSWORD` / `FROM` / `USE_SSL` | Email reminders. If `SMTP_HOST` is unset, reminders are logged instead of sent |
 | `SMTP_*`, `VAPID_*`                        | Email + Web Push (reminders)                     |
 
 ## Project layout
@@ -123,7 +124,8 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Recurring events (RRULE) with timezone/DST-correct expansion; delete a single
   occurrence or the whole series (editing a single occurrence is still on the list)
 - ✅ iCal (.ics) import / export — round-trips title, time + zone, all-day, color, RRULE
-- 🚧 Reminders (email + Web Push)
+- ✅ Reminders — **email** via a Quartz.NET job (recurrence-aware, timezone-correct, dedup)
+- 🚧 Web Push reminders (VAPID + service worker)
 - 🚧 CalDAV server (DAVx⁵ two-way sync)
 - ❌ **Inviting guests / attendees — not implemented** (the event editor shows the
   field as a disabled, clearly-labelled stub)

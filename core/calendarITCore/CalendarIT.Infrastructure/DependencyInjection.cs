@@ -3,12 +3,14 @@ using CalendarIT.Application.Calendars;
 using CalendarIT.Infrastructure.Auth;
 using CalendarIT.Infrastructure.Calendars;
 using CalendarIT.Infrastructure.Identity;
+using CalendarIT.Infrastructure.Notifications;
 using CalendarIT.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Quartz;
 
 namespace CalendarIT.Infrastructure;
 
@@ -41,7 +43,45 @@ public static class DependencyInjection
         services.AddScoped<IEventService, EventService>();
         services.AddScoped<ICalendarIoService, CalendarIoService>();
 
+        AddReminders(services, configuration);
+
         return services;
+    }
+
+    private static void AddReminders(IServiceCollection services, IConfiguration configuration)
+    {
+        var smtp = new SmtpOptions
+        {
+            Host = configuration["SMTP_HOST"],
+            Port = int.TryParse(configuration["SMTP_PORT"], out var port) ? port : 587,
+            User = configuration["SMTP_USER"],
+            Password = configuration["SMTP_PASSWORD"],
+            From = configuration["SMTP_FROM"] ?? "calendarit@localhost",
+            UseSsl = bool.TryParse(configuration["SMTP_USE_SSL"], out var ssl) && ssl,
+        };
+        services.AddSingleton(Options.Create(smtp));
+
+        // Real SMTP when configured; otherwise log emails so reminders still run in dev.
+        if (smtp.IsConfigured)
+        {
+            services.AddScoped<IEmailSender, SmtpEmailSender>();
+        }
+        else
+        {
+            services.AddScoped<IEmailSender, LogEmailSender>();
+        }
+
+        // Quartz: dispatch due reminders once a minute.
+        services.AddQuartz(q =>
+        {
+            var jobKey = new JobKey("reminder-dispatch");
+            q.AddJob<ReminderDispatchJob>(o => o.WithIdentity(jobKey));
+            q.AddTrigger(t => t
+                .ForJob(jobKey)
+                .WithIdentity("reminder-dispatch-trigger")
+                .WithCronSchedule("0 * * * * ?")); // every minute
+        });
+        services.AddQuartzHostedService(o => o.WaitForJobsToComplete = true);
     }
 
     private static void ConfigureProvider(DbContextOptionsBuilder builder, DatabaseOptions options)

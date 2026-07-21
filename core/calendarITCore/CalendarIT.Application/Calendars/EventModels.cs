@@ -18,7 +18,11 @@ public sealed record EventDto(
     DateTimeOffset? End,
     bool AllDay,
     bool Recurring,
-    string? Recurrence);
+    string? Recurrence,
+    IReadOnlyList<ReminderDto> Reminders);
+
+/// <summary>A reminder: fire <paramref name="MinutesBefore"/> minutes before start, via <paramref name="Channel"/>.</summary>
+public sealed record ReminderDto(int MinutesBefore, string Channel);
 
 /// <summary>Create/update payload for an event. Used for both POST and PUT.</summary>
 public sealed class SaveEventRequest
@@ -50,4 +54,18 @@ public sealed class SaveEventRequest
     /// <summary>IANA time zone (e.g. "Europe/Berlin") the event was authored in.</summary>
     [MaxLength(64)]
     public string? TimeZone { get; init; }
+
+    /// <summary>Reminders for this event; replaces the existing set on update.</summary>
+    public IReadOnlyList<ReminderInput>? Reminders { get; init; }
+}
+
+/// <summary>One reminder in a save request.</summary>
+public sealed class ReminderInput
+{
+    [Range(0, 40320)] // up to 4 weeks before
+    public int MinutesBefore { get; init; }
+
+    /// <summary>"Email" or "WebPush".</summary>
+    [Required, MaxLength(16)]
+    public string Channel { get; init; } = "Email";
 }

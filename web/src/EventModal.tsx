@@ -14,7 +14,20 @@ export type EventDraft = {
   description: string
   /** iCalendar RRULE, or '' for a one-off event. */
   recurrence: string
+  reminders: { minutesBefore: number; channel: string }[]
 }
+
+const REMINDER_PRESETS: { label: string; value: number }[] = [
+  { label: 'At start of event', value: 0 },
+  { label: '5 minutes before', value: 5 },
+  { label: '10 minutes before', value: 10 },
+  { label: '15 minutes before', value: 15 },
+  { label: '30 minutes before', value: 30 },
+  { label: '1 hour before', value: 60 },
+  { label: '2 hours before', value: 120 },
+  { label: '1 day before', value: 1440 },
+  { label: '1 week before', value: 10080 },
+]
 
 const REPEATS: { label: string; value: string }[] = [
   { label: 'Does not repeat', value: '' },
@@ -56,7 +69,13 @@ export default function EventModal({
   const [end, setEnd] = useState(draft.end)
   const [color, setColor] = useState(draft.color)
   const [recurrence, setRecurrence] = useState(draft.recurrence)
+  const [reminders, setReminders] = useState(draft.reminders)
   const [location, setLocation] = useState(draft.location)
+
+  const addReminder = () => setReminders((rs) => [...rs, { minutesBefore: 15, channel: 'Email' }])
+  const removeReminder = (i: number) => setReminders((rs) => rs.filter((_, idx) => idx !== i))
+  const setReminderOffset = (i: number, minutesBefore: number) =>
+    setReminders((rs) => rs.map((r, idx) => (idx === i ? { ...r, minutesBefore } : r)))
   const [description, setDescription] = useState(draft.description)
   const [expanded, setExpanded] = useState(Boolean(draft.location || draft.description))
   const isEdit = Boolean(draft.id)
@@ -83,7 +102,7 @@ export default function EventModal({
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
-    onSave({ id: draft.id, title: title.trim(), start, end, allDay, color, location, description, recurrence })
+    onSave({ id: draft.id, title: title.trim(), start, end, allDay, color, location, description, recurrence, reminders })
   }
 
   const inputType = allDay ? 'date' : 'datetime-local'
@@ -139,6 +158,30 @@ export default function EventModal({
             )}
           </select>
           {isEdit && recurrence !== '' && <p className="field-hint">Saving updates the whole series.</p>}
+        </div>
+
+        <div className="field">
+          <label>Reminders</label>
+          <div className="reminders">
+            {reminders.map((r, i) => (
+              <div className="reminder-row" key={i}>
+                <select value={r.minutesBefore} onChange={(e) => setReminderOffset(i, Number(e.target.value))}>
+                  {REMINDER_PRESETS.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="reminder-via">email</span>
+                <button type="button" className="reminder-remove" onClick={() => removeReminder(i)} aria-label="Remove reminder">
+                  ✕
+                </button>
+              </div>
+            ))}
+            <button type="button" className="reminder-add" onClick={addReminder}>
+              ＋ Add reminder
+            </button>
+          </div>
         </div>
 
         <div className="field">

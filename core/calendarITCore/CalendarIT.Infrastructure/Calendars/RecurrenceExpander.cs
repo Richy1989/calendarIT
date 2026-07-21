@@ -1,3 +1,4 @@
+using System.Globalization;
 using Ical.Net.CalendarComponents;
 using Ical.Net.DataTypes;
 
@@ -11,6 +12,26 @@ namespace CalendarIT.Infrastructure.Calendars;
 public static class RecurrenceExpander
 {
     public readonly record struct Occurrence(DateTime StartUtc, DateTime EndUtc);
+
+    /// <summary>Parses newline-separated ISO UTC EXDATEs into a set (truncated to seconds).</summary>
+    public static IReadOnlySet<DateTime> ParseExDates(string? raw)
+    {
+        var set = new HashSet<DateTime>();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return set;
+        }
+        foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (DateTime.TryParse(line, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var dt))
+            {
+                var utc = DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+                set.Add(new DateTime(utc.Ticks - (utc.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc));
+            }
+        }
+        return set;
+    }
 
     public static IEnumerable<Occurrence> Expand(
         DateTime masterStartUtc,

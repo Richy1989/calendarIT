@@ -118,6 +118,53 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.ToTable("Events");
                 });
 
+            modelBuilder.Entity("CalendarIT.Domain.NotificationLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("OccurrenceStartUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ReminderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("SentAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReminderId", "OccurrenceStartUtc")
+                        .IsUnique();
+
+                    b.ToTable("NotificationLogs");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.Reminder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MinutesBefore")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.ToTable("Reminders");
+                });
+
             modelBuilder.Entity("CalendarIT.Infrastructure.Identity.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -366,6 +413,17 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.Navigation("Calendar");
                 });
 
+            modelBuilder.Entity("CalendarIT.Domain.Reminder", b =>
+                {
+                    b.HasOne("CalendarIT.Domain.CalendarEvent", "Event")
+                        .WithMany("Reminders")
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Event");
+                });
+
             modelBuilder.Entity("CalendarIT.Infrastructure.Identity.RefreshToken", b =>
                 {
                     b.HasOne("CalendarIT.Infrastructure.Identity.ApplicationUser", null)
@@ -429,6 +487,11 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
             modelBuilder.Entity("CalendarIT.Domain.Calendar", b =>
                 {
                     b.Navigation("Events");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.CalendarEvent", b =>
+                {
+                    b.Navigation("Reminders");
                 });
 #pragma warning restore 612, 618
         }

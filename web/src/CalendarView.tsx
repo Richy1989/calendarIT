@@ -59,6 +59,7 @@ function dtoToInput(dto: EventDto): EventInput {
       color,
       location: dto.location ?? '',
       description: dto.description ?? '',
+      reminders: dto.reminders,
     },
   }
 }
@@ -80,6 +81,7 @@ function draftToRequest(d: EventDraft): SaveEventRequest {
     allDay: d.allDay,
     recurrence: d.recurrence || null,
     timeZone: browserTz,
+    reminders: d.reminders.map((r) => ({ minutesBefore: r.minutesBefore, channel: r.channel })),
   }
 }
 
@@ -137,7 +139,7 @@ export default function CalendarView() {
   }
 
   const openNewOn = (date: Date, allDay: boolean) => {
-    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '' }
+    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [] }
     if (allDay) {
       const day = toLocalInput(date).slice(0, 10)
       setDraft({ ...blank, start: day, end: day, allDay: true })
@@ -177,6 +179,7 @@ export default function CalendarView() {
       location: dto.location ?? '',
       description: dto.description ?? '',
       recurrence: dto.recurrence ?? '',
+      reminders: dto.reminders.map((r) => ({ minutesBefore: Number(r.minutesBefore), channel: r.channel })),
     })
   }
 
@@ -205,6 +208,10 @@ export default function CalendarView() {
       allDay: ev.allDay,
       recurrence: null,
       timeZone: browserTz,
+      reminders: (ev.extendedProps.reminders as { minutesBefore: number; channel: string }[] | undefined)?.map((r) => ({
+        minutesBefore: r.minutesBefore,
+        channel: r.channel,
+      })) ?? null,
     }
     updateMut.mutate({ id: ev.extendedProps.seriesId as string, body })
   }

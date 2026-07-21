@@ -503,6 +503,7 @@ export interface components {
             allDay: boolean;
             recurring: boolean;
             recurrence: null | string;
+            reminders: components["schemas"]["ReminderDto"][];
         };
         ImportResult: {
             /** Format: int32 */
@@ -532,6 +533,16 @@ export interface components {
             email: string;
             password: string;
         };
+        ReminderDto: {
+            /** Format: int32 */
+            minutesBefore: number | string;
+            channel: string;
+        };
+        ReminderInput: {
+            /** Format: int32 */
+            minutesBefore?: number | string;
+            channel: string;
+        };
         SaveEventRequest: {
             title: string;
             description?: null | string;
@@ -544,6 +555,7 @@ export interface components {
             allDay?: boolean;
             recurrence?: null | string;
             timeZone?: null | string;
+            reminders?: null | components["schemas"]["ReminderInput"][];
         };
     };
     responses: never;

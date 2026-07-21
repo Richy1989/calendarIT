@@ -387,6 +387,15 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
    - ⬜ *Deferred:* reading **EXDATE back on import** (export writes it; Ical.Net v5's
      `ExceptionDates` shape needs extra plumbing) and multi-VALARM/attendee mapping.
 5. **Reminders** — Quartz.NET jobs, email (SMTP), Web Push (VAPID), reminder UI.
+   - ✅ *Done (5a — email):* `Reminder` (per event, `MinutesBefore` + `Channel`) and
+     `NotificationLog` (unique on ReminderId+occurrence → idempotent) entities; migrations
+     both providers. **Quartz.NET** `ReminderDispatchJob` runs every minute, computes each
+     reminder's trigger via a shifted window, expands recurrence per reminder, dedups, and
+     sends **email via MailKit/SMTP** (falls back to a log-only sender when SMTP unset, so
+     dev works). Reminders round-trip through the events API + the modal's reminder editor
+     (offset presets). Verified: reminder dispatched with timezone-correct start time.
+   - ⬜ *5b (next):* **Web Push** — VAPID keys, `PushSubscription`, service worker, browser
+     subscribe flow, and the WebPush dispatch branch (currently logs "delivery in 5b").
 6. **CalDAV** — library spike, protocol endpoints, app-password auth, DAVx⁵ validation.
 7. **Hardening & deploy** — sample compose, docs, env-var config, migrations on startup.
 

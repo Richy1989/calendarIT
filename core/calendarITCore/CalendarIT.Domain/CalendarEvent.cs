@@ -45,4 +45,6 @@ public class CalendarEvent
     public DateTime UpdatedAt { get; set; }
 
     public Calendar? Calendar { get; set; }
+
+    public ICollection<Reminder> Reminders { get; set; } = new List<Reminder>();
 }

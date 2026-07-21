@@ -18,7 +18,8 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
         var results = new List<EventDto>();
 
         // Single (non-recurring) events: filter by range in SQL.
-        var singles = db.Events.AsNoTracking().Where(e => e.Calendar!.OwnerUserId == userId && e.RRule == null);
+        var singles = db.Events.AsNoTracking().Include(e => e.Reminders)
+            .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule == null);
         if (toUtc is not null)
         {
             singles = singles.Where(e => e.StartUtc < toUtc);
@@ -32,7 +33,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
         // Recurring series: fetch masters, expand within the window (needs a bounded range).
         if (fromUtc is not null && toUtc is not null)
         {
-            var masters = await db.Events.AsNoTracking()
+            var masters = await db.Events.AsNoTracking().Include(e => e.Reminders)
                 .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule != null)
                 .ToListAsync(cancellationToken);
 
@@ -40,13 +41,14 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
             {
                 var end = m.EndUtc ?? m.StartUtc.AddHours(1);
                 var exDates = ParseExDates(m.ExDates);
+                var reminders = MapReminders(m.Reminders);
                 foreach (var occ in RecurrenceExpander.Expand(m.StartUtc, end, m.TimeZoneId, m.RRule!, exDates, fromUtc.Value, toUtc.Value))
                 {
                     results.Add(new EventDto(
                         m.Id, m.Title, m.Description, m.Location, m.Color,
                         new DateTimeOffset(occ.StartUtc, TimeSpan.Zero),
                         new DateTimeOffset(occ.EndUtc, TimeSpan.Zero),
-                        m.IsAllDay, Recurring: true, Recurrence: m.RRule));
+                        m.IsAllDay, Recurring: true, Recurrence: m.RRule, Reminders: reminders));
                 }
             }
         }
@@ -56,7 +58,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
 
     public async Task<EventDto?> GetByIdAsync(Guid userId, Guid eventId, CancellationToken cancellationToken = default)
     {
-        var entity = await db.Events.AsNoTracking()
+        var entity = await db.Events.AsNoTracking().Include(e => e.Reminders)
             .Where(e => e.Id == eventId && e.Calendar!.OwnerUserId == userId)
             .SingleOrDefaultAsync(cancellationToken);
         return entity is null ? null : ToDto(entity);
@@ -75,6 +77,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
             CreatedAt = now,
         };
         Apply(entity, request, now);
+        entity.Reminders = MapReminders(request.Reminders);
 
         db.Events.Add(entity);
         await db.SaveChangesAsync(cancellationToken);
@@ -83,7 +86,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
 
     public async Task<EventDto?> UpdateAsync(Guid userId, Guid eventId, SaveEventRequest request, CancellationToken cancellationToken = default)
     {
-        var entity = await db.Events
+        var entity = await db.Events.Include(e => e.Reminders)
             .Where(e => e.Id == eventId && e.Calendar!.OwnerUserId == userId)
             .SingleOrDefaultAsync(cancellationToken);
         if (entity is null)
@@ -92,6 +95,12 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
         }
 
         Apply(entity, request, timeProvider.GetUtcNow().UtcDateTime);
+        // Replace the reminder set; orphaned rows are deleted (required FK).
+        entity.Reminders.Clear();
+        foreach (var reminder in MapReminders(request.Reminders))
+        {
+            entity.Reminders.Add(reminder);
+        }
         await db.SaveChangesAsync(cancellationToken);
         return ToDto(entity);
     }
@@ -142,7 +151,29 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
             e.Id, e.Title, e.Description, e.Location, e.Color,
             new DateTimeOffset(DateTime.SpecifyKind(e.StartUtc, DateTimeKind.Utc)),
             e.EndUtc is null ? null : new DateTimeOffset(DateTime.SpecifyKind(e.EndUtc.Value, DateTimeKind.Utc)),
-            e.IsAllDay, Recurring: e.RRule is not null, Recurrence: e.RRule);
+            e.IsAllDay, Recurring: e.RRule is not null, Recurrence: e.RRule, Reminders: MapReminders(e.Reminders));
+
+    private static IReadOnlyList<ReminderDto> MapReminders(IEnumerable<Reminder> reminders) =>
+        reminders
+            .OrderBy(r => r.MinutesBefore)
+            .Select(r => new ReminderDto(r.MinutesBefore, r.Channel.ToString()))
+            .ToList();
+
+    private static List<Reminder> MapReminders(IReadOnlyList<ReminderInput>? inputs)
+    {
+        if (inputs is null)
+        {
+            return [];
+        }
+        return inputs
+            .Select(i => new Reminder
+            {
+                Id = Guid.NewGuid(),
+                MinutesBefore = i.MinutesBefore,
+                Channel = Enum.TryParse<ReminderChannel>(i.Channel, ignoreCase: true, out var c) ? c : ReminderChannel.Email,
+            })
+            .ToList();
+    }
 
     private static HashSet<DateTime> ParseExDates(string? raw)
     {

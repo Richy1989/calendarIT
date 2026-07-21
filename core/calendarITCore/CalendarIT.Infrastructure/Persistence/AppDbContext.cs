@@ -20,6 +20,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public DbSet<CalendarEvent> Events => Set<CalendarEvent>();
 
+    public DbSet<Reminder> Reminders => Set<Reminder>();
+
+    public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -74,6 +78,24 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                 .WithMany(c => c.Events)
                 .HasForeignKey(e => e.CalendarId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<Reminder>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.Channel).HasConversion<string>().HasMaxLength(16);
+            entity.HasIndex(r => r.EventId);
+
+            entity.HasOne(r => r.Event)
+                .WithMany(e => e.Reminders)
+                .HasForeignKey(r => r.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<NotificationLog>(entity =>
+        {
+            entity.HasKey(n => n.Id);
+            entity.HasIndex(n => new { n.ReminderId, n.OccurrenceStartUtc }).IsUnique();
         });
     }
 }
