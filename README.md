@@ -51,7 +51,7 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
 | Auth      | ASP.NET Core Identity + JWT (access + rotating refresh)          |
 | Data      | EF Core — **PostgreSQL** (primary), **SQLite** (fallback)        |
 | Jobs      | Quartz.NET (reminders, housekeeping)                             |
-| Logging   | Serilog — colorful console in dev, JSON in prod                  |
+| Logging   | Serilog behind `ILogger<T>` — themed console to stdout           |
 | Packaging | Docker; runs behind your own reverse proxy (TLS terminated there)|
 
 See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the full design and rationale.
@@ -99,7 +99,7 @@ Everything is set through environment variables (12-factor):
 | `APPDATA_PATH`                            | Writable data dir (SQLite file, etc.) — `/appdata`|
 | `JWT_SIGNING_KEY`                         | **Required.** ≥ 32 chars                         |
 | `JWT_ISSUER` / `JWT_AUDIENCE`             | Token issuer / audience                          |
-| `LOG_FORMAT` / `LOG_LEVEL`                | `json`\|`console`, and log level                 |
+| `Serilog__MinimumLevel__Default`          | Log level (console-only, to stdout). Default `Information` |
 | `SMTP_*`, `VAPID_*`                        | Email + Web Push (reminders)                     |
 
 ## Project layout

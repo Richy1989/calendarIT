@@ -32,8 +32,9 @@ services:
       POSTGRES_CONNECTION: "Host=db;Port=5432;Database=${POSTGRES_DB:-calendarit};Username=${POSTGRES_USER:-calendarit};Password=${POSTGRES_PASSWORD:-changeme}"
       APPDATA_PATH: /appdata
       APPLY_MIGRATIONS: "true"
-      LOG_FORMAT: json
-      LOG_LEVEL: Information
+      # Log level (Serilog reads config; override per-namespace with
+      # Serilog__MinimumLevel__Override__<Namespace>). Console-only, to stdout.
+      Serilog__MinimumLevel__Default: Information
       JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env}
       JWT_ISSUER: ${JWT_ISSUER:-calendarit}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-calendarit}

@@ -56,7 +56,7 @@ system ships as Docker containers and runs behind an operator-supplied reverse p
 | Notifications | **Email (SMTP)** + **Web Push (VAPID)** |
 | Packaging | **Docker** (backend, frontend, Postgres); operator brings their own reverse proxy |
 | TLS | Terminated by the **operator's reverse proxy**; app serves HTTP + honors `X-Forwarded-*` |
-| Logging | **Structured logging (Serilog)** — JSON to stdout in prod, **colorful themed console** in dev, correlation IDs, configurable levels |
+| Logging | **Serilog behind `ILogger<T>`** — console-only themed sink to stdout (sink+theme in code), levels from the `"Serilog"` config section |
 
 ---
 
@@ -150,9 +150,9 @@ pin package versions, expect occasional preview edges), Node **v22**, Docker **2
 (`calendarITCore` host + Domain/Application/Infrastructure/CalDav/Tests, wired with the
 reference graph above). Template cleanup done: WeatherForecast removed, `UseHttpsRedirection`
 dropped, `ForwardedHeaders` (X-Forwarded-For/Proto) enabled for the proxy. **Serilog**
-logging is live — colourful ANSI console in dev, compact JSON in prod, `LOG_FORMAT` /
-`LOG_LEVEL` (+ `LOG_LEVEL__<Namespace>`) config, per-request correlation via
-`UseSerilogRequestLogging`. Health endpoints `**/health**` (liveness) and `**/ready**`
+logging is live — console-only themed ANSI sink (sink + theme in code via
+`AddSerilogLogging`; one `Serilog.AspNetCore` package), levels from the `"Serilog"`
+config section, request summary lines via `UseSerilogRequestLogging`. Health endpoints `**/health**` (liveness) and `**/ready**`
 (readiness; picks up checks tagged `ready`) return 200. Solution builds warning-free.
 **Security TODO — resolved:** the `Microsoft.OpenApi` NU1903 advisory is cleared by
 pinning `Microsoft.OpenApi 2.11.0` (and `Microsoft.AspNetCore.OpenApi 10.0.10`).
@@ -271,7 +271,8 @@ Design:
   - `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`
   - `JWT_SIGNING_KEY`, `JWT_ISSUER`, `JWT_AUDIENCE`
   - `PUBLIC_BASE_URL` (for links, CalDAV principal URLs, push)
-  - `LOG_LEVEL` (global minimum) + `LOG_LEVEL__<Namespace>` overrides; `LOG_FORMAT` = `json` | `console`
+  - Log levels via the `Serilog` config section (`Serilog__MinimumLevel__Default`,
+    `Serilog__MinimumLevel__Override__<Namespace>`); console-only sink to stdout
 - Persistent data lives under the **`/appdata`** volume so the container is disposable.
 - EF Core **migrations** applied on startup (guarded) or via an init step.
 
@@ -286,19 +287,17 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
 - **Structured / semantic logs** — log events with named properties
   (`log.Information("Reminder sent for {EventId} to {UserId}", ...)`), not string
   concatenation, so logs are queryable.
-- **Two output modes** (via `LOG_FORMAT`):
-  - `json` — structured JSON to stdout, the container/production default (12-factor) so
-    the operator's log stack (Loki, ELK, Seq, cloud) can ingest it.
-  - `console` — **colorful, human-readable console output** for local dev: level-colored
-    lines (e.g. Info green, Warning yellow, Error red), highlighted timestamps, and
-    color-emphasized structured properties. Serilog's themed console sink
-    (`Serilog.Sinks.Console` with an ANSI theme) drives this; auto-detects and disables
-    color when the output isn't a TTY (piped/CI) so logs stay clean there.
-- **Correlation / request IDs** — enrich every log with a request/trace id
-  (Serilog request logging + `X-Correlation-Id` passthrough) so a single request can be
-  followed across API → jobs. Include user id where available.
-- **Configurable levels via env vars** — global minimum level plus per-namespace
-  overrides (e.g. quiet EF Core SQL in prod, verbose in dev) without a rebuild.
+- **Console-only, themed sink** — logs go to **stdout** for the container runtime to
+  collect (no file/Seq/OTEL sink unless asked). A high-contrast ANSI-256 themed console
+  with the template `[HH:mm:ss LVL] message`. The sink + theme live in **code**
+  (`calendarITCore/Logging/LoggingServiceExtensions.cs`, `builder.AddSerilogLogging()`);
+  a single `Serilog.AspNetCore` package brings the console sink + ASP.NET integration.
+- **Levels live in config** (the `"Serilog"` section of `appsettings.json`, read via
+  `ReadFrom.Configuration`) so verbosity is tunable without a recompile: a `Default`
+  minimum plus per-namespace `Override` entries (framework/EF noise silenced to Warning).
+  In containers, override with env vars, e.g. `Serilog__MinimumLevel__Default=Debug`.
+- **Request logging** — `app.UseSerilogRequestLogging()` emits one clean summary line per
+  HTTP request (with the real client IP, after `UseForwardedHeaders`).
 - **Sensitive-data hygiene** — never log passwords, JWTs, push secrets, or full event
   bodies; redact tokens and PII. This is a review checklist item.
 - **Scope-aware areas** — meaningful logs around auth, CalDAV sync operations
