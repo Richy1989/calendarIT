@@ -1,0 +1,74 @@
+# ============================================================================
+#  CalendarIT — .gitignore
+# ============================================================================
+
+# --- .NET build output ---
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+artifacts/
+*.dll
+*.exe
+*.pdb
+
+# --- .NET / Visual Studio user & IDE files ---
+.vs/
+*.user
+*.suo
+*.userprefs
+*.rsuser
+*.received.*
+TestResults/
+[Tt]est[Rr]esult*/
+*.coverage
+*.trx
+project.lock.json
+
+# --- Rider / JetBrains ---
+.idea/
+*.sln.iml
+
+# --- VS Code (keep shared config out; uncomment to share) ---
+.vscode/*
+!.vscode/extensions.json
+
+# --- Node / frontend (web/) ---
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+
+# --- Secrets & environment ---
+.env
+.env.*
+!.env.example
+*.pfx
+appsettings.*.local.json
+secrets.json
+
+# --- Local application data & databases ---
+appdata/
+**/appdata/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+
+# --- OS noise ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Logs ---
+*.log
+logs/

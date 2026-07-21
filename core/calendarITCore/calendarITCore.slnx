@@ -1,0 +1,10 @@
+<Solution>
+  <Project Path="CalendarIT.Application/CalendarIT.Application.csproj" />
+  <Project Path="CalendarIT.CalDav/CalendarIT.CalDav.csproj" />
+  <Project Path="CalendarIT.Domain/CalendarIT.Domain.csproj" />
+  <Project Path="CalendarIT.Infrastructure/CalendarIT.Infrastructure.csproj" />
+  <Project Path="CalendarIT.Migrations.Postgres/CalendarIT.Migrations.Postgres.csproj" />
+  <Project Path="CalendarIT.Migrations.Sqlite/CalendarIT.Migrations.Sqlite.csproj" />
+  <Project Path="CalendarIT.Tests/CalendarIT.Tests.csproj" />
+  <Project Path="calendarITCore/calendarITCore.csproj" />
+</Solution>

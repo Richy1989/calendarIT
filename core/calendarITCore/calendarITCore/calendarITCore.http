@@ -1,0 +1,6 @@
+@calendarITCore_HostAddress = http://localhost:5299
+
+GET {{calendarITCore_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

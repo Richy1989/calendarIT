@@ -1,0 +1,245 @@
+/* ============================================================================
+   CalendarIT — design tokens & base
+   Identity: a "precision instrument for time". Deep ink canvas, one duotone
+   spectrum (violet -> cyan) spent only on the signature moments, mono for data.
+   Dark-committed by design.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* Canvas & surfaces */
+  --bg: #0a0d14;
+  --bg-2: #0d111a;
+  --surface: #121723;
+  --surface-2: #171d2b;
+  --surface-3: #1e2537;
+  --hairline: #232c3e;
+  --hairline-strong: #313c54;
+
+  /* Ink */
+  --text: #e7ecf5;
+  --text-dim: #9aa4b8;
+  --text-faint: #62708a;
+
+  /* Signature spectrum */
+  --violet: #7c6bff;
+  --indigo: #5b8def;
+  --cyan: #35e0d4;
+  --accent: #6e8bff;
+  --grad: linear-gradient(115deg, #7c6bff 0%, #5b8def 52%, #35e0d4 100%);
+  --grad-soft: linear-gradient(115deg, rgba(124, 107, 255, 0.22), rgba(53, 224, 212, 0.18));
+
+  --danger: #ff6b6b;
+
+  /* Geometry & light */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+  --ring: 0 0 0 3px rgba(110, 139, 255, 0.3);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 30px 80px -40px rgba(0, 0, 0, 0.85);
+  --shadow-glow: 0 0 0 1px rgba(124, 107, 255, 0.1), 0 24px 70px -28px rgba(53, 224, 212, 0.28);
+
+  /* Type roles */
+  --font-display: 'Space Grotesk Variable', system-ui, sans-serif;
+  --font-body: 'Inter Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Ambient atmosphere: soft duotone glow + a faint time-grid, masked to fade out. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(58vw 58vw at 10% -12%, rgba(124, 107, 255, 0.16), transparent 60%),
+    radial-gradient(52vw 52vw at 104% 112%, rgba(53, 224, 212, 0.12), transparent 58%),
+    var(--bg);
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(var(--hairline) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hairline) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(circle at 50% 22%, #000 0%, transparent 78%);
+  mask-image: radial-gradient(circle at 50% 22%, #000 0%, transparent 78%);
+  opacity: 0.16;
+  pointer-events: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--r-sm);
+}
+
+/* ============================================================================
+   FullCalendar theme — bend it to the instrument aesthetic
+   ========================================================================== */
+
+.calendar-shell {
+  --fc-page-bg-color: transparent;
+  --fc-border-color: var(--hairline);
+  --fc-neutral-bg-color: var(--surface-2);
+  --fc-neutral-text-color: var(--text-dim);
+  --fc-today-bg-color: rgba(110, 139, 255, 0.07);
+  --fc-now-indicator-color: var(--cyan);
+  --fc-event-bg-color: rgba(110, 139, 255, 0.16);
+  --fc-event-border-color: rgba(124, 107, 255, 0.55);
+  --fc-event-text-color: var(--text);
+  --fc-highlight-color: rgba(53, 224, 212, 0.12);
+}
+
+/* Selectors are scoped under .calendar-shell so they reliably out-specify
+   FullCalendar's own runtime-injected stylesheet regardless of load order. */
+.calendar-shell .fc {
+  --fc-small-font-size: 0.78rem;
+}
+
+.calendar-shell .fc .fc-toolbar-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.35rem;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+
+.calendar-shell .fc .fc-col-header-cell-cushion {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-faint);
+  padding: 0.7rem 0.4rem;
+  text-decoration: none;
+}
+
+.calendar-shell .fc .fc-daygrid-day-number,
+.calendar-shell .fc .fc-timegrid-slot-label-cushion,
+.calendar-shell .fc .fc-list-day-text {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.calendar-shell .fc .fc-day-today .fc-daygrid-day-number {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Clicked cell: a cyan ring + tint, deliberately distinct from the violet "today". */
+.calendar-shell .fc .fc-day.is-selected {
+  background: rgba(53, 224, 212, 0.09);
+  box-shadow: inset 0 0 0 1.5px rgba(53, 224, 212, 0.6);
+}
+
+.calendar-shell .fc .fc-day.is-selected .fc-daygrid-day-number {
+  color: var(--cyan);
+  font-weight: 600;
+}
+
+.calendar-shell .fc-theme-standard td,
+.calendar-shell .fc-theme-standard th,
+.calendar-shell .fc-theme-standard .fc-scrollgrid {
+  border-color: var(--hairline);
+}
+
+/* Toolbar buttons */
+.calendar-shell .fc .fc-button {
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  color: var(--text-dim);
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 0.85rem;
+  text-transform: capitalize;
+  box-shadow: none;
+  padding: 0.42rem 0.75rem;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.calendar-shell .fc .fc-button:hover {
+  background: var(--surface-3);
+  color: var(--text);
+  border-color: var(--hairline-strong);
+}
+
+.calendar-shell .fc .fc-button:focus,
+.calendar-shell .fc .fc-button:focus-visible {
+  box-shadow: var(--ring);
+}
+
+.calendar-shell .fc .fc-button-primary:not(:disabled).fc-button-active,
+.calendar-shell .fc .fc-button-primary:not(:disabled):active {
+  background: var(--grad-soft);
+  border-color: rgba(124, 107, 255, 0.5);
+  color: var(--text);
+}
+
+.calendar-shell .fc .fc-button .fc-icon {
+  font-size: 1.1em;
+}
+
+/* Events */
+.calendar-shell .fc .fc-event {
+  border-radius: 7px;
+  padding: 1px 5px;
+  font-weight: 500;
+  border-left-width: 3px;
+}
+
+.calendar-shell .fc .fc-event:hover {
+  filter: brightness(1.15);
+}
+
+/* Now indicator: give the live line a subtle cyan glow */
+.calendar-shell .fc .fc-timegrid-now-indicator-line {
+  border-color: var(--cyan);
+  box-shadow: 0 0 8px rgba(53, 224, 212, 0.6);
+}
+
+.calendar-shell .fc .fc-timegrid-now-indicator-arrow {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

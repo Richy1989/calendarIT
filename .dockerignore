@@ -1,0 +1,20 @@
+# Build outputs
+**/bin/
+**/obj/
+**/dist/
+**/node_modules/
+
+# Local dev / IDE
+**/.vs/
+**/.vscode/
+**/.idea/
+**/*.user
+
+# Local data & databases
+**/appdata/
+**/*.db
+**/*.db-*
+
+# Git & docs noise
+.git/
+**/.gitignore
