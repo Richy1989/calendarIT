@@ -12,6 +12,10 @@ No feeds to scroll, no AI to argue with, no "productivity suite" to sign up for.
 CalendarIT is a self-hosted calendar you run on your own box: make events, get
 reminded, sync to your phone. That's the whole pitch.
 
+<p align="center">
+  <img src="docs/ScreenShot_Month.png" alt="CalendarIT — month view" width="100%" />
+</p>
+
 ---
 
 [<img src="public/bymeacoffee.png" alt="Buy Me A Coffee" height="60">](https://buymeacoffee.com/spaceelephant)
@@ -40,6 +44,12 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
   can subscribe and sync two-way.
 - 📄 **iCal import / export** — bring your calendar in, take it out, any time.
 - 🔐 **Accounts** — email + password, JWT sessions with rotating refresh tokens.
+
+<p align="center">
+  <img src="docs/ScreenShot_Week.png" alt="CalendarIT — week view" width="100%" />
+  <br />
+  <sub>Week view — drag on the grid to create an appointment, drag events to move or resize them.</sub>
+</p>
 
 ## Tech
 
