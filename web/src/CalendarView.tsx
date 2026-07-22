@@ -110,11 +110,17 @@ export default function CalendarView({
   focus,
   serverView,
   visibleCalendarIds,
+  onChangeVisible,
+  onManage,
 }: {
   focus?: { date: string; n: number } | null
   serverView?: string | null
   /** Calendars to show; null/undefined = all of them. */
   visibleCalendarIds?: string[] | null
+  /** Called when the user toggles calendar visibility in the toolbar picker. */
+  onChangeVisible?: (ids: string[] | null) => void
+  /** Opens Settings → Calendars ("Manage calendars…"). */
+  onManage?: () => void
 }) {
   const queryClient = useQueryClient()
   const [range, setRange] = useState<{ from: string; to: string } | null>(null)
@@ -135,6 +141,25 @@ export default function CalendarView({
   // New events land in the first visible calendar (or the first one overall).
   const defaultCalendarId = () =>
     calendars.find((c) => !visibleCalendarIds || visibleCalendarIds.includes(c.id))?.id ?? calendars[0]?.id
+
+  // Calendar visibility picker, anchored to its toolbar button.
+  const [calPop, setCalPop] = useState<{ x: number; y: number } | null>(null)
+  const isCalVisible = (id: string) => !visibleCalendarIds || visibleCalendarIds.includes(id)
+  const shownCount = calendars.filter((c) => isCalVisible(c.id)).length
+  const calPickerLabel =
+    calendars.length <= 1
+      ? (calendars[0]?.name ?? 'Calendars')
+      : shownCount === calendars.length
+        ? 'All calendars ▾'
+        : shownCount === 1
+          ? `${calendars.find((c) => isCalVisible(c.id))?.name} ▾`
+          : `${shownCount} of ${calendars.length} ▾`
+
+  const toggleCal = (id: string) => {
+    const next = calendars.filter((c) => (c.id === id ? !isCalVisible(c.id) : isCalVisible(c.id))).map((c) => c.id)
+    if (next.length === 0) return // never blank the whole view
+    onChangeVisible?.(next.length === calendars.length ? null : next)
+  }
 
   const [draft, setDraft] = useState<EventDraft | null>(null)
   const [menu, setMenu] = useState<ContextMenu | null>(null)
@@ -199,7 +224,7 @@ export default function CalendarView({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
-      if (draft || menu || yearPop) return // don't steal keys from the editor / popovers
+      if (draft || menu || yearPop || calPop) return // don't steal keys from the editor / popovers
       if (e.metaKey || e.ctrlKey || e.altKey) return
       const target = e.target as HTMLElement | null
       const tag = target?.tagName
@@ -212,7 +237,21 @@ export default function CalendarView({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [draft, menu, yearPop])
+  }, [draft, menu, yearPop, calPop])
+
+  useEffect(() => {
+    if (!calPop) return
+    const close = () => setCalPop(null)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setCalPop(null)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [calPop])
 
   // Clicking the toolbar title ("August 2026") opens a small popover to jump years.
   // FullCalendar owns the toolbar DOM, so the listener is delegated from the document.
@@ -425,9 +464,16 @@ export default function CalendarView({
         customButtons={{
           addEvent: { text: '+  New', click: openNew },
           todaySelect: { text: 'today', click: goToday },
+          calPicker: {
+            text: calPickerLabel,
+            click: (_ev, element) => {
+              const rect = element.getBoundingClientRect()
+              setCalPop((p) => (p ? null : { x: rect.left, y: rect.bottom + 6 }))
+            },
+          },
         }}
         headerToolbar={{
-          left: 'addEvent',
+          left: 'addEvent calPicker',
           center: 'title',
           right: 'prev,next todaySelect dayGridMonth,timeGridWeek,timeGridDay',
         }}
@@ -495,6 +541,51 @@ export default function CalendarView({
                 )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {calPop && (
+        <div
+          className="ctx-backdrop"
+          onMouseDown={() => setCalPop(null)}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            setCalPop(null)
+          }}
+        >
+          <div
+            className="cal-switcher-menu"
+            style={{ position: 'fixed', left: calPop.x, top: calPop.y }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {calendars.length > 1 && (
+              <>
+                <button type="button" className="cal-switcher-item" onClick={() => onChangeVisible?.(null)}>
+                  <span className={'cal-check' + (shownCount === calendars.length ? ' on' : '')} />
+                  All calendars
+                </button>
+                <div className="cal-switcher-divider" />
+                {calendars.map((c) => (
+                  <button key={c.id} type="button" className="cal-switcher-item" onClick={() => toggleCal(c.id)}>
+                    <span className={'cal-check' + (isCalVisible(c.id) ? ' on' : '')} />
+                    <span className="cal-switcher-name">{c.name}</span>
+                    <span className="cal-switcher-count">{c.eventCount}</span>
+                  </button>
+                ))}
+                <div className="cal-switcher-divider" />
+              </>
+            )}
+            <button
+              type="button"
+              className="cal-switcher-item cal-switcher-manage"
+              onClick={() => {
+                setCalPop(null)
+                onManage?.()
+              }}
+            >
+              Manage calendars…
+            </button>
           </div>
         </div>
       )}

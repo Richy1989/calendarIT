@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { api } from './api/client'
 import { getProfile } from './api/profile'
-import { listCalendars } from './api/calendars'
 import { getVisibleCalendars, saveVisibleCalendars } from './prefs'
 import { getTokens, setTokens, type AuthTokens } from './auth/authStorage'
 import CalendarView from './CalendarView'
@@ -67,6 +66,7 @@ export default function App() {
           <SearchBar onPick={(date) => setFocus((f) => ({ date, n: (f?.n ?? 0) + 1 }))} />
         </div>
         <div className="header-actions">
+          <LiveDateTime />
           <ProfileMenu
             email={profile?.email}
             avatarUrl={profile?.avatarDataUrl}
@@ -76,111 +76,24 @@ export default function App() {
         </div>
       </header>
       <main className="app-main">
-        <div className="section-lead">
-          <CalendarSwitcher
-            visible={visibleCals}
-            onChange={(ids) => {
+        <section className="calendar-shell">
+          <CalendarView
+            focus={focus}
+            serverView={profile?.defaultView ?? null}
+            visibleCalendarIds={visibleCals}
+            onChangeVisible={(ids) => {
               setVisibleCals(ids)
               saveVisibleCalendars(ids)
             }}
             onManage={() => setSettingsSection('calendars')}
           />
-          <LiveDateTime />
-        </div>
-        <section className="calendar-shell">
-          <CalendarView focus={focus} serverView={profile?.defaultView ?? null} visibleCalendarIds={visibleCals} />
         </section>
       </main>
     </div>
   )
 }
 
-/**
- * The section heading is the calendar switcher: shows which calendars are on screen
- * ("All calendars", one name, or "2 of 3") and opens a dropdown with per-calendar
- * visibility toggles. Managing (create/rename/delete) lives in Settings → Calendars.
- */
-function CalendarSwitcher({
-  visible,
-  onChange,
-  onManage,
-}: {
-  visible: string[] | null
-  onChange: (ids: string[] | null) => void
-  onManage: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const { data: calendars = [] } = useQuery({ queryKey: ['calendars'], queryFn: listCalendars })
-
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
-    document.addEventListener('mousedown', onDown)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [open])
-
-  const isVisible = (id: string) => visible === null || visible.includes(id)
-  const shownCount = visible === null ? calendars.length : calendars.filter((c) => visible.includes(c.id)).length
-
-  const label =
-    calendars.length <= 1
-      ? (calendars[0]?.name ?? 'Your schedule')
-      : visible === null || shownCount === calendars.length
-        ? 'All calendars'
-        : shownCount === 1
-          ? (calendars.find((c) => isVisible(c.id))?.name ?? 'Your schedule')
-          : `${shownCount} of ${calendars.length} calendars`
-
-  const toggle = (id: string) => {
-    const next = calendars.filter((c) => (c.id === id ? !isVisible(c.id) : isVisible(c.id))).map((c) => c.id)
-    if (next.length === 0) return // never blank the whole view
-    onChange(next.length === calendars.length ? null : next)
-  }
-
-  return (
-    <div className="cal-switcher" ref={rootRef}>
-      <button type="button" className="cal-switcher-btn" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <h2>{label}</h2>
-        {calendars.length > 1 && (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        )}
-      </button>
-
-      {open && calendars.length > 1 && (
-        <div className="cal-switcher-menu">
-          <button type="button" className="cal-switcher-item" onClick={() => onChange(null)}>
-            <span className={'cal-check' + (visible === null || shownCount === calendars.length ? ' on' : '')} />
-            All calendars
-          </button>
-          <div className="cal-switcher-divider" />
-          {calendars.map((c) => (
-            <button key={c.id} type="button" className="cal-switcher-item" onClick={() => toggle(c.id)}>
-              <span className={'cal-check' + (isVisible(c.id) ? ' on' : '')} />
-              <span className="cal-switcher-name">{c.name}</span>
-              <span className="cal-switcher-count">{c.eventCount}</span>
-            </button>
-          ))}
-          <div className="cal-switcher-divider" />
-          <button type="button" className="cal-switcher-item cal-switcher-manage" onClick={() => { setOpen(false); onManage() }}>
-            Manage calendars…
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Live weekday + date + ticking clock, on the right of the section header. Kept in its own
+// Live weekday + date + ticking clock, on the right of the header. Kept in its own
 // component so the per-second tick re-renders only this span, not the calendar below it.
 function LiveDateTime() {
   const [now, setNow] = useState(() => new Date())

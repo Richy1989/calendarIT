@@ -931,49 +931,14 @@
   box-shadow: var(--shadow-card);
 }
 
-.section-lead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.1rem;
+/* The live date + clock now sits in the header, just left of the profile menu. */
+.header-actions .eyebrow {
+  margin-right: 0.6rem;
+  white-space: nowrap;
 }
 
-.section-lead h2 {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-  font-weight: 500;
-  margin: 0;
-  color: var(--text);
-}
-
-/* Calendar switcher — the section heading doubles as a visibility dropdown. */
-.cal-switcher {
-  position: relative;
-}
-
-.cal-switcher-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  border: none;
-  background: transparent;
-  color: var(--text-dim);
-  padding: 0.15rem 0.45rem;
-  margin-left: -0.45rem;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-
-.cal-switcher-btn:hover {
-  background: var(--surface-2);
-}
-
+/* Calendar visibility picker — a popover anchored to its toolbar button. */
 .cal-switcher-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
   min-width: 220px;
   padding: 5px;
   display: flex;
