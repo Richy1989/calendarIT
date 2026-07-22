@@ -1,11 +1,14 @@
 #requires -Version 7
-# Seeds the CalendarIT backend with a demo user and a calendar full of demo events.
+# Seeds the CalendarIT backend with a demo user and two calendars full of demo events.
 #
-#   User   -> test@test.com / Test1234#1234 (registered if missing, otherwise logged in)
-#   Events -> anchored to the FIRST DAY OF THE CURRENT MONTH, so the seeded calendar
-#             always looks current: weekly recurring series (standup, gym, team sync,
-#             sprint review, family dinner), all-day + multi-day events (birthday,
-#             conference, payday), and one-off appointments across this and next month.
+#   User      -> test@test.com / Test1234#1234 (registered if missing, otherwise logged in)
+#   Calendars -> "Personal" (the default) and "Work" (created if missing), so the
+#                calendar switcher has something to toggle.
+#   Events    -> anchored to the FIRST DAY OF THE CURRENT MONTH, so the seeded calendar
+#                always looks current: weekly recurring series (standup, gym, team sync,
+#                sprint review, family dinner), all-day + multi-day events (birthday,
+#                conference, payday), and one-off appointments across this and next month.
+#                Work-ish events land in "Work", everything else in "Personal".
 #
 # The backend must already be running (e.g. via ./deploy/dev.ps1).
 #
@@ -51,6 +54,20 @@ else {
 }
 
 $auth = @{ Authorization = "Bearer $($tokens.accessToken)" }
+
+# ---------- calendars -----------------------------------------------------------------
+# Listing bootstraps the default "Personal" calendar server-side; "Work" is ours to add.
+
+$calendars = @(Invoke-RestMethod -Uri "$BaseUrl/api/calendars" -Headers $auth)
+$personalId = $calendars[0].id
+
+$work = $calendars | Where-Object { $_.name -eq 'Work' } | Select-Object -First 1
+if (-not $work) {
+    $work = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/calendars" -Headers $auth `
+        -ContentType 'application/json' -Body (@{ name = 'Work' } | ConvertTo-Json)
+    Write-Host "==> created 'Work' calendar" -ForegroundColor Green
+}
+$workId = $work.id
 
 # ---------- date helpers --------------------------------------------------------------
 
@@ -113,13 +130,13 @@ $confStart = First-Dow $week3 ([DayOfWeek]::Tuesday)
 
 $events = @(
     # --- recurring series -------------------------------------------------------------
-    @{ title = 'Team standup'; color = '#4682B4' # steelblue
+    @{ title = 'Team standup'; color = '#4682B4'; work = $true # steelblue
        start = UtcIso $monday 9 15; end = UtcIso $monday 9 30
        recurrence = 'FREQ=WEEKLY;BYDAY=MO,WE,FR'; location = 'Zoom'
        description = 'Daily sync — what shipped, what''s next, blockers.'
        reminders = @(@{ minutesBefore = 10; channel = 'Email' }) }
 
-    @{ title = 'Team sync'; color = '#7B68EE' # mediumslateblue
+    @{ title = 'Team sync'; color = '#7B68EE'; work = $true # mediumslateblue
        start = UtcIso $monday 11 0; end = UtcIso $monday 12 0
        recurrence = 'FREQ=WEEKLY'; location = 'Room 2.04'
        description = 'Weekly planning and demos.' }
@@ -128,7 +145,7 @@ $events = @(
        start = UtcIso $tuesday 18 0; end = UtcIso $tuesday 19 30
        recurrence = 'FREQ=WEEKLY;BYDAY=TU,TH'; location = 'FitOne' }
 
-    @{ title = 'Sprint review'; color = '#FFA500' # orange
+    @{ title = 'Sprint review'; color = '#FFA500'; work = $true # orange
        start = UtcIso $friday 14 0; end = UtcIso $friday 15 0
        recurrence = 'FREQ=WEEKLY;INTERVAL=2'; location = 'Room 1.01'
        description = 'Demo, retro, next sprint scope.' }
@@ -142,7 +159,7 @@ $events = @(
        start = AllDayIso $monthStart.AddDays(11); allDay = $true
        reminders = @(@{ minutesBefore = 1440; channel = 'Email' }) }
 
-    @{ title = 'DevConf'; color = '#40E0D0' # turquoise
+    @{ title = 'DevConf'; color = '#40E0D0'; work = $true # turquoise
        start = AllDayIso $confStart; end = AllDayIso $confStart.AddDays(2); allDay = $true
        location = 'Convention Center'
        description = 'Three days of talks and workshops.' }
@@ -159,7 +176,7 @@ $events = @(
        end   = UtcIso (First-Dow $week2 ([DayOfWeek]::Wednesday)) 9 15
        location = 'Dr. Weber'; reminders = @(@{ minutesBefore = 60; channel = 'Email' }) }
 
-    @{ title = '1:1 with Sam'; color = '#7B68EE' # mediumslateblue
+    @{ title = '1:1 with Sam'; color = '#7B68EE'; work = $true # mediumslateblue
        start = UtcIso (First-Dow $week2 ([DayOfWeek]::Thursday)) 10 0
        end   = UtcIso (First-Dow $week2 ([DayOfWeek]::Thursday)) 10 30 }
 
@@ -168,7 +185,7 @@ $events = @(
        end   = UtcIso (First-Dow $week2 ([DayOfWeek]::Saturday)) 22 30
        location = 'Cinestar' }
 
-    @{ title = 'Lunch with Alex'; color = '#FFA500' # orange
+    @{ title = 'Lunch with Alex'; color = '#FFA500'; work = $true # orange
        start = UtcIso (First-Dow $week3 ([DayOfWeek]::Friday)) 12 30
        end   = UtcIso (First-Dow $week3 ([DayOfWeek]::Friday)) 13 30
        location = 'Café Milano' }
@@ -186,14 +203,14 @@ $events = @(
        start = UtcIso (First-Dow $week4 ([DayOfWeek]::Tuesday)) 16 30
        end   = UtcIso (First-Dow $week4 ([DayOfWeek]::Tuesday)) 17 0 }
 
-    @{ title = 'Project deadline: v1.0'; color = '#DC143C' # crimson
+    @{ title = 'Project deadline: v1.0'; color = '#DC143C'; work = $true # crimson
        start = UtcIso (First-Dow $week4 ([DayOfWeek]::Friday)) 17 0
        end   = UtcIso (First-Dow $week4 ([DayOfWeek]::Friday)) 18 0
        description = 'Ship it. 🚀'
        reminders = @(@{ minutesBefore = 120; channel = 'Email' }) }
 
     # --- one-off appointments, next month ---------------------------------------------
-    @{ title = 'Quarterly planning'; color = '#7B68EE' # mediumslateblue
+    @{ title = 'Quarterly planning'; color = '#7B68EE'; work = $true # mediumslateblue
        start = UtcIso (First-Dow $nextMonth ([DayOfWeek]::Wednesday)) 9 0
        end   = UtcIso (First-Dow $nextMonth ([DayOfWeek]::Wednesday)) 12 0
        location = 'Room 1.01' }
@@ -210,6 +227,7 @@ Write-Host "==> seeding $($events.Count) events (anchor: $($monthStart.ToString(
 
 foreach ($e in $events) {
     $body = @{
+        calendarId  = if ($e.work) { $workId } else { $personalId }
         title       = $e.title
         description = $e.description ?? $null
         location    = $e.location ?? $null
@@ -225,7 +243,8 @@ foreach ($e in $events) {
     $null = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/events" -Headers $auth `
         -ContentType 'application/json' -Body $body
     $kind = if ($e.recurrence) { 'recurring' } elseif ($e.allDay) { 'all-day' } else { 'one-off' }
-    Write-Host ("    + {0,-24} ({1})" -f $e.title, $kind)
+    $cal  = if ($e.work) { 'Work' } else { 'Personal' }
+    Write-Host ("    + {0,-24} ({1}, {2})" -f $e.title, $kind, $cal)
 }
 
 Write-Host "==> done. Log in as $Email / $Password and enjoy the view." -ForegroundColor Green

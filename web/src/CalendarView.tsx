@@ -16,6 +16,7 @@ import type {
 } from '@fullcalendar/core'
 import EventModal, { type EventDraft } from './EventModal'
 import { createEvent, deleteEvent, getEvent, listEvents, updateEvent, type EventDto, type SaveEventRequest } from './api/events'
+import { listCalendars } from './api/calendars'
 import { saveDefaultView } from './api/profile'
 import { getSavedView, saveView } from './prefs'
 
@@ -85,6 +86,7 @@ function toApiIso(local: string, allDay: boolean): string {
 
 function draftToRequest(d: EventDraft): SaveEventRequest {
   return {
+    calendarId: d.calendarId ?? null,
     title: d.title,
     description: d.description || null,
     location: d.location || null,
@@ -107,9 +109,12 @@ const DOUBLE_CLICK_MS = 350
 export default function CalendarView({
   focus,
   serverView,
+  visibleCalendarIds,
 }: {
   focus?: { date: string; n: number } | null
   serverView?: string | null
+  /** Calendars to show; null/undefined = all of them. */
+  visibleCalendarIds?: string[] | null
 }) {
   const queryClient = useQueryClient()
   const [range, setRange] = useState<{ from: string; to: string } | null>(null)
@@ -118,7 +123,18 @@ export default function CalendarView({
     queryFn: () => listEvents(range!.from, range!.to),
     enabled: !!range,
   })
-  const events = useMemo(() => dtos.map(dtoToInput), [dtos])
+  const { data: calendars = [] } = useQuery({ queryKey: ['calendars'], queryFn: listCalendars })
+  const events = useMemo(
+    () =>
+      dtos
+        .filter((d) => !visibleCalendarIds || visibleCalendarIds.includes(d.calendarId))
+        .map(dtoToInput),
+    [dtos, visibleCalendarIds],
+  )
+
+  // New events land in the first visible calendar (or the first one overall).
+  const defaultCalendarId = () =>
+    calendars.find((c) => !visibleCalendarIds || visibleCalendarIds.includes(c.id))?.id ?? calendars[0]?.id
 
   const [draft, setDraft] = useState<EventDraft | null>(null)
   const [menu, setMenu] = useState<ContextMenu | null>(null)
@@ -278,7 +294,7 @@ export default function CalendarView({
   }
 
   const openNewOn = (date: Date, allDay: boolean) => {
-    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [] }
+    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [], calendarId: defaultCalendarId() }
     if (allDay) {
       const day = toLocalInput(date).slice(0, 10)
       setDraft({ ...blank, start: day, end: day, allDay: true })
@@ -295,7 +311,7 @@ export default function CalendarView({
   // Opens the new-appointment editor prefilled with exactly what was selected.
   const handleSelect = (arg: DateSelectArg) => {
     setSelectedDate(dayKey(arg.start))
-    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [] }
+    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [], calendarId: defaultCalendarId() }
     if (arg.allDay) {
       const startDay = dayKey(arg.start)
       const endDay = addDays(dayKey(arg.end), -1) // exclusive → inclusive last day
@@ -331,6 +347,7 @@ export default function CalendarView({
     const endLocal = dto.end ? (allDay ? dto.end.slice(0, 10) : toLocalInput(new Date(dto.end))) : startLocal
     setDraft({
       id: dto.id,
+      calendarId: dto.calendarId,
       title: dto.title,
       allDay,
       start: startLocal,
@@ -526,6 +543,7 @@ export default function CalendarView({
       {draft && (
         <EventModal
           draft={draft}
+          calendars={calendars}
           onSave={save}
           onDelete={draft.id ? (id) => remove(id) : undefined}
           onClose={closeDraft}

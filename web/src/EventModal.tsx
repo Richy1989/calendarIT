@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 
 export type EventDraft = {
   id?: string
+  /** Target calendar; undefined = the server picks the default. */
+  calendarId?: string
   title: string
   /** 'YYYY-MM-DD' when all-day, otherwise 'YYYY-MM-DDTHH:mm'. */
   start: string
@@ -54,16 +56,20 @@ const cssVar = (hex: string) => ({ ['--sw']: hex }) as React.CSSProperties
 
 export default function EventModal({
   draft,
+  calendars = [],
   onSave,
   onDelete,
   onClose,
 }: {
   draft: EventDraft
+  /** The user's calendars; the picker only shows when there is more than one. */
+  calendars?: { id: string; name: string }[]
   onSave: (draft: EventDraft) => void
   onDelete?: (id: string) => void
   onClose: () => void
 }) {
   const [title, setTitle] = useState(draft.title)
+  const [calendarId, setCalendarId] = useState(draft.calendarId ?? calendars[0]?.id)
   const [allDay, setAllDay] = useState(draft.allDay)
   const [start, setStart] = useState(draft.start)
   const [end, setEnd] = useState(draft.end)
@@ -102,7 +108,7 @@ export default function EventModal({
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
-    onSave({ id: draft.id, title: title.trim(), start, end, allDay, color, location, description, recurrence, reminders })
+    onSave({ id: draft.id, calendarId, title: title.trim(), start, end, allDay, color, location, description, recurrence, reminders })
   }
 
   const inputType = allDay ? 'date' : 'datetime-local'
@@ -144,6 +150,19 @@ export default function EventModal({
             <input id="ev-end" type={inputType} value={end} required onChange={(e) => setEnd(e.target.value)} />
           </div>
         </div>
+
+        {calendars.length > 1 && (
+          <div className="field">
+            <label htmlFor="ev-calendar">Calendar</label>
+            <select id="ev-calendar" value={calendarId} onChange={(e) => setCalendarId(e.target.value)}>
+              {calendars.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="field">
           <label htmlFor="ev-repeat">Repeats</label>

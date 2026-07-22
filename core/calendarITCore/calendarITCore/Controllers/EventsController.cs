@@ -14,16 +14,28 @@ public sealed class EventsController(IEventService events, ICalendarIoService ca
 {
     [HttpGet("export.ics")]
     [Produces("text/calendar")]
-    public async Task<IActionResult> Export(CancellationToken cancellationToken)
+    public async Task<IActionResult> Export(
+        [FromQuery] string? calendars,
+        CancellationToken cancellationToken)
     {
-        var ics = await calendarIo.ExportAsync(User.GetUserId(), cancellationToken);
+        // `calendars` is a comma-separated list of calendar ids; empty/absent = export everything.
+        var calendarIds = (calendars ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => Guid.TryParse(s, out var id) ? id : Guid.Empty)
+            .Where(id => id != Guid.Empty)
+            .ToList();
+        var ics = await calendarIo.ExportAsync(
+            User.GetUserId(), calendarIds.Count > 0 ? calendarIds : null, cancellationToken);
         return File(Encoding.UTF8.GetBytes(ics), "text/calendar", "calendarit.ics");
     }
 
     [HttpPost("import")]
     [ProducesResponseType<ImportResult>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Import(CancellationToken cancellationToken)
+    public async Task<IActionResult> Import(
+        [FromQuery] Guid? calendarId,
+        [FromQuery] string? newCalendarName,
+        CancellationToken cancellationToken)
     {
         using var reader = new StreamReader(Request.Body);
         var ics = await reader.ReadToEndAsync(cancellationToken);
@@ -31,7 +43,7 @@ public sealed class EventsController(IEventService events, ICalendarIoService ca
         {
             return BadRequest(new { error = "Empty request body." });
         }
-        var result = await calendarIo.ImportAsync(User.GetUserId(), ics, cancellationToken);
+        var result = await calendarIo.ImportAsync(User.GetUserId(), ics, calendarId, newCalendarName, cancellationToken);
         return Ok(result);
     }
 

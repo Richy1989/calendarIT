@@ -2,13 +2,22 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteAvatar, getProfile, uploadAvatar } from './api/profile'
 import { exportIcs, importIcs } from './api/events'
+import { createCalendar, deleteCalendar, listCalendars, renameCalendar, type CalendarDto } from './api/calendars'
 import Logo from './Logo'
 
-type Section = 'general' | 'sync' | 'security' | 'email'
+type Section = 'general' | 'calendars' | 'sync' | 'security' | 'email'
 
 /** Dedicated, full-page settings screen: sidebar nav + a content card per section. */
-export default function SettingsPage({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
-  const [section, setSection] = useState<Section>('general')
+export default function SettingsPage({
+  onBack,
+  onLogout,
+  initialSection,
+}: {
+  onBack: () => void
+  onLogout: () => void
+  initialSection?: Section
+}) {
+  const [section, setSection] = useState<Section>(initialSection ?? 'general')
 
   return (
     <div className="settings">
@@ -24,6 +33,9 @@ export default function SettingsPage({ onBack, onLogout }: { onBack: () => void;
         <nav className="settings-nav">
           <button className={navClass(section === 'general')} onClick={() => setSection('general')}>
             <UserIcon /> General
+          </button>
+          <button className={navClass(section === 'calendars')} onClick={() => setSection('calendars')}>
+            <CalendarIcon /> Calendars
           </button>
           <button className={navClass(section === 'sync')} onClick={() => setSection('sync')}>
             <PhoneIcon /> Sync
@@ -43,6 +55,8 @@ export default function SettingsPage({ onBack, onLogout }: { onBack: () => void;
         <div className="settings-content">
           {section === 'general' ? (
             <GeneralSection />
+          ) : section === 'calendars' ? (
+            <CalendarsSection />
           ) : section === 'sync' ? (
             <SyncSection />
           ) : (
@@ -78,37 +92,78 @@ function GeneralSection() {
   const removeMut = useMutation({ mutationFn: deleteAvatar, onSuccess: () => { setFile(null); refresh() } })
 
   const [dataNotice, setDataNotice] = useState<string | null>(null)
+  const { data: calendars = [] } = useQuery({ queryKey: ['calendars'], queryFn: listCalendars })
+
+  // Export: with several calendars, pick which ones go into the file first.
+  const [exportSel, setExportSel] = useState<string[] | null>(null) // null = picker closed
+  // Import: the picked file waits here until a target calendar is chosen.
+  const [pendingImport, setPendingImport] = useState<{ name: string; ics: string } | null>(null)
+  const [importTarget, setImportTarget] = useState<string>('') // calendar id, or 'new'
+  const [importNewName, setImportNewName] = useState('')
+
+  const download = (blob: Blob) => {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'calendarit.ics'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const handleExport = async () => {
+    setDataNotice(null)
+    if (calendars.length > 1) {
+      setPendingImport(null)
+      setExportSel(calendars.map((c) => c.id)) // open the picker with everything ticked
+      return
+    }
     try {
-      const blob = await exportIcs()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'calendarit.ics'
-      a.click()
-      URL.revokeObjectURL(url)
+      download(await exportIcs())
+    } catch {
+      setDataNotice('Export failed.')
+    }
+  }
+
+  const doExport = async () => {
+    if (!exportSel?.length) return
+    try {
+      // Sending no filter when everything is selected keeps the URL clean.
+      download(await exportIcs(exportSel.length === calendars.length ? undefined : exportSel))
+      setExportSel(null)
     } catch {
       setDataNotice('Export failed.')
     }
   }
 
   const handleImport = () => {
+    setDataNotice(null)
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = '.ics,text/calendar'
     input.onchange = async () => {
       const chosen = input.files?.[0]
       if (!chosen) return
-      try {
-        const result = await importIcs(await chosen.text())
-        await queryClient.invalidateQueries({ queryKey: ['events'] })
-        setDataNotice(`Imported ${result.imported}, skipped ${result.skipped}.`)
-      } catch {
-        setDataNotice('Import failed — is it a valid .ics file?')
-      }
+      setExportSel(null)
+      setPendingImport({ name: chosen.name, ics: await chosen.text() })
+      setImportTarget(calendars[0]?.id ?? 'new')
+      setImportNewName(chosen.name.replace(/\.ics$/i, ''))
     }
     input.click()
+  }
+
+  const doImport = async () => {
+    if (!pendingImport) return
+    try {
+      const target =
+        importTarget === 'new' ? { newCalendarName: importNewName.trim() || 'Imported' } : { calendarId: importTarget }
+      const result = await importIcs(pendingImport.ics, target)
+      await queryClient.invalidateQueries({ queryKey: ['events'] })
+      await queryClient.invalidateQueries({ queryKey: ['calendars'] })
+      setPendingImport(null)
+      setDataNotice(`Imported ${result.imported}, skipped ${result.skipped}.`)
+    } catch {
+      setDataNotice('Import failed — is it a valid .ics file?')
+    }
   }
 
   const pick = () => {
@@ -185,9 +240,262 @@ function GeneralSection() {
           Import .ics
         </button>
       </div>
+
+      {exportSel && (
+        <div className="io-panel">
+          <span className="io-panel-label">Which calendars go into the file?</span>
+          <div className="io-cals">
+            {calendars.map((c) => {
+              const on = exportSel.includes(c.id)
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  className="io-cal-toggle"
+                  onClick={() =>
+                    setExportSel(on ? exportSel.filter((id) => id !== c.id) : [...exportSel, c.id])
+                  }
+                >
+                  <span className={'cal-check' + (on ? ' on' : '')} />
+                  {c.name}
+                </button>
+              )
+            })}
+          </div>
+          <div className="io-actions">
+            <button type="button" className="btn-primary" onClick={doExport} disabled={exportSel.length === 0}>
+              Download .ics
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setExportSel(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pendingImport && (
+        <div className="io-panel">
+          <span className="io-panel-label">Import “{pendingImport.name}” into</span>
+          <div className="io-import-grid">
+            <div className="field">
+              <label htmlFor="io-target">Calendar</label>
+              <select id="io-target" value={importTarget} onChange={(e) => setImportTarget(e.target.value)}>
+                {calendars.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+                <option value="new">New calendar…</option>
+              </select>
+            </div>
+            {importTarget === 'new' && (
+              <div className="field">
+                <label htmlFor="io-new-name">Name</label>
+                <input
+                  id="io-new-name"
+                  value={importNewName}
+                  maxLength={200}
+                  placeholder="Calendar name"
+                  onChange={(e) => setImportNewName(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+          <div className="io-actions">
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={doImport}
+              disabled={importTarget === 'new' && !importNewName.trim()}
+            >
+              Import
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setPendingImport(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {dataNotice && <p className="field-hint">{dataNotice}</p>}
     </div>
     </>
+  )
+}
+
+/** Manage the user's calendars: rename inline, create new ones, delete (with their events). */
+function CalendarsSection() {
+  const queryClient = useQueryClient()
+  const { data: calendars = [] } = useQuery({ queryKey: ['calendars'], queryFn: listCalendars })
+  const [adding, setAdding] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['calendars'] })
+    queryClient.invalidateQueries({ queryKey: ['events'] })
+  }
+  const createMut = useMutation({
+    mutationFn: (name: string) => createCalendar(name),
+    onSuccess: () => { setNewName(''); setAdding(false); setNotice(null); refresh() },
+    onError: (e) => setNotice((e as Error).message),
+  })
+  const renameMut = useMutation({
+    mutationFn: (v: { id: string; name: string }) => renameCalendar(v.id, v.name),
+    onSuccess: () => { setNotice(null); refresh() },
+    onError: (e) => setNotice((e as Error).message),
+  })
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteCalendar(id),
+    onSuccess: () => { setNotice(null); refresh() },
+    onError: (e) => setNotice((e as Error).message),
+  })
+
+  const remove = (c: CalendarDto) => {
+    const events = c.eventCount === 1 ? 'its 1 appointment' : `its ${c.eventCount} appointments`
+    if (window.confirm(`Delete "${c.name}" and ${events}? This cannot be undone.`)) {
+      deleteMut.mutate(c.id)
+    }
+  }
+
+  return (
+    <div className="settings-card">
+      <h2>Calendars</h2>
+      <p className="settings-sub">
+        Split your schedule into separate calendars — say, Personal and Work — and toggle them from the
+        heading above the calendar. Each one syncs as its own calendar over CalDAV.
+      </p>
+
+      <ul className="cal-list">
+        {calendars.map((c) => (
+          <CalendarRow
+            key={c.id}
+            calendar={c}
+            onRename={(name) => renameMut.mutate({ id: c.id, name })}
+            onDelete={() => remove(c)}
+            canDelete={calendars.length > 1}
+          />
+        ))}
+      </ul>
+
+      {adding ? (
+        <form
+          className="cal-add-row"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (newName.trim()) createMut.mutate(newName.trim())
+          }}
+        >
+          <span className="cal-tile cal-tile-new" aria-hidden="true">
+            {(newName.trim()[0] ?? '+').toUpperCase()}
+          </span>
+          {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+          <input
+            value={newName}
+            autoFocus
+            placeholder="Calendar name"
+            maxLength={200}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setAdding(false)
+                setNewName('')
+              }
+            }}
+          />
+          <button type="submit" className="btn-primary" disabled={!newName.trim() || createMut.isPending}>
+            Add
+          </button>
+          <button type="button" className="btn-ghost" onClick={() => { setAdding(false); setNewName('') }}>
+            Cancel
+          </button>
+        </form>
+      ) : (
+        <button type="button" className="cal-add" onClick={() => setAdding(true)}>
+          ＋ New calendar
+        </button>
+      )}
+
+      {notice && <p className="error">{notice}</p>}
+    </div>
+  )
+}
+
+/** One calendar in the list: gradient initial tile, name (click ✎ to rename), count, quiet delete. */
+function CalendarRow({
+  calendar,
+  onRename,
+  onDelete,
+  canDelete,
+}: {
+  calendar: CalendarDto
+  onRename: (name: string) => void
+  onDelete: () => void
+  canDelete: boolean
+}) {
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(calendar.name)
+
+  const commit = () => {
+    setEditing(false)
+    const trimmed = name.trim()
+    if (!trimmed || trimmed === calendar.name) {
+      setName(calendar.name) // nothing to save (and never blank a name)
+    } else {
+      onRename(trimmed)
+    }
+  }
+
+  const initial = (calendar.name.trim()[0] ?? '?').toUpperCase()
+  const count = calendar.eventCount === 1 ? '1 appointment' : `${calendar.eventCount} appointments`
+
+  return (
+    <li className="cal-item">
+      <span className="cal-tile" aria-hidden="true">{initial}</span>
+
+      <span className="cal-item-body">
+        {editing ? (
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          <input
+            className="cal-item-rename"
+            value={name}
+            autoFocus
+            maxLength={200}
+            aria-label={`Rename ${calendar.name}`}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit()
+              if (e.key === 'Escape') {
+                setName(calendar.name)
+                setEditing(false)
+              }
+            }}
+          />
+        ) : (
+          <span className="cal-item-name">{calendar.name}</span>
+        )}
+        <span className="cal-item-meta">{count}</span>
+      </span>
+
+      <span className="cal-item-actions">
+        {!editing && (
+          <button type="button" className="cal-item-action" onClick={() => setEditing(true)} aria-label={`Rename ${calendar.name}`} title="Rename">
+            ✎
+          </button>
+        )}
+        <button
+          type="button"
+          className="cal-item-action danger"
+          onClick={onDelete}
+          disabled={!canDelete}
+          aria-label={`Delete ${calendar.name}`}
+          title={canDelete ? 'Delete' : "You can't delete your last calendar."}
+        >
+          ✕
+        </button>
+      </span>
+    </li>
   )
 }
 
@@ -273,6 +581,9 @@ function ShieldIcon() {
 }
 function MailIcon() {
   return <svg {...iconProps}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M22 7l-10 6L2 7" /></svg>
+}
+function CalendarIcon() {
+  return <svg {...iconProps}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
 }
 function PhoneIcon() {
   return <svg {...iconProps}><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 18h.01" /></svg>

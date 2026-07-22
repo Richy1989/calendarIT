@@ -10,6 +10,7 @@ namespace CalendarIT.Application.Calendars;
 /// </summary>
 public sealed record EventDto(
     Guid Id,
+    Guid CalendarId,
     string Title,
     string? Description,
     string? Location,
@@ -70,6 +71,12 @@ public sealed class SaveEventRequest
 
     /// <summary>Reminders for this event; replaces the existing set on update.</summary>
     public IReadOnlyList<ReminderInput>? Reminders { get; init; }
+
+    /// <summary>
+    /// Target calendar. Create: null = the user's default (first) calendar.
+    /// Update: null = leave the event where it is; a value moves it there.
+    /// </summary>
+    public Guid? CalendarId { get; init; }
 }
 
 /// <summary>One reminder in a save request.</summary>

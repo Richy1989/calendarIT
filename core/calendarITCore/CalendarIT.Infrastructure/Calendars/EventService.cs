@@ -45,7 +45,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
                 foreach (var occ in RecurrenceExpander.Expand(m.StartUtc, end, m.TimeZoneId, m.RRule!, exDates, fromUtc.Value, toUtc.Value))
                 {
                     results.Add(new EventDto(
-                        m.Id, m.Title, m.Description, m.Location, m.Color,
+                        m.Id, m.CalendarId, m.Title, m.Description, m.Location, m.Color,
                         new DateTimeOffset(occ.StartUtc, TimeSpan.Zero),
                         new DateTimeOffset(occ.EndUtc, TimeSpan.Zero),
                         m.IsAllDay, Recurring: true, Recurrence: m.RRule, Reminders: reminders));
@@ -124,13 +124,13 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
 
     public async Task<EventDto> CreateAsync(Guid userId, SaveEventRequest request, CancellationToken cancellationToken = default)
     {
-        var calendar = await GetOrCreateDefaultCalendarAsync(userId, cancellationToken);
+        var calendarId = await ResolveCalendarIdAsync(userId, request.CalendarId, cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
 
         var entity = new CalendarEvent
         {
             Id = Guid.NewGuid(),
-            CalendarId = calendar.Id,
+            CalendarId = calendarId,
             Uid = $"{Guid.NewGuid():N}@calendarit",
             CreatedAt = now,
         };
@@ -150,6 +150,18 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
         if (entity is null)
         {
             return null;
+        }
+
+        // A provided CalendarId moves the event; null leaves it where it is. Only calendars
+        // the user owns are accepted — anything else keeps the current one.
+        if (request.CalendarId is { } target && target != entity.CalendarId)
+        {
+            var owned = await db.Calendars.AnyAsync(
+                c => c.Id == target && c.OwnerUserId == userId, cancellationToken);
+            if (owned)
+            {
+                entity.CalendarId = target;
+            }
         }
 
         Apply(entity, request, timeProvider.GetUtcNow().UtcDateTime);
@@ -206,7 +218,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
 
     private static EventDto ToDto(CalendarEvent e) =>
         new(
-            e.Id, e.Title, e.Description, e.Location, e.Color,
+            e.Id, e.CalendarId, e.Title, e.Description, e.Location, e.Color,
             new DateTimeOffset(DateTime.SpecifyKind(e.StartUtc, DateTimeKind.Utc)),
             e.EndUtc is null ? null : new DateTimeOffset(DateTime.SpecifyKind(e.EndUtc.Value, DateTimeKind.Utc)),
             e.IsAllDay, Recurring: e.RRule is not null, Recurrence: e.RRule, Reminders: MapReminders(e.Reminders));
@@ -255,6 +267,22 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
 
     private static DateTime TruncateToSeconds(DateTime dt) =>
         new(dt.Ticks - (dt.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc);
+
+    /// <summary>The calendar a new event lands in: the requested one when the user owns it,
+    /// otherwise the default (first) calendar, created on first use.</summary>
+    private async Task<Guid> ResolveCalendarIdAsync(Guid userId, Guid? requested, CancellationToken cancellationToken)
+    {
+        if (requested is { } id)
+        {
+            var owned = await db.Calendars.AnyAsync(
+                c => c.Id == id && c.OwnerUserId == userId, cancellationToken);
+            if (owned)
+            {
+                return id;
+            }
+        }
+        return (await GetOrCreateDefaultCalendarAsync(userId, cancellationToken)).Id;
+    }
 
     private async Task<Calendar> GetOrCreateDefaultCalendarAsync(Guid userId, CancellationToken cancellationToken)
     {

@@ -89,6 +89,44 @@ public sealed class CalendarIoServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Import_WithNewCalendarName_CreatesCalendarAndImportsThere()
+    {
+        var ics = Ics("BEGIN:VEVENT\r\nUID:new-cal@test\r\nSUMMARY:Into new\r\nDTSTART:20260801T090000Z\r\nEND:VEVENT");
+
+        await _service.ImportAsync(_userId, ics, newCalendarName: "Imported");
+
+        var calendar = await _db.Calendars.SingleAsync(c => c.Name == "Imported");
+        var stored = await _db.Events.SingleAsync(e => e.Uid == "new-cal@test");
+        Assert.Equal(calendar.Id, stored.CalendarId);
+    }
+
+    [Fact]
+    public async Task Import_WithCalendarId_TargetsThatCalendar()
+    {
+        await _service.ImportAsync(_userId, Ics("BEGIN:VEVENT\r\nUID:x@test\r\nSUMMARY:Bootstrap\r\nDTSTART:20260801T090000Z\r\nEND:VEVENT"), newCalendarName: "Second");
+        var second = await _db.Calendars.SingleAsync(c => c.Name == "Second");
+
+        var ics = Ics("BEGIN:VEVENT\r\nUID:targeted@test\r\nSUMMARY:Targeted\r\nDTSTART:20260802T090000Z\r\nEND:VEVENT");
+        await _service.ImportAsync(_userId, ics, calendarId: second.Id);
+
+        var stored = await _db.Events.SingleAsync(e => e.Uid == "targeted@test");
+        Assert.Equal(second.Id, stored.CalendarId);
+    }
+
+    [Fact]
+    public async Task Export_WithCalendarFilter_OnlyIncludesThoseEvents()
+    {
+        await _service.ImportAsync(_userId, Ics("BEGIN:VEVENT\r\nUID:a@test\r\nSUMMARY:In A\r\nDTSTART:20260801T090000Z\r\nEND:VEVENT"), newCalendarName: "A");
+        await _service.ImportAsync(_userId, Ics("BEGIN:VEVENT\r\nUID:b@test\r\nSUMMARY:In B\r\nDTSTART:20260802T090000Z\r\nEND:VEVENT"), newCalendarName: "B");
+        var calA = await _db.Calendars.SingleAsync(c => c.Name == "A");
+
+        var exported = Calendar.Load(await _service.ExportAsync(_userId, [calA.Id]))!;
+
+        var ve = Assert.Single(exported.Events);
+        Assert.Equal("In A", ve.Summary);
+    }
+
+    [Fact]
     public async Task Export_OneDayAllDayEvent_WritesExclusiveDtend()
     {
         var ics = Ics("BEGIN:VEVENT\r\nUID:round-trip@test\r\nSUMMARY:Round trip\r\nDTSTART;VALUE=DATE:20260801\r\nDTEND;VALUE=DATE:20260802\r\nEND:VEVENT");

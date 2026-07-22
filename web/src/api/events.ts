@@ -11,16 +11,24 @@ async function authHeaders(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-/** Downloads the user's whole calendar as an .ics blob. */
-export async function exportIcs(): Promise<Blob> {
-  const res = await fetch('/api/events/export.ics', { headers: await authHeaders() })
+/** Downloads the user's events as an .ics blob — everything, or only the given calendars. */
+export async function exportIcs(calendarIds?: string[]): Promise<Blob> {
+  const query = calendarIds?.length ? `?calendars=${calendarIds.map(encodeURIComponent).join(',')}` : ''
+  const res = await fetch(`/api/events/export.ics${query}`, { headers: await authHeaders() })
   if (!res.ok) throw new Error('Export failed')
   return res.blob()
 }
 
+/** Where an import lands: an existing calendar, or a brand-new one with this name. */
+export type ImportTarget = { calendarId?: string; newCalendarName?: string }
+
 /** Uploads an .ics document; returns how many events were imported / skipped. */
-export async function importIcs(ics: string): Promise<ImportResult> {
-  const res = await fetch('/api/events/import', {
+export async function importIcs(ics: string, target?: ImportTarget): Promise<ImportResult> {
+  const params = new URLSearchParams()
+  if (target?.newCalendarName) params.set('newCalendarName', target.newCalendarName)
+  else if (target?.calendarId) params.set('calendarId', target.calendarId)
+  const qs = params.toString()
+  const res = await fetch(`/api/events/import${qs ? `?${qs}` : ''}`, {
     method: 'POST',
     headers: { ...(await authHeaders()), 'Content-Type': 'text/calendar' },
     body: ics,
