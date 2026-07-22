@@ -106,6 +106,23 @@ export default function CalendarView() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const lastClick = useRef<{ dateStr: string; time: number } | null>(null)
   const calendarRef = useRef<FullCalendar>(null)
+  const lastView = useRef<string | null>(null)
+
+  // Keep the events query range in sync, and — when the *view* changes (month→week→day)
+  // rather than just paging — reveal the week/day that holds the currently selected cell.
+  const handleDatesSet = (arg: DatesSetArg) => {
+    setRange({ from: arg.start.toISOString(), to: arg.end.toISOString() })
+
+    const viewChanged = lastView.current !== null && lastView.current !== arg.view.type
+    lastView.current = arg.view.type
+    if (!viewChanged || !selectedDate) return
+
+    const sel = new Date(`${selectedDate}T00:00:00`)
+    if (sel < arg.start || sel >= arg.end) {
+      // gotoDate re-fires datesSet, but with the view unchanged now, so it won't recurse.
+      calendarRef.current?.getApi().gotoDate(sel)
+    }
+  }
 
   // Left/Right arrow keys page the calendar (prev/next), matching the toolbar buttons.
   useEffect(() => {
@@ -272,10 +289,11 @@ export default function CalendarView() {
         }}
         height="100%"
         nowIndicator
+        slotEventOverlap={false}
         editable
         dayMaxEvents={4}
         events={events}
-        datesSet={(arg: DatesSetArg) => setRange({ from: arg.start.toISOString(), to: arg.end.toISOString() })}
+        datesSet={handleDatesSet}
         dateClick={handleDateClick}
         dayCellClassNames={(arg) => (selectedDate && dayKey(arg.date) === selectedDate ? ['is-selected'] : [])}
         eventClick={(info: EventClickArg) => openForEdit(info.event.extendedProps.seriesId)}

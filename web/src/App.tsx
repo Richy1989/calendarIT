@@ -39,12 +39,6 @@ export default function App() {
     return <SettingsPage onBack={() => setShowSettings(false)} onLogout={() => persist(null)} />
   }
 
-  const today = new Date().toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  })
-
   return (
     <div className="app">
       <header className="app-header">
@@ -66,13 +60,33 @@ export default function App() {
       <main className="app-main">
         <div className="section-lead">
           <h2>Your schedule</h2>
-          <span className="eyebrow">{today}</span>
+          <LiveDateTime />
         </div>
         <section className="calendar-shell">
           <CalendarView />
         </section>
       </main>
     </div>
+  )
+}
+
+// Live weekday + date + ticking clock, on the right of the section header. Kept in its own
+// component so the per-second tick re-renders only this span, not the calendar below it.
+function LiveDateTime() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const date = now.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+  const time = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
+  return (
+    <span className="eyebrow">
+      <span>{date}</span>
+      <time className="clock">{time}</time>
+    </span>
   )
 }
 

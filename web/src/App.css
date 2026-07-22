@@ -435,6 +435,20 @@
   box-shadow: 0 0 8px var(--cyan);
 }
 
+/* The live clock next to the date: brighter than the faint date, tabular so the
+   ticking seconds don't shift width, with a subtle separator dot in front. */
+.clock {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+.clock::before {
+  content: '·';
+  margin-right: 0.5rem;
+  color: var(--text-faint);
+}
+
 /* --- Buttons ------------------------------------------------------------- */
 .btn-primary {
   border: none;
