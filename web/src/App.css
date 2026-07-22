@@ -104,6 +104,7 @@
 
 .search-hit.is-active {
   background: var(--surface-3);
+  box-shadow: inset 2px 0 0 var(--cyan); /* clear keyboard-navigation marker */
 }
 
 .search-hit-dot {

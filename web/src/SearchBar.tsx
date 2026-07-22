@@ -40,6 +40,11 @@ export default function SearchBar({ onPick }: { onPick: (isoDate: string) => voi
   // Reset the highlight whenever the result set changes.
   useEffect(() => setActive(0), [results])
 
+  // Keep the keyboard-highlighted hit visible when the list is long enough to scroll.
+  useEffect(() => {
+    document.getElementById(`search-hit-${active}`)?.scrollIntoView({ block: 'nearest' })
+  }, [active])
+
   // Close the dropdown on any click outside the search box.
   useEffect(() => {
     if (!open) return
@@ -99,6 +104,7 @@ export default function SearchBar({ onPick }: { onPick: (isoDate: string) => voi
         aria-expanded={showDropdown}
         aria-controls="search-results"
         aria-autocomplete="list"
+        aria-activedescendant={showDropdown ? `search-hit-${active}` : undefined}
       />
 
       {showDropdown && (
@@ -106,6 +112,7 @@ export default function SearchBar({ onPick }: { onPick: (isoDate: string) => voi
           {results.map((r, i) => (
             <li
               key={`${r.id}-${r.start}`}
+              id={`search-hit-${i}`}
               role="option"
               aria-selected={i === active}
               className={`search-hit${i === active ? ' is-active' : ''}`}

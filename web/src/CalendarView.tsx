@@ -262,6 +262,14 @@ export default function CalendarView({
     }
   }, [menu])
 
+  // Custom "today" button: besides jumping the view (the built-in behavior), it also
+  // selects/highlights today's cell — same effect as clicking that day. A custom button
+  // is also never auto-disabled, so the highlight works even when today is already shown.
+  const goToday = () => {
+    calendarRef.current?.getApi().today()
+    setSelectedDate(dayKey(new Date()))
+  }
+
   const openNew = () => {
     const start = new Date()
     start.setMinutes(0, 0, 0)
@@ -397,11 +405,14 @@ export default function CalendarView({
         ref={calendarRef}
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
         initialView={getSavedView()}
-        customButtons={{ addEvent: { text: '+  New', click: openNew } }}
+        customButtons={{
+          addEvent: { text: '+  New', click: openNew },
+          todaySelect: { text: 'today', click: goToday },
+        }}
         headerToolbar={{
           left: 'addEvent',
           center: 'title',
-          right: 'prev,next today dayGridMonth,timeGridWeek,timeGridDay',
+          right: 'prev,next todaySelect dayGridMonth,timeGridWeek,timeGridDay',
         }}
         height="100%"
         nowIndicator
