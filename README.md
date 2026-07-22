@@ -34,15 +34,20 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
 
 ## What it does
 
-- 📅 **Calendars & events** — one-off and all-day, create by double-click or right-click.
+- 📅 **Events, the fast way** — drag on the grid to create, double-click or right-click,
+  drag to move or resize.
+- 🗂️ **Multiple calendars** — split Personal from Work, toggle which are shown, move
+  events between them; each syncs as its own calendar over CalDAV.
 - 🔁 **Recurring events** — repeat rules with exceptions (RRULE).
-- ⏰ **Reminders** — by email and browser Web Push.
+- ⏰ **Reminders** — by email (browser Web Push is in progress).
 - 🌍 **Time zones** — stored correctly, displayed in yours, DST-safe.
 - 🎨 **Event colors** — pick a color per event; it syncs (via the iCalendar `COLOR`
   property) to clients that support it.
-- 📲 **Phone sync** — exposes **CalDAV**, so **DAVx⁵** (or Apple Calendar, Thunderbird, …)
-  can subscribe and sync two-way.
-- 📄 **iCal import / export** — bring your calendar in, take it out, any time.
+- 🔎 **Search** — find any appointment by title or location, keyboard-first.
+- 📲 **Phone sync** — a built-in **CalDAV** server, so any CalDAV-capable app can
+  subscribe and sync two-way.
+- 📄 **iCal import / export** — pick which calendars to export; import into any
+  calendar or a new one.
 - 🔐 **Accounts** — email + password, JWT sessions with rotating refresh tokens.
 
 <p align="center">
@@ -77,7 +82,11 @@ docker compose up --build
 ```
 
 The app serves plain HTTP on `:8080`. Put your reverse proxy (Caddy / Traefik / nginx /
-…) in front of it to terminate TLS — DAVx⁵ effectively requires HTTPS.
+…) in front of it to terminate TLS — CalDAV clients effectively require HTTPS.
+
+Running Unraid? Ready-made templates live in [`deploy/`](./deploy) —
+`calendarit.unraid.xml` (plain) and `calendarit-traefik.unraid.xml` (with Traefik
+labels preconfigured).
 
 ### Local development
 
@@ -133,10 +142,15 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Events persist to the database — create / edit / delete / drag, scoped per user
 - ✅ Recurring events (RRULE) with timezone/DST-correct expansion; delete a single
   occurrence or the whole series (editing a single occurrence is still on the list)
-- ✅ iCal (.ics) import / export — round-trips title, time + zone, all-day, color, RRULE
+- ✅ iCal (.ics) import / export — round-trips title, time + zone, all-day, color, RRULE;
+  export a selection of calendars, import into a chosen or new calendar
 - ✅ Reminders — **email** via a Quartz.NET job (recurrence-aware, timezone-correct, dedup)
+- ✅ CalDAV server — two-way sync with standard clients: discovery, ETags/CTag,
+  calendar-query/multiget, create/edit/delete (no RFC 6578 sync-tokens yet — clients
+  fall back to CTag polling; reminders don't map to VALARM yet)
+- ✅ Multiple calendars — create/rename/delete in Settings, per-calendar visibility
+  toggles, each exposed as its own CalDAV collection
 - 🚧 Web Push reminders (VAPID + service worker)
-- 🚧 CalDAV server (DAVx⁵ two-way sync)
 - ❌ **Inviting guests / attendees — not implemented** (the event editor shows the
   field as a disabled, clearly-labelled stub)
 
@@ -145,7 +159,7 @@ feature.
 
 ## Support
 
-keepIT is free and self-hosted — no accounts, no subscriptions. If it's useful to you and you'd
+CalendarIT is free and self-hosted — no accounts, no subscriptions. If it's useful to you and you'd
 like to say thanks, you can [**buy me a coffee** ☕](https://buymeacoffee.com/spaceelephant). Much
 appreciated, but never expected.
 
