@@ -6,6 +6,7 @@ import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin from '@fullcalendar/interaction'
 import type { DateClickArg } from '@fullcalendar/interaction'
 import type {
+  DateSelectArg,
   DatesSetArg,
   DayCellMountArg,
   EventMountArg,
@@ -30,6 +31,14 @@ function dayKey(date: Date): string {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
 }
 
+// Shifts a 'YYYY-MM-DD' day string by n days. Used to translate between FullCalendar's
+// exclusive all-day end and the draft/API convention of an inclusive last day.
+function addDays(day: string, n: number): string {
+  const d = new Date(`${day}T00:00:00`)
+  d.setDate(d.getDate() + n)
+  return dayKey(d)
+}
+
 function hexToRgba(hex: string, alpha: number): string {
   const h = hex.replace('#', '')
   const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
@@ -49,7 +58,9 @@ function dtoToInput(dto: EventDto): EventInput {
     id: dto.recurring ? `${dto.id}__${dto.start}` : dto.id,
     title: dto.title,
     start: dto.allDay ? dto.start.slice(0, 10) : dto.start,
-    end: dto.end ? (dto.allDay ? dto.end.slice(0, 10) : dto.end) : undefined,
+    // Stored all-day ends are inclusive; FullCalendar's are exclusive, so shift by a day
+    // (otherwise multi-day all-day events render one day short).
+    end: dto.end ? (dto.allDay ? addDays(dto.end.slice(0, 10), 1) : dto.end) : undefined,
     allDay: dto.allDay,
     editable: !dto.recurring,
     backgroundColor: hexToRgba(color, 0.18),
@@ -229,6 +240,27 @@ export default function CalendarView({
     setDraft({ ...blank, start: toLocalInput(start), end: toLocalInput(end), allDay: false })
   }
 
+  // Drag-selection (mouse, as in any calendar): day view picks a time range in hours,
+  // week view a start/end time possibly spanning days, month view a span of days.
+  // Opens the new-appointment editor prefilled with exactly what was selected.
+  const handleSelect = (arg: DateSelectArg) => {
+    setSelectedDate(dayKey(arg.start))
+    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [] }
+    if (arg.allDay) {
+      const startDay = dayKey(arg.start)
+      const endDay = addDays(dayKey(arg.end), -1) // exclusive → inclusive last day
+      setDraft({ ...blank, start: startDay, end: endDay < startDay ? startDay : endDay, allDay: true })
+    } else {
+      setDraft({ ...blank, start: toLocalInput(arg.start), end: toLocalInput(arg.end), allDay: false })
+    }
+  }
+
+  // Closes the editor and clears any pending drag-selection highlight behind it.
+  const closeDraft = () => {
+    setDraft(null)
+    calendarRef.current?.getApi().unselect()
+  }
+
   const handleDateClick = (arg: DateClickArg) => {
     setSelectedDate(dayKey(arg.date))
     const now = Date.now()
@@ -265,12 +297,12 @@ export default function CalendarView({
     const body = draftToRequest(d)
     if (d.id) updateMut.mutate({ id: d.id, body })
     else createMut.mutate(body)
-    setDraft(null)
+    closeDraft()
   }
 
   const remove = (id: string, occurrence?: string) => {
     deleteMut.mutate({ id, occurrence })
-    setDraft(null)
+    closeDraft()
   }
 
   // Only fires for single events (recurring occurrences are not drag-editable).
@@ -282,7 +314,8 @@ export default function CalendarView({
       location: (ev.extendedProps.location as string) || null,
       color: (ev.extendedProps.color as string) ?? DEFAULT_COLOR,
       start: ev.allDay ? toApiIso(ev.startStr, true) : (ev.start ?? new Date()).toISOString(),
-      end: ev.end ? (ev.allDay ? toApiIso(ev.endStr, true) : ev.end.toISOString()) : null,
+      // FullCalendar's all-day end is exclusive; the API stores an inclusive last day.
+      end: ev.end ? (ev.allDay ? toApiIso(addDays(ev.endStr.slice(0, 10), -1), true) : ev.end.toISOString()) : null,
       allDay: ev.allDay,
       recurrence: null,
       timeZone: browserTz,
@@ -332,10 +365,15 @@ export default function CalendarView({
         nowIndicator
         slotEventOverlap={false}
         editable
+        selectable
+        selectMirror
+        selectMinDistance={8} // plain clicks keep their click/double-click behavior; only a real drag selects
+        unselectAuto={false} // the highlight stays under the editor; closeDraft() clears it
         dayMaxEvents={4}
         events={events}
         datesSet={handleDatesSet}
         dateClick={handleDateClick}
+        select={handleSelect}
         dayCellClassNames={(arg) => (selectedDate && dayKey(arg.date) === selectedDate ? ['is-selected'] : [])}
         eventClick={(info: EventClickArg) => openForEdit(info.event.extendedProps.seriesId)}
         eventChange={applyChange}
@@ -396,7 +434,7 @@ export default function CalendarView({
           draft={draft}
           onSave={save}
           onDelete={draft.id ? (id) => remove(id) : undefined}
-          onClose={() => setDraft(null)}
+          onClose={closeDraft}
         />
       )}
     </>
