@@ -133,6 +133,15 @@ button {
   font-size: 1.35rem;
   letter-spacing: -0.015em;
   color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  border-radius: 8px;
+  padding: 0.1rem 0.5rem;
+  transition: background 0.12s;
+}
+
+.calendar-shell .fc .fc-toolbar-title:hover {
+  background: var(--surface-2);
 }
 
 .calendar-shell .fc .fc-col-header-cell-cushion {

@@ -1153,6 +1153,74 @@
   color: #ffd9d9;
 }
 
+/* Year quick-jump popover (opened from the calendar toolbar title). */
+.year-pop {
+  position: fixed;
+  transform: translateX(-50%);
+  padding: 8px;
+  background: linear-gradient(180deg, rgba(26, 32, 47, 0.98), rgba(18, 22, 33, 0.98));
+  border: 1px solid var(--hairline-strong);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px -18px rgba(0, 0, 0, 0.85);
+  animation: pop 0.13s ease both;
+}
+
+.year-pop-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 6px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.year-pop-nav button {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.3rem 0.55rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.year-pop-nav button:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.year-pop-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+}
+
+.year-pop-grid button {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.year-pop-grid button:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.year-pop-grid button.active {
+  background: rgba(53, 224, 212, 0.14);
+  color: var(--text);
+}
+
 @keyframes pop {
   from {
     opacity: 0;

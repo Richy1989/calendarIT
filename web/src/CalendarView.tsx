@@ -122,6 +122,9 @@ export default function CalendarView({
 
   const [draft, setDraft] = useState<EventDraft | null>(null)
   const [menu, setMenu] = useState<ContextMenu | null>(null)
+  // Year quick-jump popover, opened by clicking the toolbar title ("August 2026").
+  // `base` is the first year of the visible 12-year window; `current` the year on screen.
+  const [yearPop, setYearPop] = useState<{ x: number; y: number; base: number; current: number } | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const lastClick = useRef<{ dateStr: string; time: number } | null>(null)
   const calendarRef = useRef<FullCalendar>(null)
@@ -180,7 +183,7 @@ export default function CalendarView({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
-      if (draft || menu) return // don't steal keys from the editor / context menu
+      if (draft || menu || yearPop) return // don't steal keys from the editor / popovers
       if (e.metaKey || e.ctrlKey || e.altKey) return
       const target = e.target as HTMLElement | null
       const tag = target?.tagName
@@ -193,7 +196,46 @@ export default function CalendarView({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [draft, menu])
+  }, [draft, menu, yearPop])
+
+  // Clicking the toolbar title ("August 2026") opens a small popover to jump years.
+  // FullCalendar owns the toolbar DOM, so the listener is delegated from the document.
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const title = (e.target as HTMLElement | null)?.closest?.('.fc-toolbar-title')
+      if (!title) return
+      const rect = title.getBoundingClientRect()
+      const year = (calendarRef.current?.getApi().getDate() ?? new Date()).getFullYear()
+      setYearPop({ x: rect.left + rect.width / 2, y: rect.bottom + 6, base: year - 5, current: year })
+    }
+    document.addEventListener('click', onClick)
+    return () => document.removeEventListener('click', onClick)
+  }, [])
+
+  useEffect(() => {
+    if (!yearPop) return
+    const close = () => setYearPop(null)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setYearPop(null)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [yearPop])
+
+  // Jump to the same date/view in another year.
+  const pickYear = (year: number) => {
+    const api = calendarRef.current?.getApi()
+    if (api) {
+      const d = api.getDate()
+      d.setFullYear(year)
+      api.gotoDate(d)
+    }
+    setYearPop(null)
+  }
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['events'] })
   const createMut = useMutation({ mutationFn: createEvent, onSuccess: invalidate })
@@ -425,6 +467,47 @@ export default function CalendarView({
                 )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {yearPop && (
+        <div
+          className="ctx-backdrop"
+          onMouseDown={() => setYearPop(null)}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            setYearPop(null)
+          }}
+        >
+          <div
+            className="year-pop"
+            style={{ left: yearPop.x, top: yearPop.y }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="year-pop-nav">
+              <button type="button" aria-label="Earlier years" onClick={() => setYearPop({ ...yearPop, base: yearPop.base - 12 })}>
+                ‹
+              </button>
+              <span>
+                {yearPop.base} – {yearPop.base + 11}
+              </span>
+              <button type="button" aria-label="Later years" onClick={() => setYearPop({ ...yearPop, base: yearPop.base + 12 })}>
+                ›
+              </button>
+            </div>
+            <div className="year-pop-grid">
+              {Array.from({ length: 12 }, (_, i) => yearPop.base + i).map((y) => (
+                <button
+                  key={y}
+                  type="button"
+                  className={y === yearPop.current ? 'active' : ''}
+                  onClick={() => pickYear(y)}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
