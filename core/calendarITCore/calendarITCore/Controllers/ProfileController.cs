@@ -57,4 +57,13 @@ public sealed class ProfileController(IProfileService profile) : ControllerBase
         await profile.ClearAvatarAsync(User.GetUserId(), cancellationToken);
         return NoContent();
     }
+
+    [HttpPut("view")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SetDefaultView(UpdateViewRequest request, CancellationToken cancellationToken)
+    {
+        var ok = await profile.SetDefaultViewAsync(User.GetUserId(), request.View, cancellationToken);
+        return ok ? NoContent() : BadRequest(new { error = "Unknown view." });
+    }
 }

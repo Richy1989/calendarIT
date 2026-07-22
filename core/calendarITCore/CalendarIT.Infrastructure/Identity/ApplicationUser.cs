@@ -14,4 +14,10 @@ public sealed class ApplicationUser : IdentityUser<Guid>
 
     /// <summary>MIME type of <see cref="AvatarData"/> (e.g. image/png).</summary>
     public string? AvatarContentType { get; set; }
+
+    /// <summary>
+    /// The calendar view the user last chose (FullCalendar id, e.g. "timeGridWeek"), restored
+    /// on next login. Null = never set; the client falls back to the month default.
+    /// </summary>
+    public string? DefaultCalendarView { get; set; }
 }

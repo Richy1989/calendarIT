@@ -355,6 +355,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    q?: string;
+                    limit?: number | string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["EventSearchResult"][];
+                        "application/json": components["schemas"]["EventSearchResult"][];
+                        "text/json": components["schemas"]["EventSearchResult"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events/{id}": {
         parameters: {
             query?: never;
@@ -601,6 +641,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile/view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateViewRequest"];
+                    "text/json": components["schemas"]["UpdateViewRequest"];
+                    "application/*+json": components["schemas"]["UpdateViewRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -629,6 +719,17 @@ export interface components {
             recurrence: null | string;
             reminders: components["schemas"]["ReminderDto"][];
         };
+        EventSearchResult: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            location: null | string;
+            color: null | string;
+            /** Format: date-time */
+            start: string;
+            allDay: boolean;
+            recurring: boolean;
+        };
         ImportResult: {
             /** Format: int32 */
             imported: number | string;
@@ -653,6 +754,7 @@ export interface components {
         ProfileDto: {
             email: null | string;
             avatarDataUrl: null | string;
+            defaultView: null | string;
         };
         RefreshTokenRequest: {
             refreshToken: string;
@@ -684,6 +786,9 @@ export interface components {
             recurrence?: null | string;
             timeZone?: null | string;
             reminders?: null | components["schemas"]["ReminderInput"][];
+        };
+        UpdateViewRequest: {
+            view: string;
         };
     };
     responses: never;

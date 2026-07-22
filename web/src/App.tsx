@@ -70,7 +70,7 @@ export default function App() {
           <LiveDateTime />
         </div>
         <section className="calendar-shell">
-          <CalendarView focus={focus} />
+          <CalendarView focus={focus} serverView={profile?.defaultView ?? null} />
         </section>
       </main>
     </div>

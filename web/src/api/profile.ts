@@ -28,3 +28,17 @@ export async function deleteAvatar(): Promise<void> {
   const { error } = await api.DELETE('/api/profile/avatar')
   if (error) throw new Error('Failed to remove picture')
 }
+
+/** Remembers the user's chosen calendar view server-side (persists across devices). */
+export async function saveDefaultView(view: string): Promise<void> {
+  const token = await ensureAccessToken()
+  const res = await fetch('/api/profile/view', {
+    method: 'PUT',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ view }),
+  })
+  if (!res.ok) throw new Error('Failed to save view')
+}

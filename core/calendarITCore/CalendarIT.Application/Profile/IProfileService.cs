@@ -8,4 +8,10 @@ public interface IProfileService
     Task SetAvatarAsync(Guid userId, byte[] data, string contentType, CancellationToken cancellationToken = default);
 
     Task ClearAvatarAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Remembers the user's chosen calendar view. Returns false if <paramref name="view"/>
+    /// isn't a recognized view id (nothing is written).
+    /// </summary>
+    Task<bool> SetDefaultViewAsync(Guid userId, string view, CancellationToken cancellationToken = default);
 }

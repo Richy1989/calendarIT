@@ -15,6 +15,8 @@ import type {
 } from '@fullcalendar/core'
 import EventModal, { type EventDraft } from './EventModal'
 import { createEvent, deleteEvent, getEvent, listEvents, updateEvent, type EventDto, type SaveEventRequest } from './api/events'
+import { saveDefaultView } from './api/profile'
+import { getSavedView, saveView } from './prefs'
 
 const DEFAULT_COLOR = '#7B68EE' // mediumslateblue
 
@@ -91,7 +93,13 @@ type ContextMenu =
 
 const DOUBLE_CLICK_MS = 350
 
-export default function CalendarView({ focus }: { focus?: { date: string; n: number } | null }) {
+export default function CalendarView({
+  focus,
+  serverView,
+}: {
+  focus?: { date: string; n: number } | null
+  serverView?: string | null
+}) {
   const queryClient = useQueryClient()
   const [range, setRange] = useState<{ from: string; to: string } | null>(null)
   const { data: dtos = [] } = useQuery({
@@ -107,6 +115,8 @@ export default function CalendarView({ focus }: { focus?: { date: string; n: num
   const lastClick = useRef<{ dateStr: string; time: number } | null>(null)
   const calendarRef = useRef<FullCalendar>(null)
   const lastView = useRef<string | null>(null)
+  const appliedServerView = useRef(false)
+  const suppressPersist = useRef(false)
 
   // Keep the events query range in sync, and — when the *view* changes (month→week→day)
   // rather than just paging — reveal the week/day that holds the currently selected cell.
@@ -115,6 +125,14 @@ export default function CalendarView({ focus }: { focus?: { date: string; n: num
 
     const viewChanged = lastView.current !== null && lastView.current !== arg.view.type
     lastView.current = arg.view.type
+    if (viewChanged) {
+      saveView(arg.view.type) // fast local cache: restores instantly with no flash next load
+      if (suppressPersist.current) {
+        suppressPersist.current = false // this change came from applying the server value
+      } else {
+        saveDefaultView(arg.view.type).catch(() => {}) // fire-and-forget: remember per-user in the DB
+      }
+    }
     if (!viewChanged || !selectedDate) return
 
     const sel = new Date(`${selectedDate}T00:00:00`)
@@ -123,6 +141,19 @@ export default function CalendarView({ focus }: { focus?: { date: string; n: num
       calendarRef.current?.getApi().gotoDate(sel)
     }
   }
+
+  // The DB-remembered view (from the user's profile) is the cross-device source of truth.
+  // Apply it once when it arrives; the local cache already gave us an instant initial view,
+  // so this only does anything when another device changed the preference.
+  useEffect(() => {
+    if (appliedServerView.current || !serverView) return
+    appliedServerView.current = true
+    const api = calendarRef.current?.getApi()
+    if (!api || api.view.type === serverView) return
+    suppressPersist.current = true // don't PUT back a value we just read from the server
+    api.changeView(serverView)
+    saveView(serverView)
+  }, [serverView])
 
   // A search pick (from the header) jumps the calendar to that appointment's day view.
   useEffect(() => {
@@ -290,7 +321,7 @@ export default function CalendarView({ focus }: { focus?: { date: string; n: num
       <FullCalendar
         ref={calendarRef}
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-        initialView="dayGridMonth"
+        initialView={getSavedView()}
         customButtons={{ addEvent: { text: '+  New', click: openNew } }}
         headerToolbar={{
           left: 'addEvent',
