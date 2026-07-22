@@ -452,7 +452,8 @@
 
 .settings-row {
   display: grid;
-  grid-template-columns: 160px 1fr;
+  grid-template-columns: 160px 1fr auto; /* label / value / optional action (e.g. Copy) */
+  gap: 0 0.7rem;
   align-items: center;
 }
 
@@ -463,6 +464,29 @@
 
 .settings-row-value {
   color: var(--text);
+}
+
+/* Phone-sync (CalDAV) section */
+.sync-value {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.sync-steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.sync-steps strong {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .settings-foot {

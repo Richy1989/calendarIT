@@ -4,7 +4,7 @@ import { deleteAvatar, getProfile, uploadAvatar } from './api/profile'
 import { exportIcs, importIcs } from './api/events'
 import Logo from './Logo'
 
-type Section = 'general' | 'security' | 'email'
+type Section = 'general' | 'sync' | 'security' | 'email'
 
 /** Dedicated, full-page settings screen: sidebar nav + a content card per section. */
 export default function SettingsPage({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
@@ -25,6 +25,9 @@ export default function SettingsPage({ onBack, onLogout }: { onBack: () => void;
           <button className={navClass(section === 'general')} onClick={() => setSection('general')}>
             <UserIcon /> General
           </button>
+          <button className={navClass(section === 'sync')} onClick={() => setSection('sync')}>
+            <PhoneIcon /> Sync
+          </button>
           <button className={navClass(section === 'security')} onClick={() => setSection('security')}>
             <ShieldIcon /> Security
           </button>
@@ -40,6 +43,8 @@ export default function SettingsPage({ onBack, onLogout }: { onBack: () => void;
         <div className="settings-content">
           {section === 'general' ? (
             <GeneralSection />
+          ) : section === 'sync' ? (
+            <SyncSection />
           ) : (
             <div className="settings-card settings-placeholder">
               <h2>{section === 'security' ? 'Security' : 'Email'}</h2>
@@ -186,6 +191,72 @@ function GeneralSection() {
   )
 }
 
+/** Sync via CalDAV: shows the per-instance connection details and a client-agnostic walkthrough. */
+function SyncSection() {
+  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: getProfile })
+  const davUrl = `${window.location.origin}/dav/`
+  const [copied, setCopied] = useState<string | null>(null)
+
+  const copy = async (label: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(label)
+      setTimeout(() => setCopied(null), 1500)
+    } catch {
+      /* clipboard unavailable (e.g. plain-http origin) — the value is still selectable */
+    }
+  }
+
+  const row = (label: string, value: string) => (
+    <div className="settings-row">
+      <span className="settings-row-label">{label}</span>
+      <span className="settings-row-value sync-value">{value}</span>
+      <button type="button" className="link-btn" onClick={() => copy(label, value)}>
+        {copied === label ? 'Copied ✓' : 'Copy'}
+      </button>
+    </div>
+  )
+
+  return (
+    <>
+      <div className="settings-card">
+        <h2>Sync your calendar</h2>
+        <p className="settings-sub">
+          CalendarIT speaks <strong>CalDAV</strong>, an open standard — any app or device that supports CalDAV
+          can sync your calendar two-way. Events created or edited on either side show up on the other.
+        </p>
+
+        <div className="settings-rows">
+          {row('Server URL', davUrl)}
+          {profile?.email && row('Username', profile.email)}
+          <div className="settings-row">
+            <span className="settings-row-label">Password</span>
+            <span className="settings-row-value">your CalendarIT account password</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <h2>Connect a CalDAV client</h2>
+        <ol className="sync-steps">
+          <li>In your calendar app (or a dedicated sync app), add a new <strong>CalDAV account</strong>.</li>
+          <li>
+            Enter the server URL and username from above — many clients can also auto-discover the server
+            from just the hostname.
+          </li>
+          <li>Enter your CalendarIT password.</li>
+          <li>Enable the <strong>Personal</strong> calendar and grant calendar permissions if asked.</li>
+          <li>Done — your events appear in the client, and edits sync back here.</li>
+        </ol>
+        <p className="field-hint">
+          Note: if this page is served over plain HTTP, clients will warn that the password travels
+          unencrypted — put the server behind HTTPS for anything beyond your own LAN.
+        </p>
+      </div>
+    </>
+  )
+}
+
 const navClass = (active: boolean) => 'settings-nav-item' + (active ? ' active' : '')
 
 /* --- inline icons -------------------------------------------------------- */
@@ -202,6 +273,9 @@ function ShieldIcon() {
 }
 function MailIcon() {
   return <svg {...iconProps}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M22 7l-10 6L2 7" /></svg>
+}
+function PhoneIcon() {
+  return <svg {...iconProps}><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 18h.01" /></svg>
 }
 function SignOutIcon() {
   return <svg {...iconProps}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></svg>

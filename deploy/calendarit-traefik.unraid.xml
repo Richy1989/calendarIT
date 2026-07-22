@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/Richy1989/calendarIT/issues</Support>
   <Project>https://github.com/Richy1989/calendarIT</Project>
-  <Overview>A lightweight, modern, self-hosted calendar. Make events (one-off and recurring), get email reminders, colour-code your events, import/export iCalendar (.ics), and sync to your phone with CalDAV/DAVx5. It does what you want — and just that. This variant ships with Traefik labels preconfigured for calendarit.home.lab.</Overview>
+  <Overview>A lightweight, modern, self-hosted calendar. Make events (one-off and recurring), get email reminders, colour-code your events, import/export iCalendar (.ics), and sync to your phone with any CalDAV client. It does what you want — and just that. This variant ships with Traefik labels preconfigured for calendarit.home.lab.</Overview>
   <Category>Productivity:</Category>
   <WebUI>http://calendarit.home.lab/</WebUI>
   <TemplateURL/>

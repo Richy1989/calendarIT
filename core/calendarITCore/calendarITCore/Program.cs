@@ -1,5 +1,6 @@
 using calendarITCore.Extensions;
 using calendarITCore.Logging;
+using CalendarIT.CalDav;
 using CalendarIT.Infrastructure;
 using CalendarIT.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -26,6 +27,9 @@ builder.Services.AddOpenApi();
 // Persistence + Identity + auth services, and JWT bearer validation.
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddJwtAuthentication(builder.Configuration);
+
+// CalDAV (phone sync via DAVx⁵ etc.): Basic-auth scheme + /dav endpoints.
+builder.Services.AddCalDav();
 
 // Liveness has no checks; readiness gathers checks tagged "ready".
 builder.Services
@@ -60,6 +64,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapCalDav();
 
 // Liveness: process is up and serving.
 app.MapHealthChecks("/health", new HealthCheckOptions
