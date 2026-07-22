@@ -25,6 +25,8 @@ reminded, sync to your phone. That's the whole pitch.
 Most calendar apps grew into something else — a mail client, a meeting marketplace, an
 ad surface. CalendarIT deliberately stays small:
 
+- **Good-looking and simple.** Easy on the eyes, easy to use — the combination I
+  couldn't find anywhere else.
 - **Yours.** Self-hosted. Your events live in your database, on your server.
 - **Standards-first.** Plain iCalendar (`.ics`) and CalDAV, so it talks to the tools you
   already have instead of locking you in.
