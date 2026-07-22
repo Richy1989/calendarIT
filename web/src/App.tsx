@@ -4,6 +4,7 @@ import { api } from './api/client'
 import { getProfile } from './api/profile'
 import { getTokens, setTokens, type AuthTokens } from './auth/authStorage'
 import CalendarView from './CalendarView'
+import SearchBar from './SearchBar'
 import ProfileMenu from './ProfileMenu'
 import SettingsPage from './SettingsPage'
 import Logo from './Logo'
@@ -16,6 +17,9 @@ export default function App() {
   // early return, or the hook count changes between logged-out/in renders and React throws.
   const [tokens, setAuth] = useState<AuthTokens | null>(getTokens())
   const [showSettings, setShowSettings] = useState(false)
+  // A search pick sets this; CalendarView watches it and jumps to that day. The bumping
+  // counter lets picking the same date twice re-trigger the navigation.
+  const [focus, setFocus] = useState<{ date: string; n: number } | null>(null)
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: getProfile, enabled: !!tokens })
 
   const persist = (t: AuthTokens | null) => {
@@ -48,6 +52,9 @@ export default function App() {
             Calendar<b>IT</b>
           </span>
         </div>
+        <div className="header-search">
+          <SearchBar onPick={(date) => setFocus((f) => ({ date, n: (f?.n ?? 0) + 1 }))} />
+        </div>
         <div className="header-actions">
           <ProfileMenu
             email={profile?.email}
@@ -63,7 +70,7 @@ export default function App() {
           <LiveDateTime />
         </div>
         <section className="calendar-shell">
-          <CalendarView />
+          <CalendarView focus={focus} />
         </section>
       </main>
     </div>

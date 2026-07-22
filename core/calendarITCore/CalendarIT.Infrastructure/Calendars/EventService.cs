@@ -56,6 +56,64 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
         return results.OrderBy(r => r.Start).ToList();
     }
 
+    public async Task<IReadOnlyList<EventSearchResult>> SearchAsync(
+        Guid userId, string query, int limit, CancellationToken cancellationToken = default)
+    {
+        var q = query?.Trim() ?? string.Empty;
+        if (q.Length == 0)
+        {
+            return [];
+        }
+        limit = Math.Clamp(limit, 1, 50);
+
+        // Case-insensitive substring on title/location. ToLower().Contains() translates to
+        // `lower(col) LIKE '%q%'` on both SQLite and Npgsql, so this stays provider-agnostic.
+        var needle = q.ToLowerInvariant();
+        var matches = await db.Events.AsNoTracking()
+            .Where(e => e.Calendar!.OwnerUserId == userId
+                && (e.Title.ToLower().Contains(needle)
+                    || (e.Location != null && e.Location.ToLower().Contains(needle))))
+            .ToListAsync(cancellationToken);
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var results = matches.Select(e =>
+        {
+            var start = e.RRule is null ? e.StartUtc : RepresentativeOccurrenceUtc(e, now);
+            return new EventSearchResult(
+                e.Id, e.Title, e.Location, e.Color,
+                new DateTimeOffset(DateTime.SpecifyKind(start, DateTimeKind.Utc)),
+                e.IsAllDay, e.RRule is not null);
+        });
+
+        // Upcoming first (soonest to now), then the nearest past occurrences.
+        return results
+            .OrderBy(r => r.Start.UtcDateTime < now)
+            .ThenBy(r => Math.Abs((r.Start.UtcDateTime - now).Ticks))
+            .Take(limit)
+            .ToList();
+    }
+
+    // For a recurring master, the date we surface in search: the next occurrence within the
+    // next 2 years, else the most recent occurrence in the past 5 years, else the series start.
+    private static DateTime RepresentativeOccurrenceUtc(CalendarEvent e, DateTime now)
+    {
+        var end = e.EndUtc ?? e.StartUtc.AddHours(1);
+        var exDates = RecurrenceExpander.ParseExDates(e.ExDates);
+
+        var upcoming = RecurrenceExpander
+            .Expand(e.StartUtc, end, e.TimeZoneId, e.RRule!, exDates, now, now.AddYears(2))
+            .FirstOrDefault();
+        if (upcoming.StartUtc != default)
+        {
+            return upcoming.StartUtc;
+        }
+
+        var past = RecurrenceExpander
+            .Expand(e.StartUtc, end, e.TimeZoneId, e.RRule!, exDates, now.AddYears(-5), now)
+            .LastOrDefault();
+        return past.StartUtc != default ? past.StartUtc : e.StartUtc;
+    }
+
     public async Task<EventDto?> GetByIdAsync(Guid userId, Guid eventId, CancellationToken cancellationToken = default)
     {
         var entity = await db.Events.AsNoTracking().Include(e => e.Reminders)

@@ -24,6 +24,19 @@ public sealed record EventDto(
 /// <summary>A reminder: fire <paramref name="MinutesBefore"/> minutes before start, via <paramref name="Channel"/>.</summary>
 public sealed record ReminderDto(int MinutesBefore, string Channel);
 
+/// <summary>
+/// A lightweight search hit (title/location match). For a recurring series, <see cref="Start"/>
+/// is the next upcoming occurrence, or the most recent past one if none remain.
+/// </summary>
+public sealed record EventSearchResult(
+    Guid Id,
+    string Title,
+    string? Location,
+    string? Color,
+    DateTimeOffset Start,
+    bool AllDay,
+    bool Recurring);
+
 /// <summary>Create/update payload for an event. Used for both POST and PUT.</summary>
 public sealed class SaveEventRequest
 {

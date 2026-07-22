@@ -91,7 +91,7 @@ type ContextMenu =
 
 const DOUBLE_CLICK_MS = 350
 
-export default function CalendarView() {
+export default function CalendarView({ focus }: { focus?: { date: string; n: number } | null }) {
   const queryClient = useQueryClient()
   const [range, setRange] = useState<{ from: string; to: string } | null>(null)
   const { data: dtos = [] } = useQuery({
@@ -123,6 +123,16 @@ export default function CalendarView() {
       calendarRef.current?.getApi().gotoDate(sel)
     }
   }
+
+  // A search pick (from the header) jumps the calendar to that appointment's day view.
+  useEffect(() => {
+    if (!focus) return
+    const api = calendarRef.current?.getApi()
+    if (!api) return
+    const d = new Date(focus.date)
+    api.changeView('timeGridDay', d)
+    setSelectedDate(dayKey(d))
+  }, [focus])
 
   // Left/Right arrow keys page the calendar (prev/next), matching the toolbar buttons.
   useEffect(() => {

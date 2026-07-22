@@ -13,6 +13,14 @@ public interface IEventService
     /// <summary>Returns the single master event (unexpanded), or null. Used when editing a series.</summary>
     Task<EventDto?> GetByIdAsync(Guid userId, Guid eventId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Searches the user's events by title and location (case-insensitive substring). Each
+    /// recurring series is returned once, dated at its next upcoming occurrence (or the most
+    /// recent past one). Results are ordered upcoming-first and capped at <paramref name="limit"/>.
+    /// </summary>
+    Task<IReadOnlyList<EventSearchResult>> SearchAsync(
+        Guid userId, string query, int limit, CancellationToken cancellationToken = default);
+
     Task<EventDto> CreateAsync(Guid userId, SaveEventRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>Returns the updated event, or null if it doesn't exist or isn't the user's.</summary>

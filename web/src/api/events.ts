@@ -35,6 +35,25 @@ export async function listEvents(from?: string, to?: string): Promise<EventDto[]
   return data
 }
 
+/** A lightweight search hit. `start` is the next occurrence for a recurring series. */
+export type EventSearchResult = {
+  id: string
+  title: string
+  location: string | null
+  color: string | null
+  start: string
+  allDay: boolean
+  recurring: boolean
+}
+
+/** Searches the user's events by title/location; recurring series appear once. */
+export async function searchEvents(q: string, limit = 8): Promise<EventSearchResult[]> {
+  const params = new URLSearchParams({ q, limit: String(limit) })
+  const res = await fetch(`/api/events/search?${params.toString()}`, { headers: await authHeaders() })
+  if (!res.ok) throw new Error('Search failed')
+  return res.json()
+}
+
 export async function getEvent(id: string): Promise<EventDto> {
   const { data, error } = await api.GET('/api/events/{id}', { params: { path: { id } } })
   if (error || !data) throw new Error('Failed to load event')

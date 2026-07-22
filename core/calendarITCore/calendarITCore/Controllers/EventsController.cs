@@ -43,6 +43,14 @@ public sealed class EventsController(IEventService events, ICalendarIoService ca
         CancellationToken cancellationToken)
         => await events.GetEventsAsync(User.GetUserId(), from, to, cancellationToken);
 
+    [HttpGet("search")]
+    [ProducesResponseType<IReadOnlyList<EventSearchResult>>(StatusCodes.Status200OK)]
+    public async Task<IReadOnlyList<EventSearchResult>> Search(
+        [FromQuery] string? q,
+        [FromQuery] int limit = 8,
+        CancellationToken cancellationToken = default)
+        => await events.SearchAsync(User.GetUserId(), q ?? string.Empty, limit, cancellationToken);
+
     [HttpGet("{id:guid}")]
     [ProducesResponseType<EventDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
