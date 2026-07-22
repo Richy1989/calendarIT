@@ -24,6 +24,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
 
+    public DbSet<MailAccount> MailAccounts => Set<MailAccount>();
+
+    public DbSet<Attendee> Attendees => Set<Attendee>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -101,6 +105,36 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             entity.HasKey(n => n.Id);
             entity.HasIndex(n => new { n.ReminderId, n.OccurrenceStartUtc }).IsUnique();
+        });
+
+        builder.Entity<MailAccount>(entity =>
+        {
+            // One account per user: the user id doubles as the key.
+            entity.HasKey(a => a.UserId);
+            entity.Property(a => a.Address).HasMaxLength(320).IsRequired();
+            entity.Property(a => a.SmtpHost).HasMaxLength(255).IsRequired();
+            entity.Property(a => a.ImapHost).HasMaxLength(255);
+            entity.Property(a => a.Username).HasMaxLength(320).IsRequired();
+            entity.Property(a => a.PasswordProtected).HasMaxLength(2000).IsRequired();
+
+            entity.HasOne<ApplicationUser>()
+                .WithOne()
+                .HasForeignKey<MailAccount>(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<Attendee>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.Email).HasMaxLength(320).IsRequired();
+            entity.Property(a => a.Name).HasMaxLength(200);
+            entity.Property(a => a.Status).HasConversion<string>().HasMaxLength(16);
+            entity.HasIndex(a => a.EventId);
+
+            entity.HasOne(a => a.Event)
+                .WithMany(e => e.Attendees)
+                .HasForeignKey(a => a.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

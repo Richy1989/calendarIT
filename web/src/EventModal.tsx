@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { getMailAccount } from './api/mailAccount'
 
 export type EventDraft = {
   id?: string
@@ -17,6 +19,8 @@ export type EventDraft = {
   /** iCalendar RRULE, or '' for a one-off event. */
   recurrence: string
   reminders: { minutesBefore: number; channel: string }[]
+  /** Guests to invite by email. Status is read-only (set by their replies). */
+  attendees: { email: string; name?: string | null; status?: string }[]
 }
 
 const REMINDER_PRESETS: { label: string; value: number }[] = [
@@ -83,8 +87,40 @@ export default function EventModal({
   const setReminderOffset = (i: number, minutesBefore: number) =>
     setReminders((rs) => rs.map((r, idx) => (idx === i ? { ...r, minutesBefore } : r)))
   const [description, setDescription] = useState(draft.description)
-  const [expanded, setExpanded] = useState(Boolean(draft.location || draft.description))
+  const [attendees, setAttendees] = useState(draft.attendees)
+  const [guestInput, setGuestInput] = useState('')
+  const [expanded, setExpanded] = useState(Boolean(draft.location || draft.description || draft.attendees.length))
   const isEdit = Boolean(draft.id)
+
+  // Invitations are sent from the user's own mailbox; without one they're saved but not mailed.
+  const { data: mailAccount } = useQuery({ queryKey: ['mail-account'], queryFn: getMailAccount, staleTime: 60_000 })
+
+  const addGuest = () => {
+    const email = guestInput.trim().replace(/[,;]$/, '')
+    if (!email) return
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return // not a mail address (yet) — keep typing
+    if (!attendees.some((a) => a.email.toLowerCase() === email.toLowerCase())) {
+      setAttendees((list) => [...list, { email }])
+    }
+    setGuestInput('')
+  }
+
+  const removeGuest = (email: string) =>
+    setAttendees((list) => list.filter((a) => a.email !== email))
+
+  const onGuestKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      addGuest()
+    } else if (e.key === 'Backspace' && !guestInput && attendees.length) {
+      removeGuest(attendees[attendees.length - 1].email)
+    }
+  }
+
+  const statusMark = (status?: string) =>
+    status === 'Accepted' ? { mark: '✓', cls: ' ok' } :
+    status === 'Declined' ? { mark: '✕', cls: ' no' } :
+    status === 'Tentative' ? { mark: '?', cls: '' } : null
   const isCustom = !SWATCHES.some((s) => s.hex.toLowerCase() === color.toLowerCase())
 
   useEffect(() => {
@@ -108,7 +144,7 @@ export default function EventModal({
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
-    onSave({ id: draft.id, calendarId, title: title.trim(), start, end, allDay, color, location, description, recurrence, reminders })
+    onSave({ id: draft.id, calendarId, title: title.trim(), start, end, allDay, color, location, description, recurrence, reminders, attendees })
   }
 
   const inputType = allDay ? 'date' : 'datetime-local'
@@ -260,11 +296,36 @@ export default function EventModal({
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
-            <div className="field is-disabled">
-              <label>
-                Guests <span className="badge-soon">Not implemented</span>
-              </label>
-              <input disabled placeholder="Invite people by email — coming soon" />
+            <div className="field">
+              <label htmlFor="ev-guests">Guests</label>
+              <div className="guest-chips">
+                {attendees.map((a) => {
+                  const s = statusMark(a.status)
+                  return (
+                    <span className="guest-chip" key={a.email} title={a.status && a.status !== 'NeedsAction' ? a.status : 'Awaiting reply'}>
+                      {s && <span className={'guest-chip-status' + s.cls}>{s.mark}</span>}
+                      {a.email}
+                      <button type="button" className="guest-chip-remove" onClick={() => removeGuest(a.email)} aria-label={`Remove ${a.email}`}>
+                        ✕
+                      </button>
+                    </span>
+                  )
+                })}
+                <input
+                  id="ev-guests"
+                  value={guestInput}
+                  placeholder={attendees.length ? 'Add another…' : 'Invite people by email'}
+                  onChange={(e) => setGuestInput(e.target.value)}
+                  onKeyDown={onGuestKey}
+                  onBlur={addGuest}
+                />
+              </div>
+              {attendees.length > 0 && mailAccount === null && (
+                <p className="field-hint">
+                  Guests are saved, but invitations aren't sent yet — connect an email account in
+                  Settings → Email first.
+                </p>
+              )}
             </div>
           </div>
         )}

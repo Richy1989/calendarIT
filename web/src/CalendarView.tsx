@@ -97,6 +97,7 @@ function draftToRequest(d: EventDraft): SaveEventRequest {
     recurrence: d.recurrence || null,
     timeZone: browserTz,
     reminders: d.reminders.map((r) => ({ minutesBefore: r.minutesBefore, channel: r.channel })),
+    attendees: d.attendees.map((a) => ({ email: a.email, name: a.name ?? null })),
   }
 }
 
@@ -333,7 +334,7 @@ export default function CalendarView({
   }
 
   const openNewOn = (date: Date, allDay: boolean) => {
-    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [], calendarId: defaultCalendarId() }
+    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
     if (allDay) {
       const day = toLocalInput(date).slice(0, 10)
       setDraft({ ...blank, start: day, end: day, allDay: true })
@@ -350,7 +351,7 @@ export default function CalendarView({
   // Opens the new-appointment editor prefilled with exactly what was selected.
   const handleSelect = (arg: DateSelectArg) => {
     setSelectedDate(dayKey(arg.start))
-    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [], calendarId: defaultCalendarId() }
+    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
     if (arg.allDay) {
       const startDay = dayKey(arg.start)
       const endDay = addDays(dayKey(arg.end), -1) // exclusive → inclusive last day
@@ -396,6 +397,7 @@ export default function CalendarView({
       description: dto.description ?? '',
       recurrence: dto.recurrence ?? '',
       reminders: dto.reminders.map((r) => ({ minutesBefore: Number(r.minutesBefore), channel: r.channel })),
+      attendees: dto.attendees.map((a) => ({ email: a.email, name: a.name, status: a.status })),
     })
   }
 

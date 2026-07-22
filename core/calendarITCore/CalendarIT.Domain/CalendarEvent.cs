@@ -40,6 +40,10 @@ public class CalendarEvent
     /// <summary>Excluded occurrence starts (UTC), newline-separated ISO 8601. Maps to EXDATE.</summary>
     public string? ExDates { get; set; }
 
+    /// <summary>iCalendar SEQUENCE — bumped whenever an update re-sends invitations, so
+    /// guests' calendars know which version of the event is current.</summary>
+    public int Sequence { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
@@ -47,4 +51,6 @@ public class CalendarEvent
     public Calendar? Calendar { get; set; }
 
     public ICollection<Reminder> Reminders { get; set; } = new List<Reminder>();
+
+    public ICollection<Attendee> Attendees { get; set; } = new List<Attendee>();
 }

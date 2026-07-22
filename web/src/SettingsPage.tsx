@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteAvatar, getProfile, uploadAvatar } from './api/profile'
 import { exportIcs, importIcs } from './api/events'
 import { createCalendar, deleteCalendar, listCalendars, renameCalendar, type CalendarDto } from './api/calendars'
+import { deleteMailAccount, getMailAccount, saveMailAccount, testMailAccount } from './api/mailAccount'
 import Logo from './Logo'
 
 type Section = 'general' | 'calendars' | 'sync' | 'security' | 'email'
@@ -59,9 +60,11 @@ export default function SettingsPage({
             <CalendarsSection />
           ) : section === 'sync' ? (
             <SyncSection />
+          ) : section === 'email' ? (
+            <EmailSection />
           ) : (
             <div className="settings-card settings-placeholder">
-              <h2>{section === 'security' ? 'Security' : 'Email'}</h2>
+              <h2>Security</h2>
               <p className="settings-sub">Coming soon.</p>
             </div>
           )}
@@ -496,6 +499,172 @@ function CalendarRow({
         </button>
       </span>
     </li>
+  )
+}
+
+/**
+ * The user's personal email account: the identity appointment invitations are sent from
+ * (and, once inbox scanning ships, received into). Password is write-only.
+ */
+function EmailSection() {
+  const queryClient = useQueryClient()
+  const { data: account, isLoading } = useQuery({ queryKey: ['mail-account'], queryFn: getMailAccount })
+
+  const [address, setAddress] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [smtpHost, setSmtpHost] = useState('')
+  const [smtpPort, setSmtpPort] = useState(587)
+  const [smtpUseSsl, setSmtpUseSsl] = useState(false)
+  const [imapHost, setImapHost] = useState('')
+  const [imapPort, setImapPort] = useState(993)
+  const [imapUseSsl, setImapUseSsl] = useState(true)
+  const [loadedFor, setLoadedFor] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null)
+
+  // Populate the form once the stored account arrives (and again after disconnect).
+  const accountKey = account ? account.address : account === null ? '' : 'loading'
+  if (!isLoading && loadedFor !== accountKey) {
+    setLoadedFor(accountKey)
+    setAddress(account?.address ?? '')
+    setUsername(account?.username ?? '')
+    setPassword('')
+    setSmtpHost(account?.smtpHost ?? '')
+    setSmtpPort(Number(account?.smtpPort ?? 587))
+    setSmtpUseSsl(account?.smtpUseSsl ?? false)
+    setImapHost(account?.imapHost ?? '')
+    setImapPort(Number(account?.imapPort ?? 993))
+    setImapUseSsl(account?.imapUseSsl ?? true)
+  }
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['mail-account'] })
+  const saveMut = useMutation({
+    mutationFn: saveMailAccount,
+    onSuccess: () => { setNotice({ ok: true, text: 'Saved.' }); setPassword(''); refresh() },
+    onError: (e) => setNotice({ ok: false, text: (e as Error).message }),
+  })
+  const testMut = useMutation({
+    mutationFn: testMailAccount,
+    onSuccess: (r) => setNotice(r.ok ? { ok: true, text: 'Connection works.' } : { ok: false, text: r.error ?? 'Connection failed.' }),
+    onError: (e) => setNotice({ ok: false, text: (e as Error).message }),
+  })
+  const deleteMut = useMutation({
+    mutationFn: deleteMailAccount,
+    onSuccess: () => { setNotice({ ok: true, text: 'Disconnected.' }); refresh() },
+    onError: (e) => setNotice({ ok: false, text: (e as Error).message }),
+  })
+
+  const canSave = address.trim() && smtpHost.trim() && username.trim() && (password || account?.hasPassword)
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSave) return
+    saveMut.mutate({
+      address: address.trim(),
+      smtpHost: smtpHost.trim(),
+      smtpPort,
+      smtpUseSsl,
+      imapHost: imapHost.trim() || null,
+      imapPort,
+      imapUseSsl,
+      username: username.trim(),
+      password: password || null,
+    })
+  }
+
+  return (
+    <form className="settings-card" onSubmit={submit}>
+      <h2>Email account</h2>
+      <p className="settings-sub">
+        Connect your own email address to send appointment invitations to guests — replies go straight to
+        your inbox. Your password is stored encrypted on your server and never shown again.
+      </p>
+
+      <div className="mail-group">
+        <span className="eyebrow">Account</span>
+        <div className="field">
+          <label htmlFor="ma-address">Email address</label>
+          <input id="ma-address" type="email" value={address} placeholder="you@example.com" onChange={(e) => setAddress(e.target.value)} />
+        </div>
+        <div className="field-row">
+          <div className="field">
+            <label htmlFor="ma-username">Username</label>
+            <input id="ma-username" value={username} placeholder="usually the address itself" onChange={(e) => setUsername(e.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="ma-password">Password</label>
+            <input
+              id="ma-password"
+              type="password"
+              value={password}
+              placeholder={account?.hasPassword ? '•••••••• (unchanged)' : 'Mailbox or app password'}
+              autoComplete="new-password"
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+        </div>
+        <p className="field-hint">
+          For Gmail and most big providers you'll need an app password (requires two-factor auth).
+        </p>
+      </div>
+
+      <div className="mail-group">
+        <span className="eyebrow">Outgoing · SMTP</span>
+        <div className="mail-server-row">
+          <div className="field">
+            <label htmlFor="ma-smtp-host">Server</label>
+            <input id="ma-smtp-host" value={smtpHost} placeholder="smtp.example.com" onChange={(e) => setSmtpHost(e.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="ma-smtp-port">Port</label>
+            <input id="ma-smtp-port" type="number" min={1} max={65535} value={smtpPort} onChange={(e) => setSmtpPort(Number(e.target.value))} />
+          </div>
+        </div>
+        <label className="toggle">
+          <input type="checkbox" checked={smtpUseSsl} onChange={(e) => setSmtpUseSsl(e.target.checked)} />
+          <span>Implicit TLS (port 465) — off means STARTTLS (port 587)</span>
+        </label>
+      </div>
+
+      <div className="mail-group">
+        <span className="eyebrow">Incoming · IMAP</span>
+        <div className="mail-server-row">
+          <div className="field">
+            <label htmlFor="ma-imap-host">Server</label>
+            <input id="ma-imap-host" value={imapHost} placeholder="imap.example.com — optional" onChange={(e) => setImapHost(e.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="ma-imap-port">Port</label>
+            <input id="ma-imap-port" type="number" min={1} max={65535} value={imapPort} onChange={(e) => setImapPort(Number(e.target.value))} />
+          </div>
+        </div>
+        <label className="toggle">
+          <input type="checkbox" checked={imapUseSsl} onChange={(e) => setImapUseSsl(e.target.checked)} />
+          <span>IMAP over TLS (port 993)</span>
+        </label>
+        <p className="field-hint">
+          Used to receive invitations into your calendar automatically — that part is coming soon, but you
+          can set it up already.
+        </p>
+      </div>
+
+      <div className="mail-actions">
+        {account && (
+          <button type="button" className="btn-danger" onClick={() => deleteMut.mutate()} disabled={deleteMut.isPending}>
+            Disconnect
+          </button>
+        )}
+        <span className="spacer" />
+        <button type="button" className="btn-ghost" onClick={() => testMut.mutate()} disabled={!account || testMut.isPending}>
+          {testMut.isPending ? 'Testing…' : 'Test connection'}
+        </button>
+        <button type="submit" className="btn-primary" disabled={!canSave || saveMut.isPending}>
+          {saveMut.isPending ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+
+      {notice && <p className={notice.ok ? 'mail-notice-ok' : 'error'}>{notice.text}</p>}
+    </form>
   )
 }
 

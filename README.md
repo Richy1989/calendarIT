@@ -22,8 +22,7 @@ reminded, sync to your phone. That's the whole pitch.
 
 ## Why
 
-Most calendar apps grew into something else — a mail client, a meeting marketplace, an
-ad surface. CalendarIT deliberately stays small:
+Most calendar apps grew into something else - CalendarIT deliberately stays small:
 
 - **Good-looking and simple.** Easy on the eyes, easy to use — the combination I
   couldn't find anywhere else.
@@ -153,8 +152,12 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Multiple calendars — create/rename/delete in Settings, per-calendar visibility
   toggles, each exposed as its own CalDAV collection
 - 🚧 Web Push reminders (VAPID + service worker)
-- ❌ **Inviting guests / attendees — not implemented** (the event editor shows the
-  field as a disabled, clearly-labelled stub)
+- 🚧 Inviting guests — **outgoing invitations work**: connect your own email account
+  (Settings → Email, password stored encrypted), add guests to an event, and they get a
+  standard iMIP invite with Accept/Decline in their calendar; updates and cancellations
+  are mailed too. Incoming replies / invitations (IMAP inbox scanning) are next — guest
+  statuses don't update yet.
+- ❌ Optimizing for small screens, does not look pretty currenty on the phone
 
 Not everything above is wired end-to-end yet — check the roadmap before relying on a
 feature.

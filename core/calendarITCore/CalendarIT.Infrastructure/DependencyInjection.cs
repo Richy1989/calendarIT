@@ -3,10 +3,13 @@ using CalendarIT.Application.Calendars;
 using CalendarIT.Infrastructure.Auth;
 using CalendarIT.Infrastructure.Calendars;
 using CalendarIT.Infrastructure.Identity;
+using CalendarIT.Application.Mail;
 using CalendarIT.Application.Profile;
+using CalendarIT.Infrastructure.Mail;
 using CalendarIT.Infrastructure.Notifications;
 using CalendarIT.Infrastructure.Persistence;
 using CalendarIT.Infrastructure.Profile;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -31,6 +34,14 @@ public static class DependencyInjection
 
         services.AddDbContext<AppDbContext>(builder => ConfigureProvider(builder, dbOptions));
 
+        // Data Protection encrypts per-user mailbox passwords at rest. Keys persist under
+        // APPDATA_PATH (next to the SQLite db) so ciphertexts survive container restarts.
+        var keysDir = Path.Combine(dbOptions.AppDataPath, "dataprotection-keys");
+        Directory.CreateDirectory(keysDir);
+        services.AddDataProtection()
+            .PersistKeysToFileSystem(new DirectoryInfo(keysDir))
+            .SetApplicationName("CalendarIT");
+
         services
             .AddIdentityCore<ApplicationUser>(options =>
             {
@@ -46,6 +57,12 @@ public static class DependencyInjection
         services.AddScoped<ICalendarService, CalendarService>();
         services.AddScoped<ICalendarIoService, CalendarIoService>();
         services.AddScoped<IProfileService, ProfileService>();
+
+        // Mail account + invitations. The concrete MailAccountService is also registered so
+        // the mailer can reach the decrypted password (internal API, never leaves the server).
+        services.AddScoped<MailAccountService>();
+        services.AddScoped<IMailAccountService>(sp => sp.GetRequiredService<MailAccountService>());
+        services.AddScoped<IInvitationMailer, InvitationMailer>();
 
         AddReminders(services, configuration);
 

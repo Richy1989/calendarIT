@@ -17,6 +17,8 @@
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.10" />
+    <!-- Encrypts per-user mailbox passwords at rest; keys persist under APPDATA_PATH. -->
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.10" />
     <PackageReference Include="Ical.Net" Version="5.2.3" />
     <PackageReference Include="Quartz" Version="3.18.2" />
     <PackageReference Include="Quartz.Extensions.Hosting" Version="3.18.2" />

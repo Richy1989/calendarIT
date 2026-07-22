@@ -24,7 +24,7 @@ public sealed class CalendarServiceTests : IDisposable
         _db.Users.Add(new ApplicationUser { Id = _userId, UserName = "cal@test", NormalizedUserName = "CAL@TEST" });
         _db.SaveChanges();
         _service = new CalendarService(_db, TimeProvider.System);
-        _events = new EventService(_db, TimeProvider.System);
+        _events = new EventService(_db, TimeProvider.System, new FakeInvitationMailer());
     }
 
     public void Dispose()

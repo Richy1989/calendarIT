@@ -20,10 +20,14 @@ public sealed record EventDto(
     bool AllDay,
     bool Recurring,
     string? Recurrence,
-    IReadOnlyList<ReminderDto> Reminders);
+    IReadOnlyList<ReminderDto> Reminders,
+    IReadOnlyList<AttendeeDto> Attendees);
 
 /// <summary>A reminder: fire <paramref name="MinutesBefore"/> minutes before start, via <paramref name="Channel"/>.</summary>
 public sealed record ReminderDto(int MinutesBefore, string Channel);
+
+/// <summary>A guest on an event. Status mirrors iCalendar PARTSTAT (NeedsAction until they reply).</summary>
+public sealed record AttendeeDto(string Email, string? Name, string Status);
 
 /// <summary>
 /// A lightweight search hit (title/location match). For a recurring series, <see cref="Start"/>
@@ -77,6 +81,19 @@ public sealed class SaveEventRequest
     /// Update: null = leave the event where it is; a value moves it there.
     /// </summary>
     public Guid? CalendarId { get; init; }
+
+    /// <summary>Guests to invite; replaces the existing set on update. Null keeps it unchanged.</summary>
+    public IReadOnlyList<AttendeeInput>? Attendees { get; init; }
+}
+
+/// <summary>One guest in a save request.</summary>
+public sealed class AttendeeInput
+{
+    [Required, EmailAddress, MaxLength(320)]
+    public string Email { get; init; } = string.Empty;
+
+    [MaxLength(200)]
+    public string? Name { get; init; }
 }
 
 /// <summary>One reminder in a save request.</summary>

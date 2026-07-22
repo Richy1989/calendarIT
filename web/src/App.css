@@ -805,6 +805,62 @@
   background: rgba(255, 107, 107, 0.14);
 }
 
+/* Guests: email chips + inline input, styled like a themed field. */
+.guest-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.guest-chips input {
+  flex: 1;
+  min-width: 140px;
+}
+
+.guest-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.3rem 0.25rem 0.6rem;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.guest-chip-status {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
+.guest-chip-status.ok {
+  color: var(--cyan);
+}
+
+.guest-chip-status.no {
+  color: #ff8a8a;
+}
+
+.guest-chip-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 0.25rem;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.guest-chip-remove:hover {
+  color: #ffd9d9;
+  background: rgba(255, 107, 107, 0.14);
+}
+
 .reminder-add {
   align-self: flex-start;
   background: transparent;
@@ -1168,6 +1224,56 @@
 
 .cal-add-row input {
   flex: 1;
+}
+
+/* Settings → Email account: the form breathes in three clusters (account /
+   outgoing / incoming), each led by an eyebrow marker and split by a hairline. */
+.mail-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1.05rem; /* same field rhythm as the event editor */
+  padding: 1.4rem 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.mail-group .eyebrow {
+  margin-bottom: 0.1rem;
+}
+
+.mail-group .field-hint,
+.mail-group .toggle {
+  margin-top: -0.25rem; /* hints/toggles read as footnotes of the row above */
+}
+
+/* Server + port: the hostname gets the room, the port stays compact. */
+.mail-server-row {
+  display: grid;
+  grid-template-columns: 1fr 110px;
+  gap: 0.85rem;
+}
+
+.mail-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding-top: 1.3rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.mail-actions .spacer {
+  flex: 1;
+}
+
+.mail-notice-ok {
+  margin: 0.8rem 0 0;
+  font-size: 0.8rem;
+  color: var(--cyan);
+}
+
+@media (max-width: 560px) {
+  .mail-server-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Import/export target panels (Settings → Import & export) */

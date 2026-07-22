@@ -1,6 +1,7 @@
 using System.Globalization;
 using CalendarIT.Application.Calendars;
 using CalendarIT.Domain;
+using CalendarIT.Infrastructure.Mail;
 using CalendarIT.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Calendar = CalendarIT.Domain.Calendar;
@@ -8,7 +9,7 @@ using Calendar = CalendarIT.Domain.Calendar;
 namespace CalendarIT.Infrastructure.Calendars;
 
 /// <summary>EF Core-backed <see cref="IEventService"/>. All queries are scoped by owner.</summary>
-public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : IEventService
+public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IInvitationMailer mailer) : IEventService
 {
     public async Task<IReadOnlyList<EventDto>> GetEventsAsync(
         Guid userId, DateTimeOffset? from, DateTimeOffset? to, CancellationToken cancellationToken = default)
@@ -18,7 +19,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
         var results = new List<EventDto>();
 
         // Single (non-recurring) events: filter by range in SQL.
-        var singles = db.Events.AsNoTracking().Include(e => e.Reminders)
+        var singles = db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees)
             .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule == null);
         if (toUtc is not null)
         {
@@ -33,7 +34,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
         // Recurring series: fetch masters, expand within the window (needs a bounded range).
         if (fromUtc is not null && toUtc is not null)
         {
-            var masters = await db.Events.AsNoTracking().Include(e => e.Reminders)
+            var masters = await db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees)
                 .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule != null)
                 .ToListAsync(cancellationToken);
 
@@ -42,13 +43,14 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
                 var end = m.EndUtc ?? m.StartUtc.AddHours(1);
                 var exDates = ParseExDates(m.ExDates);
                 var reminders = MapReminders(m.Reminders);
+                var attendees = MapAttendees(m.Attendees);
                 foreach (var occ in RecurrenceExpander.Expand(m.StartUtc, end, m.TimeZoneId, m.RRule!, exDates, fromUtc.Value, toUtc.Value))
                 {
                     results.Add(new EventDto(
                         m.Id, m.CalendarId, m.Title, m.Description, m.Location, m.Color,
                         new DateTimeOffset(occ.StartUtc, TimeSpan.Zero),
                         new DateTimeOffset(occ.EndUtc, TimeSpan.Zero),
-                        m.IsAllDay, Recurring: true, Recurrence: m.RRule, Reminders: reminders));
+                        m.IsAllDay, Recurring: true, Recurrence: m.RRule, Reminders: reminders, Attendees: attendees));
                 }
             }
         }
@@ -116,7 +118,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
 
     public async Task<EventDto?> GetByIdAsync(Guid userId, Guid eventId, CancellationToken cancellationToken = default)
     {
-        var entity = await db.Events.AsNoTracking().Include(e => e.Reminders)
+        var entity = await db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees)
             .Where(e => e.Id == eventId && e.Calendar!.OwnerUserId == userId)
             .SingleOrDefaultAsync(cancellationToken);
         return entity is null ? null : ToDto(entity);
@@ -136,15 +138,19 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
         };
         Apply(entity, request, now);
         entity.Reminders = MapReminders(request.Reminders);
+        entity.Attendees = MapAttendees(request.Attendees, existing: null);
 
         db.Events.Add(entity);
         await db.SaveChangesAsync(cancellationToken);
+
+        // Invite the guests (no-op without a configured mail account; failures only log).
+        await mailer.SendRequestAsync(userId, entity, [.. entity.Attendees], cancellationToken);
         return ToDto(entity);
     }
 
     public async Task<EventDto?> UpdateAsync(Guid userId, Guid eventId, SaveEventRequest request, CancellationToken cancellationToken = default)
     {
-        var entity = await db.Events.Include(e => e.Reminders)
+        var entity = await db.Events.Include(e => e.Reminders).Include(e => e.Attendees)
             .Where(e => e.Id == eventId && e.Calendar!.OwnerUserId == userId)
             .SingleOrDefaultAsync(cancellationToken);
         if (entity is null)
@@ -165,19 +171,55 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
         }
 
         Apply(entity, request, timeProvider.GetUtcNow().UtcDateTime);
-        // Replace the reminder set; orphaned rows are deleted (required FK).
+        // Replace the reminder set; orphaned rows are deleted (required FK). The new rows
+        // must be marked Added explicitly: they carry pre-set Guid keys, and EF assumes
+        // navigation-discovered entities with a set store-generated key already exist
+        // (it would issue an UPDATE for a row that was never inserted).
         entity.Reminders.Clear();
         foreach (var reminder in MapReminders(request.Reminders))
         {
             entity.Reminders.Add(reminder);
+            db.Entry(reminder).State = EntityState.Added;
         }
+
+        // Attendees: null leaves the set untouched (e.g. drag edits that don't send it);
+        // otherwise merge in place — retained guests keep their row (and status), guests
+        // no longer listed are removed, new ones are added.
+        var removed = new List<Attendee>();
+        if (request.Attendees is not null)
+        {
+            var next = MapAttendees(request.Attendees, entity.Attendees);
+            foreach (var old in entity.Attendees
+                         .Where(a => !next.Any(n => n.Email.Equals(a.Email, StringComparison.OrdinalIgnoreCase)))
+                         .ToList())
+            {
+                removed.Add(new Attendee { Email = old.Email, Name = old.Name, Status = old.Status });
+                entity.Attendees.Remove(old);
+            }
+            foreach (var added in next
+                         .Where(n => !entity.Attendees.Any(a => a.Email.Equals(n.Email, StringComparison.OrdinalIgnoreCase)))
+                         .ToList())
+            {
+                entity.Attendees.Add(added);
+                db.Entry(added).State = EntityState.Added; // see reminder note above
+            }
+        }
+        if (entity.Attendees.Count > 0 || removed.Count > 0)
+        {
+            entity.Sequence++; // guests' calendars use SEQUENCE to spot the newer version
+        }
+
         await db.SaveChangesAsync(cancellationToken);
+
+        // Everyone still invited gets the updated event; the removed get a cancellation.
+        await mailer.SendRequestAsync(userId, entity, [.. entity.Attendees], cancellationToken);
+        await mailer.SendCancelAsync(userId, entity, removed, cancellationToken);
         return ToDto(entity);
     }
 
     public async Task<bool> DeleteAsync(Guid userId, Guid eventId, DateTimeOffset? occurrence, CancellationToken cancellationToken = default)
     {
-        var entity = await db.Events
+        var entity = await db.Events.Include(e => e.Attendees)
             .Where(e => e.Id == eventId && e.Calendar!.OwnerUserId == userId)
             .SingleOrDefaultAsync(cancellationToken);
         if (entity is null)
@@ -196,8 +238,11 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
             return true;
         }
 
+        var invited = entity.Attendees.ToList();
+        entity.Sequence++; // the cancellation must outrank the last invite
         db.Events.Remove(entity);
         await db.SaveChangesAsync(cancellationToken);
+        await mailer.SendCancelAsync(userId, entity, invited, cancellationToken);
         return true;
     }
 
@@ -221,7 +266,37 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider) : I
             e.Id, e.CalendarId, e.Title, e.Description, e.Location, e.Color,
             new DateTimeOffset(DateTime.SpecifyKind(e.StartUtc, DateTimeKind.Utc)),
             e.EndUtc is null ? null : new DateTimeOffset(DateTime.SpecifyKind(e.EndUtc.Value, DateTimeKind.Utc)),
-            e.IsAllDay, Recurring: e.RRule is not null, Recurrence: e.RRule, Reminders: MapReminders(e.Reminders));
+            e.IsAllDay, Recurring: e.RRule is not null, Recurrence: e.RRule,
+            Reminders: MapReminders(e.Reminders), Attendees: MapAttendees(e.Attendees));
+
+    private static IReadOnlyList<AttendeeDto> MapAttendees(IEnumerable<Attendee> attendees) =>
+        attendees
+            .OrderBy(a => a.Email, StringComparer.OrdinalIgnoreCase)
+            .Select(a => new AttendeeDto(a.Email, a.Name, a.Status.ToString()))
+            .ToList();
+
+    /// <summary>Save-request guests → entities: trimmed, deduplicated by email, and keeping
+    /// the participation status of guests who were already on the event.</summary>
+    private static List<Attendee> MapAttendees(IReadOnlyList<AttendeeInput>? inputs, ICollection<Attendee>? existing)
+    {
+        if (inputs is null)
+        {
+            return [];
+        }
+        var previous = existing?.ToDictionary(a => a.Email, a => a.Status, StringComparer.OrdinalIgnoreCase);
+        return inputs
+            .Where(i => !string.IsNullOrWhiteSpace(i.Email))
+            .Select(i => (Email: i.Email.Trim(), i.Name))
+            .DistinctBy(i => i.Email, StringComparer.OrdinalIgnoreCase)
+            .Select(i => new Attendee
+            {
+                Id = Guid.NewGuid(),
+                Email = i.Email,
+                Name = string.IsNullOrWhiteSpace(i.Name) ? null : i.Name.Trim(),
+                Status = previous is not null && previous.TryGetValue(i.Email, out var kept) ? kept : AttendeeStatus.NeedsAction,
+            })
+            .ToList();
+    }
 
     private static IReadOnlyList<ReminderDto> MapReminders(IEnumerable<Reminder> reminders) =>
         reminders

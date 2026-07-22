@@ -587,7 +587,9 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    calendars?: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -624,7 +626,10 @@ export interface paths {
         put?: never;
         post: {
             parameters: {
-                query?: never;
+                query?: {
+                    calendarId?: string;
+                    newCalendarName?: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -890,6 +895,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mail-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MailAccountDto"];
+                        "application/json": components["schemas"]["MailAccountDto"];
+                        "text/json": components["schemas"]["MailAccountDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveMailAccountRequest"];
+                    "text/json": components["schemas"]["SaveMailAccountRequest"];
+                    "application/*+json": components["schemas"]["SaveMailAccountRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MailAccountDto"];
+                        "application/json": components["schemas"]["MailAccountDto"];
+                        "text/json": components["schemas"]["MailAccountDto"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail-account/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["MailTestResult"];
+                        "application/json": components["schemas"]["MailTestResult"];
+                        "text/json": components["schemas"]["MailTestResult"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile": {
         parameters: {
             query?: never;
@@ -1068,6 +1213,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AttendeeDto: {
+            email: string;
+            name: null | string;
+            status: string;
+        };
+        AttendeeInput: {
+            email: string;
+            name?: null | string;
+        };
         AuthTokens: {
             accessToken: string;
             /** Format: date-time */
@@ -1100,6 +1254,7 @@ export interface components {
             recurring: boolean;
             recurrence: null | string;
             reminders: components["schemas"]["ReminderDto"][];
+            attendees: components["schemas"]["AttendeeDto"][];
         };
         EventSearchResult: {
             /** Format: uuid */
@@ -1124,6 +1279,23 @@ export interface components {
         };
         LogoutRequest: {
             refreshToken: string;
+        };
+        MailAccountDto: {
+            address: string;
+            smtpHost: string;
+            /** Format: int32 */
+            smtpPort: number | string;
+            smtpUseSsl: boolean;
+            imapHost: null | string;
+            /** Format: int32 */
+            imapPort: number | string;
+            imapUseSsl: boolean;
+            username: string;
+            hasPassword: boolean;
+        };
+        MailTestResult: {
+            ok: boolean;
+            error: null | string;
         };
         ProblemDetails: {
             type?: null | string;
@@ -1173,6 +1345,20 @@ export interface components {
             reminders?: null | components["schemas"]["ReminderInput"][];
             /** Format: uuid */
             calendarId?: null | string;
+            attendees?: null | components["schemas"]["AttendeeInput"][];
+        };
+        SaveMailAccountRequest: {
+            address: string;
+            smtpHost: string;
+            /** Format: int32 */
+            smtpPort?: number | string;
+            smtpUseSsl?: boolean;
+            imapHost?: null | string;
+            /** Format: int32 */
+            imapPort?: number | string;
+            imapUseSsl?: boolean;
+            username: string;
+            password?: null | string;
         };
         UpdateViewRequest: {
             view: string;
