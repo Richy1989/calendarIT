@@ -83,12 +83,14 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
             Location = e.Location,
         };
 
-        var end = e.EndUtc ?? (e.IsAllDay ? e.StartUtc.AddDays(1) : e.StartUtc.AddHours(1));
+        var end = e.EndUtc ?? e.StartUtc.AddHours(1);
 
         if (e.IsAllDay)
         {
+            // Stored all-day ends are the inclusive last day; iCalendar's DTEND is exclusive,
+            // so a one-day event (end == start) exports as DTEND = DTSTART + 1 day.
             ve.Start = new CalDateTime(DateOnly.FromDateTime(e.StartUtc));
-            ve.End = new CalDateTime(DateOnly.FromDateTime(end));
+            ve.End = new CalDateTime(DateOnly.FromDateTime((e.EndUtc ?? e.StartUtc).AddDays(1)));
         }
         else if (!string.IsNullOrWhiteSpace(e.TimeZoneId))
         {
@@ -124,6 +126,15 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
         var isAllDay = !ve.Start!.HasTime;
         var startUtc = ve.Start.AsUtc;
         DateTime? endUtc = ve.End?.AsUtc;
+
+        // iCalendar's DTEND is exclusive, but we store all-day ends as the inclusive last day
+        // (the convention events created in the UI use). Without this, a one-day imported
+        // event (DTEND = DTSTART + 1 day) would span two days in the calendar.
+        if (isAllDay && endUtc is not null)
+        {
+            var inclusive = endUtc.Value.AddDays(-1);
+            endUtc = inclusive < startUtc ? startUtc : inclusive;
+        }
 
         var rrule = ve.RecurrenceRules.Count > 0
             ? new RecurrencePatternSerializer().SerializeToString(ve.RecurrenceRules[0])
