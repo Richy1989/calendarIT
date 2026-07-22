@@ -141,6 +141,26 @@ public sealed class CalDavHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task Put_WithoutColorProperty_PreservesStoredColor()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+
+        var ctx = Context(PutIcs);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+        var stored = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        stored.Color = "#7B68EE"; // as chosen in the web UI
+        await _db.SaveChangesAsync();
+
+        // Phone edit whose ICS carries no COLOR property (the common case) must not wipe it.
+        ctx = Context(PutIcs.Replace("From the phone", "Edited on the phone"));
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        var updated = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        Assert.Equal("Edited on the phone", updated.Title);
+        Assert.Equal("#7B68EE", updated.Color);
+    }
+
+    [Fact]
     public async Task Report_CalendarQuery_ReturnsCalendarData()
     {
         var calId = await DiscoverCalendarIdAsync();

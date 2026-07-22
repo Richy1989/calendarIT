@@ -100,12 +100,18 @@ public static class ICalEventMapper
             ? new RecurrencePatternSerializer().SerializeToString(ve.RecurrenceRules[0])
             : null;
 
+        // Only overwrite the stored color when the VEVENT actually carries one: most CalDAV
+        // clients don't round-trip the RFC 7986 COLOR property, and an edit synced from a
+        // phone must not wipe the color chosen in the web UI.
         var colorValue = ve.Properties["COLOR"]?.Value?.ToString();
 
         e.Title = string.IsNullOrWhiteSpace(ve.Summary) ? "(untitled)" : ve.Summary;
         e.Description = ve.Description;
         e.Location = ve.Location;
-        e.Color = CssColorMap.ToHex(colorValue);
+        if (colorValue is not null)
+        {
+            e.Color = CssColorMap.ToHex(colorValue);
+        }
         e.StartUtc = startUtc;
         e.EndUtc = endUtc;
         e.IsAllDay = isAllDay;
