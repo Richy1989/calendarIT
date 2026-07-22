@@ -6,12 +6,15 @@
 #   docker buildx version        # buildx ships with Docker Desktop / modern Docker Engine
 #
 # Usage:
-#   ./deploy/build-and-push.sh                 # builds & pushes richy1989/calendarit:latest
-#   ./deploy/build-and-push.sh --tag v0.1.0    # also tags/pushes a version alongside :latest
+#   ./deploy/build-and-push.sh                 # builds & pushes richy1989/calendarit:dev
+#   ./deploy/build-and-push.sh --tag v0.1.0    # release: also pushes :latest and :v0.1.0
+#
+# :dev always tracks the newest build. :latest only moves on a release, i.e. when a real
+# version tag is passed — so a dev push can never clobber production.
 set -euo pipefail
 
 IMAGE="richy1989/calendarit"
-TAG="latest"
+TAG=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -28,17 +31,23 @@ done
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
-tags=(-t "${IMAGE}:latest")
+# :dev is always pushed; a version tag additionally moves :latest and pushes the version.
+tags=(-t "${IMAGE}:dev")
 build_args=()
-if [[ "$TAG" != "latest" ]]; then
-    tags+=(-t "${IMAGE}:${TAG}")
-    # Stamp a real version only for version tags. Passing VERSION=latest would break the
-    # build: Docker exposes the ARG as an env var and MSBuild reads it as the project's
-    # $(Version), which NuGet then fails to parse during restore.
+if [[ -n "$TAG" && "$TAG" != "dev" ]]; then
+    # Only accept real version tags here. Stamping a non-version (like "latest" or "dev")
+    # would break the build: Docker exposes the ARG as an env var and MSBuild reads it as
+    # the project's $(Version), which NuGet then fails to parse during restore.
+    if [[ ! "$TAG" =~ ^v?[0-9]+(\.[0-9]+){2}(-[0-9A-Za-z.-]+)?$ ]]; then
+        echo "Tag '$TAG' is not a version tag (expected e.g. v0.1.0). Omit --tag for a dev-only push." >&2
+        exit 1
+    fi
+    tags+=(-t "${IMAGE}:${TAG}" -t "${IMAGE}:latest")
     build_args+=(--build-arg VERSION="${TAG#v}")
 fi
 
-echo "Building and pushing ${IMAGE}:${TAG} for linux/amd64 (Unraid)..."
+pushed="${tags[*]}"; pushed="${pushed//-t /}"
+echo "Building and pushing ${pushed} for linux/amd64 (Unraid)..."
 docker buildx build --platform linux/amd64 -f deploy/Dockerfile "${build_args[@]}" "${tags[@]}" --push .
 
-echo "Done. On Unraid, pull/refresh: ${IMAGE}:${TAG}"
+echo "Done. On Unraid, pull/refresh: ${IMAGE}:${TAG:-dev}"
