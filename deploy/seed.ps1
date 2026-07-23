@@ -1,14 +1,19 @@
 #requires -Version 7
-# Seeds the CalendarIT backend with a demo user and two calendars full of demo events.
+# Seeds the CalendarIT backend with a demo user, two calendars, and a set of categories,
+# then fills the calendar with demo events that each take their colour from a category.
 #
-#   User      -> test@test.com / Test1234#1234 (registered if missing, otherwise logged in)
-#   Calendars -> "Personal" (the default) and "Work" (created if missing), so the
-#                calendar switcher has something to toggle.
-#   Events    -> anchored to the FIRST DAY OF THE CURRENT MONTH, so the seeded calendar
-#                always looks current: weekly recurring series (standup, gym, team sync,
-#                sprint review, family dinner), all-day + multi-day events (birthday,
-#                conference, payday), and one-off appointments across this and next month.
-#                Work-ish events land in "Work", everything else in "Personal".
+#   User       -> test@test.com / Test1234#1234 (registered if missing, otherwise logged in)
+#   Calendars  -> "Personal" (the default) and "Work" (created if missing), so the
+#                 calendar switcher has something to toggle.
+#   Categories -> Work, Personal, Family, Health, Social, Finance, Travel. New accounts
+#                 already have Work/Personal/Family (registration defaults) — those are
+#                 reused; the rest are created. Each event references one; its colour comes
+#                 from the category.
+#   Events     -> anchored to the FIRST DAY OF THE CURRENT MONTH, so the seeded calendar
+#                 always looks current: weekly recurring series (standup, gym, team sync,
+#                 sprint review, family dinner), all-day + multi-day events (birthday,
+#                 conference, payday), and one-off appointments across this and next month.
+#                 Work-ish events land in "Work", everything else in "Personal".
 #
 # The backend must already be running (e.g. via ./deploy/dev.ps1).
 #
@@ -58,16 +63,44 @@ $auth = @{ Authorization = "Bearer $($tokens.accessToken)" }
 # ---------- calendars -----------------------------------------------------------------
 # Listing bootstraps the default "Personal" calendar server-side; "Work" is ours to add.
 
-$calendars = @(Invoke-RestMethod -Uri "$BaseUrl/api/calendars" -Headers $auth)
-$personalId = $calendars[0].id
+$calendars = Invoke-RestMethod -Uri "$BaseUrl/api/calendars" -Headers $auth
+$personalId = [string](@($calendars)[0].id)
 
-$work = $calendars | Where-Object { $_.name -eq 'Work' } | Select-Object -First 1
+$work = @($calendars) | Where-Object { $_.name -eq 'Work' } | Select-Object -First 1
 if (-not $work) {
     $work = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/calendars" -Headers $auth `
         -ContentType 'application/json' -Body (@{ name = 'Work' } | ConvertTo-Json)
     Write-Host "==> created 'Work' calendar" -ForegroundColor Green
 }
-$workId = $work.id
+$workId = [string]$work.id
+
+# ---------- categories ----------------------------------------------------------------
+# New accounts start with default categories (Work, Personal, Family, Important); we reuse
+# any that already exist and create the rest. Colours are exact CSS3-named values (app
+# swatch convention, lossless for the iCalendar COLOR property). Each event takes its
+# colour from its category.
+
+$categoryColors = [ordered]@{
+    Work     = '#6495ED'  # cornflowerblue
+    Personal = '#3CB371'  # mediumseagreen
+    Family   = '#DAA520'  # goldenrod
+    Health   = '#FF6347'  # tomato
+    Social   = '#BA55D3'  # mediumorchid
+    Finance  = '#FFD700'  # gold
+    Travel   = '#40E0D0'  # turquoise
+}
+
+$categoryId = @{}
+$existingCategories = Invoke-RestMethod -Uri "$BaseUrl/api/categories" -Headers $auth
+foreach ($c in $existingCategories) { $categoryId[[string]$c.name] = [string]$c.id }
+foreach ($name in $categoryColors.Keys) {
+    if (-not $categoryId.ContainsKey($name)) {
+        $created = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/categories" -Headers $auth `
+            -ContentType 'application/json' -Body (@{ name = $name; color = $categoryColors[$name] } | ConvertTo-Json)
+        $categoryId[$name] = $created.id
+        Write-Host "==> created category '$name'" -ForegroundColor Green
+    }
+}
 
 # ---------- date helpers --------------------------------------------------------------
 
@@ -116,7 +149,7 @@ if ($existing.Count -gt 0 -and -not $Force) {
 }
 
 # ---------- event definitions ---------------------------------------------------------
-# Colors are exact CSS3-named values (app swatch convention, lossless for iCal COLOR).
+# Each event names a category (see above); its colour is inherited from that category.
 
 $monday    = First-Dow $monthStart ([DayOfWeek]::Monday)
 $tuesday   = First-Dow $monthStart ([DayOfWeek]::Tuesday)
@@ -130,92 +163,92 @@ $confStart = First-Dow $week3 ([DayOfWeek]::Tuesday)
 
 $events = @(
     # --- recurring series -------------------------------------------------------------
-    @{ title = 'Team standup'; color = '#4682B4'; work = $true # steelblue
+    @{ title = 'Team standup'; category = 'Work'; work = $true
        start = UtcIso $monday 9 15; end = UtcIso $monday 9 30
        recurrence = 'FREQ=WEEKLY;BYDAY=MO,WE,FR'; location = 'Zoom'
        description = 'Daily sync — what shipped, what''s next, blockers.'
        reminders = @(@{ minutesBefore = 10; channel = 'Email' }) }
 
-    @{ title = 'Team sync'; color = '#7B68EE'; work = $true # mediumslateblue
+    @{ title = 'Team sync'; category = 'Work'; work = $true
        start = UtcIso $monday 11 0; end = UtcIso $monday 12 0
        recurrence = 'FREQ=WEEKLY'; location = 'Room 2.04'
        description = 'Weekly planning and demos.' }
 
-    @{ title = 'Gym'; color = '#FF6347' # tomato
+    @{ title = 'Gym'; category = 'Health'
        start = UtcIso $tuesday 18 0; end = UtcIso $tuesday 19 30
        recurrence = 'FREQ=WEEKLY;BYDAY=TU,TH'; location = 'FitOne' }
 
-    @{ title = 'Sprint review'; color = '#FFA500'; work = $true # orange
+    @{ title = 'Sprint review'; category = 'Work'; work = $true
        start = UtcIso $friday 14 0; end = UtcIso $friday 15 0
        recurrence = 'FREQ=WEEKLY;INTERVAL=2'; location = 'Room 1.01'
        description = 'Demo, retro, next sprint scope.' }
 
-    @{ title = 'Family dinner'; color = '#3CB371' # mediumseagreen
+    @{ title = 'Family dinner'; category = 'Family'
        start = UtcIso $sunday 18 0; end = UtcIso $sunday 20 0
        recurrence = 'FREQ=WEEKLY' }
 
     # --- all-day / multi-day ----------------------------------------------------------
-    @{ title = "Mom's birthday"; color = '#FF69B4' # hotpink
+    @{ title = "Mom's birthday"; category = 'Family'
        start = AllDayIso $monthStart.AddDays(11); allDay = $true
        reminders = @(@{ minutesBefore = 1440; channel = 'Email' }) }
 
-    @{ title = 'DevConf'; color = '#40E0D0'; work = $true # turquoise
+    @{ title = 'DevConf'; category = 'Travel'; work = $true
        start = AllDayIso $confStart; end = AllDayIso $confStart.AddDays(2); allDay = $true
        location = 'Convention Center'
        description = 'Three days of talks and workshops.' }
 
-    @{ title = 'Payday'; color = '#FFD700' # gold
+    @{ title = 'Payday'; category = 'Finance'
        start = AllDayIso $monthStart.AddDays(27); allDay = $true }
 
-    @{ title = 'Day off'; color = '#3CB371' # mediumseagreen
+    @{ title = 'Day off'; category = 'Personal'
        start = AllDayIso (First-Dow $nextMonth.AddDays(7) ([DayOfWeek]::Friday)); allDay = $true }
 
     # --- one-off appointments, this month ---------------------------------------------
-    @{ title = 'Dentist'; color = '#6495ED' # cornflowerblue
+    @{ title = 'Dentist'; category = 'Health'
        start = UtcIso (First-Dow $week2 ([DayOfWeek]::Wednesday)) 8 30
        end   = UtcIso (First-Dow $week2 ([DayOfWeek]::Wednesday)) 9 15
        location = 'Dr. Weber'; reminders = @(@{ minutesBefore = 60; channel = 'Email' }) }
 
-    @{ title = '1:1 with Sam'; color = '#7B68EE'; work = $true # mediumslateblue
+    @{ title = '1:1 with Sam'; category = 'Work'; work = $true
        start = UtcIso (First-Dow $week2 ([DayOfWeek]::Thursday)) 10 0
        end   = UtcIso (First-Dow $week2 ([DayOfWeek]::Thursday)) 10 30 }
 
-    @{ title = 'Movie night'; color = '#BA55D3' # mediumorchid
+    @{ title = 'Movie night'; category = 'Social'
        start = UtcIso (First-Dow $week2 ([DayOfWeek]::Saturday)) 20 0
        end   = UtcIso (First-Dow $week2 ([DayOfWeek]::Saturday)) 22 30
        location = 'Cinestar' }
 
-    @{ title = 'Lunch with Alex'; color = '#FFA500'; work = $true # orange
+    @{ title = 'Lunch with Alex'; category = 'Social'; work = $true
        start = UtcIso (First-Dow $week3 ([DayOfWeek]::Friday)) 12 30
        end   = UtcIso (First-Dow $week3 ([DayOfWeek]::Friday)) 13 30
        location = 'Café Milano' }
 
-    @{ title = 'Badminton with Chris'; color = '#FF6347' # tomato
+    @{ title = 'Badminton with Chris'; category = 'Health'
        start = UtcIso (First-Dow $week3 ([DayOfWeek]::Saturday)) 10 0
        end   = UtcIso (First-Dow $week3 ([DayOfWeek]::Saturday)) 11 30 }
 
-    @{ title = 'Car service'; color = '#4682B4' # steelblue
+    @{ title = 'Car service'; category = 'Personal'
        start = UtcIso (First-Dow $week3 ([DayOfWeek]::Monday)) 7 45
        end   = UtcIso (First-Dow $week3 ([DayOfWeek]::Monday)) 8 15
        location = 'Autohaus Nord' }
 
-    @{ title = 'Haircut'; color = '#BA55D3' # mediumorchid
+    @{ title = 'Haircut'; category = 'Personal'
        start = UtcIso (First-Dow $week4 ([DayOfWeek]::Tuesday)) 16 30
        end   = UtcIso (First-Dow $week4 ([DayOfWeek]::Tuesday)) 17 0 }
 
-    @{ title = 'Project deadline: v1.0'; color = '#DC143C'; work = $true # crimson
+    @{ title = 'Project deadline: v1.0'; category = 'Work'; work = $true
        start = UtcIso (First-Dow $week4 ([DayOfWeek]::Friday)) 17 0
        end   = UtcIso (First-Dow $week4 ([DayOfWeek]::Friday)) 18 0
        description = 'Ship it. 🚀'
        reminders = @(@{ minutesBefore = 120; channel = 'Email' }) }
 
     # --- one-off appointments, next month ---------------------------------------------
-    @{ title = 'Quarterly planning'; color = '#7B68EE'; work = $true # mediumslateblue
+    @{ title = 'Quarterly planning'; category = 'Work'; work = $true
        start = UtcIso (First-Dow $nextMonth ([DayOfWeek]::Wednesday)) 9 0
        end   = UtcIso (First-Dow $nextMonth ([DayOfWeek]::Wednesday)) 12 0
        location = 'Room 1.01' }
 
-    @{ title = 'Doctor check-up'; color = '#6495ED' # cornflowerblue
+    @{ title = 'Doctor check-up'; category = 'Health'
        start = UtcIso (First-Dow $nextMonth.AddDays(14) ([DayOfWeek]::Monday)) 9 30
        end   = UtcIso (First-Dow $nextMonth.AddDays(14) ([DayOfWeek]::Monday)) 10 0
        reminders = @(@{ minutesBefore = 60; channel = 'Email' }) }
@@ -231,7 +264,7 @@ foreach ($e in $events) {
         title       = $e.title
         description = $e.description ?? $null
         location    = $e.location ?? $null
-        color       = $e.color
+        categoryId  = $categoryId[$e.category]
         start       = $e.start
         end         = $e.end ?? $null
         allDay      = [bool]($e.allDay ?? $false)
@@ -244,7 +277,7 @@ foreach ($e in $events) {
         -ContentType 'application/json' -Body $body
     $kind = if ($e.recurrence) { 'recurring' } elseif ($e.allDay) { 'all-day' } else { 'one-off' }
     $cal  = if ($e.work) { 'Work' } else { 'Personal' }
-    Write-Host ("    + {0,-24} ({1}, {2})" -f $e.title, $kind, $cal)
+    Write-Host ("    + {0,-24} ({1}, {2}, {3})" -f $e.title, $kind, $cal, $e.category)
 }
 
 Write-Host "==> done. Log in as $Email / $Password and enjoy the view." -ForegroundColor Green

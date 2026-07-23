@@ -52,11 +52,16 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
   calendar or a new one.
 - 🔐 **Accounts** — email + password, JWT sessions with rotating refresh tokens.
 
-<p align="center">
-  <img src="docs/ScreenShot_Week.png" alt="CalendarIT — week view" width="100%" />
-  <br />
-  <sub>Week view — drag on the grid to create an appointment, drag events to move or resize them.</sub>
-</p>
+<table>
+  <tr>
+    <td width="50%"><a href="docs/ScreenShot_Week.png"><img src="docs/ScreenShot_Week.png" alt="CalendarIT — week view" /></a></td>
+    <td width="50%"><a href="docs/ScreenShot_List_Search.png"><img src="docs/ScreenShot_List_Search.png" alt="CalendarIT — list view with instant search" /></a></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Week</b> — drag on the grid to create; drag events to move or resize.</sub></td>
+    <td align="center"><sub><b>List &amp; search</b> — every appointment in one scroll; jump to any by title or location.</sub></td>
+  </tr>
+</table>
 
 ## Tech
 
