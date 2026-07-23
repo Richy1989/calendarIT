@@ -63,6 +63,7 @@ public static class DependencyInjection
         services.AddScoped<MailAccountService>();
         services.AddScoped<IMailAccountService>(sp => sp.GetRequiredService<MailAccountService>());
         services.AddScoped<IInvitationMailer, InvitationMailer>();
+        services.AddScoped<IInvitationReplyService, InvitationReplyService>();
 
         AddReminders(services, configuration);
 
@@ -92,15 +93,23 @@ public static class DependencyInjection
             services.AddScoped<IEmailSender, LogEmailSender>();
         }
 
-        // Quartz: dispatch due reminders once a minute.
+        // Quartz: both jobs tick once a minute. The reminder job fires due reminders; the inbox
+        // job scans each account no more often than its own ScanIntervalMinutes.
         services.AddQuartz(q =>
         {
-            var jobKey = new JobKey("reminder-dispatch");
-            q.AddJob<ReminderDispatchJob>(o => o.WithIdentity(jobKey));
+            var reminderKey = new JobKey("reminder-dispatch");
+            q.AddJob<ReminderDispatchJob>(o => o.WithIdentity(reminderKey));
             q.AddTrigger(t => t
-                .ForJob(jobKey)
+                .ForJob(reminderKey)
                 .WithIdentity("reminder-dispatch-trigger")
                 .WithCronSchedule("0 * * * * ?")); // every minute
+
+            var inboxKey = new JobKey("invitation-inbox");
+            q.AddJob<InvitationInboxJob>(o => o.WithIdentity(inboxKey));
+            q.AddTrigger(t => t
+                .ForJob(inboxKey)
+                .WithIdentity("invitation-inbox-trigger")
+                .WithCronSchedule("0 * * * * ?")); // every minute; per-account interval gates the work
         });
         services.AddQuartzHostedService(o => o.WaitForJobsToComplete = true);
     }

@@ -12,6 +12,7 @@ public sealed record MailAccountDto(
     int ImapPort,
     bool ImapUseSsl,
     string Username,
+    int ScanIntervalMinutes,
     bool HasPassword);
 
 /// <summary>Create/update payload. A null/empty <see cref="Password"/> keeps the stored one.</summary>
@@ -36,6 +37,10 @@ public sealed class SaveMailAccountRequest
     public int ImapPort { get; init; } = 993;
 
     public bool ImapUseSsl { get; init; } = true;
+
+    /// <summary>How often (minutes) to check the inbox for guest replies. 1–1440; default 5.</summary>
+    [Range(1, 1440)]
+    public int ScanIntervalMinutes { get; init; } = 5;
 
     [Required, MaxLength(320)]
     public string Username { get; init; } = string.Empty;

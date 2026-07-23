@@ -34,6 +34,20 @@ public class MailAccount
     /// <summary>Mailbox password as Data-Protection ciphertext.</summary>
     public string PasswordProtected { get; set; } = string.Empty;
 
+    /// <summary>How often (minutes) the inbox scanner checks for guest replies. Default 5.</summary>
+    public int ScanIntervalMinutes { get; set; } = 5;
+
+    /// <summary>When the inbox was last scanned (UTC); null = never. Gates the scan cadence.</summary>
+    public DateTime? LastScanAt { get; set; }
+
+    /// <summary>IMAP UIDVALIDITY of the inbox at the last scan. A change means the server
+    /// renumbered UIDs, so <see cref="ImapLastUid"/> is stale and scanning restarts.</summary>
+    public long? ImapUidValidity { get; set; }
+
+    /// <summary>Highest IMAP UID already processed — the idempotency highwater mark, so each
+    /// reply is applied once and untouched messages are never re-downloaded.</summary>
+    public long? ImapLastUid { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }

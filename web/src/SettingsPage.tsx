@@ -519,6 +519,7 @@ function EmailSection() {
   const [imapHost, setImapHost] = useState('')
   const [imapPort, setImapPort] = useState(993)
   const [imapUseSsl, setImapUseSsl] = useState(true)
+  const [scanIntervalMinutes, setScanIntervalMinutes] = useState(5)
   const [loadedFor, setLoadedFor] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null)
 
@@ -535,6 +536,7 @@ function EmailSection() {
     setImapHost(account?.imapHost ?? '')
     setImapPort(Number(account?.imapPort ?? 993))
     setImapUseSsl(account?.imapUseSsl ?? true)
+    setScanIntervalMinutes(Number(account?.scanIntervalMinutes ?? 5))
   }
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['mail-account'] })
@@ -567,6 +569,7 @@ function EmailSection() {
       imapHost: imapHost.trim() || null,
       imapPort,
       imapUseSsl,
+      scanIntervalMinutes,
       username: username.trim(),
       password: password || null,
     })
@@ -642,9 +645,23 @@ function EmailSection() {
           <input type="checkbox" checked={imapUseSsl} onChange={(e) => setImapUseSsl(e.target.checked)} />
           <span>IMAP over TLS (port 993)</span>
         </label>
+        <div className="field mail-scan-field">
+          <label htmlFor="ma-scan">Check for replies every</label>
+          <div className="mail-scan-input">
+            <input
+              id="ma-scan"
+              type="number"
+              min={1}
+              max={1440}
+              value={scanIntervalMinutes}
+              onChange={(e) => setScanIntervalMinutes(Math.min(1440, Math.max(1, Number(e.target.value) || 1)))}
+            />
+            <span>minutes</span>
+          </div>
+        </div>
         <p className="field-hint">
-          Used to receive invitations into your calendar automatically — that part is coming soon, but you
-          can set it up already.
+          When IMAP is set, your inbox is scanned on this interval for guests' Accept/Decline replies, and
+          their status updates on the event automatically. Messages are only read, never changed or deleted.
         </p>
       </div>
 

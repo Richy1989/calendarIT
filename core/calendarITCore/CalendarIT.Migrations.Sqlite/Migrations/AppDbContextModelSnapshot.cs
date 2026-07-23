@@ -168,16 +168,30 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("ImapLastUid")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("ImapPort")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("ImapUidValidity")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("ImapUseSsl")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("LastScanAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PasswordProtected")
                         .IsRequired()
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("ScanIntervalMinutes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(5);
 
                     b.Property<string>("SmtpHost")
                         .IsRequired()

@@ -1252,6 +1252,25 @@
   gap: 0.85rem;
 }
 
+.mail-scan-field {
+  margin-top: 0.85rem;
+}
+
+.mail-scan-input {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.mail-scan-input input {
+  width: 90px;
+}
+
+.mail-scan-input span {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
 .mail-actions {
   display: flex;
   align-items: center;

@@ -152,11 +152,12 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Multiple calendars — create/rename/delete in Settings, per-calendar visibility
   toggles, each exposed as its own CalDAV collection
 - 🚧 Web Push reminders (VAPID + service worker)
-- 🚧 Inviting guests — **outgoing invitations work**: connect your own email account
-  (Settings → Email, password stored encrypted), add guests to an event, and they get a
-  standard iMIP invite with Accept/Decline in their calendar; updates and cancellations
-  are mailed too. Incoming replies / invitations (IMAP inbox scanning) are next — guest
-  statuses don't update yet.
+- ✅ Inviting guests — connect your own email account (Settings → Email, password stored
+  encrypted), add guests to an event, and they get a standard iMIP invite with Accept/Decline
+  in their calendar; updates and cancellations are mailed too. **Guest replies now sync back**:
+  with IMAP configured, your inbox is scanned on a configurable interval (default 5 min) and
+  each Accept/Decline/Tentative updates the guest's status on the event (read-only, idempotent —
+  messages are never modified). Still to come: receiving *incoming* invitations from others.
 - ❌ Optimizing for small screens, does not look pretty currenty on the phone
 
 Not everything above is wired end-to-end yet — check the roadmap before relying on a

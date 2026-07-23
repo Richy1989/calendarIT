@@ -116,6 +116,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(a => a.ImapHost).HasMaxLength(255);
             entity.Property(a => a.Username).HasMaxLength(320).IsRequired();
             entity.Property(a => a.PasswordProtected).HasMaxLength(2000).IsRequired();
+            entity.Property(a => a.ScanIntervalMinutes).HasDefaultValue(5);
 
             entity.HasOne<ApplicationUser>()
                 .WithOne()

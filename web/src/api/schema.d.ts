@@ -1291,6 +1291,8 @@ export interface components {
             imapPort: number | string;
             imapUseSsl: boolean;
             username: string;
+            /** Format: int32 */
+            scanIntervalMinutes: number | string;
             hasPassword: boolean;
         };
         MailTestResult: {
@@ -1357,6 +1359,8 @@ export interface components {
             /** Format: int32 */
             imapPort?: number | string;
             imapUseSsl?: boolean;
+            /** Format: int32 */
+            scanIntervalMinutes?: number | string;
             username: string;
             password?: null | string;
         };

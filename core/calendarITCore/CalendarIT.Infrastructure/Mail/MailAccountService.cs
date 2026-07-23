@@ -47,6 +47,7 @@ public sealed class MailAccountService(
         entity.ImapHost = string.IsNullOrWhiteSpace(request.ImapHost) ? null : request.ImapHost.Trim();
         entity.ImapPort = request.ImapPort;
         entity.ImapUseSsl = request.ImapUseSsl;
+        entity.ScanIntervalMinutes = request.ScanIntervalMinutes;
         entity.Username = request.Username.Trim();
         if (!string.IsNullOrEmpty(request.Password))
         {
@@ -126,6 +127,10 @@ public sealed class MailAccountService(
         return password is null ? null : (entity, password);
     }
 
+    /// <summary>Decrypts a tracked account's mailbox password for internal senders/scanners;
+    /// null when none is stored or the protection keys can't read it.</summary>
+    internal string? Unprotect(MailAccount account) => UnprotectPassword(account);
+
     private string? UnprotectPassword(MailAccount entity)
     {
         if (string.IsNullOrEmpty(entity.PasswordProtected))
@@ -145,5 +150,6 @@ public sealed class MailAccountService(
     private MailAccountDto ToDto(MailAccount a) =>
         new(a.Address, a.SmtpHost, a.SmtpPort, a.SmtpUseSsl,
             a.ImapHost, a.ImapPort, a.ImapUseSsl, a.Username,
+            a.ScanIntervalMinutes,
             HasPassword: UnprotectPassword(a) is not null);
 }
