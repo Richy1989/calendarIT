@@ -383,6 +383,42 @@ button {
   color: var(--cyan);
 }
 
+/* ---- Scrollbars ----------------------------------------------------------
+   Only the time-grid body legitimately scrolls (a full day never fits the
+   viewport) — FullCalendar marks that scroller `fc-scroller-liquid-absolute`.
+   Base rule keeps every calendar scroller slim + themed (never the chunky
+   native bar); the day-header and all-day scrollers carry no overflow, so their
+   bars are pure noise and get hidden. */
+.calendar-shell .fc .fc-scroller {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: var(--hairline-strong) transparent;
+}
+.calendar-shell .fc .fc-scroller::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.calendar-shell .fc .fc-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+.calendar-shell .fc .fc-scroller::-webkit-scrollbar-thumb {
+  background: var(--hairline-strong);
+  border-radius: 999px;
+  border: 3px solid transparent; /* inset the thumb so it reads as a slim pill */
+  background-clip: padding-box;
+}
+.calendar-shell .fc .fc-scroller::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+  background-clip: padding-box;
+}
+
+/* Hide the bar on any scroller that isn't the scrolling time-grid body. */
+.calendar-shell .fc .fc-scroller:not(.fc-scroller-liquid-absolute) {
+  scrollbar-width: none; /* Firefox */
+}
+.calendar-shell .fc .fc-scroller:not(.fc-scroller-liquid-absolute)::-webkit-scrollbar {
+  display: none; /* Chromium / Safari */
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
