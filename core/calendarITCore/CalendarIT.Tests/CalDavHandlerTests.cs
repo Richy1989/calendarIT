@@ -161,6 +161,45 @@ public sealed class CalDavHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task Put_WithColorProperty_UpdatesStoredColor()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+
+        var ctx = Context(PutIcs);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+        var stored = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        stored.Color = "#7B68EE"; // as chosen in the web UI
+        await _db.SaveChangesAsync();
+
+        // DAVx⁵ snaps the Android color to the nearest of ALL 147 CSS3 names, so names
+        // outside the default swatches (e.g. darkseagreen) must resolve too.
+        ctx = Context(PutIcs.Replace("SUMMARY:From the phone", "SUMMARY:From the phone\r\nCOLOR:darkseagreen"));
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        var updated = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        Assert.Equal("#8FBC8F", updated.Color);
+    }
+
+    [Fact]
+    public async Task Put_WithUnresolvableColor_PreservesStoredColor()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+
+        var ctx = Context(PutIcs);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+        var stored = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        stored.Color = "#7B68EE";
+        await _db.SaveChangesAsync();
+
+        // A COLOR value we can't map to a hex must not wipe the color chosen in the web UI.
+        ctx = Context(PutIcs.Replace("SUMMARY:From the phone", "SUMMARY:From the phone\r\nCOLOR:not-a-css-color"));
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        var updated = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        Assert.Equal("#7B68EE", updated.Color);
+    }
+
+    [Fact]
     public async Task Report_CalendarQuery_ReturnsCalendarData()
     {
         var calId = await DiscoverCalendarIdAsync();
