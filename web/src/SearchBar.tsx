@@ -23,6 +23,25 @@ export default function SearchBar({ onPick }: { onPick: (isoDate: string) => voi
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Type-to-search: a printable keystroke anywhere on the page (not inside a field, and
+  // with no dialog/popover open) focuses the search box, and that same keystroke lands
+  // in it — focusing during keydown makes the browser deliver the character here.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return // printable chars only, no shortcuts
+      if (e.key === ' ') return // space scrolls / activates buttons — not a search trigger
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (target?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (document.querySelector('.modal-overlay, .ctx-backdrop')) return // the editor or a popover owns the keyboard
+      const el = inputRef.current
+      if (el && document.activeElement !== el) el.focus()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // Debounce so we don't fire a request on every keystroke.
   useEffect(() => {
@@ -67,7 +86,15 @@ export default function SearchBar({ onPick }: { onPick: (isoDate: string) => voi
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
-      setOpen(false)
+      // First Esc closes the dropdown; the next one clears and leaves the box, so the
+      // arrow keys page the calendar again.
+      if (open && debounced.length > 0) {
+        setOpen(false)
+      } else {
+        setQ('')
+        setDebounced('')
+        inputRef.current?.blur()
+      }
       return
     }
     if (!results.length) return
@@ -90,6 +117,7 @@ export default function SearchBar({ onPick }: { onPick: (isoDate: string) => voi
         <path d="m20 20-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       </svg>
       <input
+        ref={inputRef}
         type="text"
         className="search-input"
         placeholder="Search appointments…"
