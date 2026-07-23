@@ -152,6 +152,52 @@ public sealed class CategoryServiceTests : IDisposable
         // Idempotent: a second run creates nothing new.
         await services.Provider.BackfillCategoriesAsync();
         Assert.Equal(2, await _db.Categories.CountAsync(c => c.OwnerUserId == _userId));
+
+        // The legacy colors are consumed — the categories carry them now.
+        Assert.Equal(0, await _db.Events.CountAsync(e => e.Color != null));
+    }
+
+    [Fact]
+    public async Task Backfill_DoesNotResurrectDeletedCategories()
+    {
+        var now = DateTime.UtcNow;
+        var cal = new Calendar { Id = Guid.NewGuid(), OwnerUserId = _userId, Name = "Personal", CreatedAt = now, UpdatedAt = now };
+        _db.Calendars.Add(cal);
+        _db.Events.Add(new CalendarEvent { Id = Guid.NewGuid(), CalendarId = cal.Id, Uid = "a@t", Title = "A", Color = "#7B68EE", StartUtc = now, CreatedAt = now, UpdatedAt = now });
+        await _db.SaveChangesAsync();
+
+        var services = new ServiceCollectionForBackfill(_db);
+        await services.Provider.BackfillCategoriesAsync();
+        var created = Assert.Single(await _db.Categories.Where(c => c.OwnerUserId == _userId).ToListAsync());
+
+        // The user deletes the category; the next startup's backfill must not bring it back.
+        Assert.True(await _service.DeleteAsync(_userId, created.Id));
+        await services.Provider.BackfillCategoriesAsync();
+
+        Assert.Empty(await _db.Categories.Where(c => c.OwnerUserId == _userId).ToListAsync());
+        // AsNoTracking: the color was cleared via ExecuteUpdate, which bypasses the tracker.
+        var survivor = await _db.Events.AsNoTracking().SingleAsync(e => e.Uid == "a@t");
+        Assert.Null(survivor.CategoryId);
+        Assert.Null(survivor.Color);
+    }
+
+    [Fact]
+    public async Task Backfill_ClearsLeftoverColorsOnAlreadyCategorizedEvents()
+    {
+        // State left behind by the first backfill version: assigned category, color kept.
+        var now = DateTime.UtcNow;
+        var cal = new Calendar { Id = Guid.NewGuid(), OwnerUserId = _userId, Name = "Personal", CreatedAt = now, UpdatedAt = now };
+        var category = new Category { Id = Guid.NewGuid(), OwnerUserId = _userId, Name = "Mediumslateblue", Color = "#7B68EE", CreatedAt = now, UpdatedAt = now };
+        _db.Calendars.Add(cal);
+        _db.Categories.Add(category);
+        _db.Events.Add(new CalendarEvent { Id = Guid.NewGuid(), CalendarId = cal.Id, Uid = "a@t", Title = "A", Color = "#7B68EE", CategoryId = category.Id, StartUtc = now, CreatedAt = now, UpdatedAt = now });
+        await _db.SaveChangesAsync();
+
+        await new ServiceCollectionForBackfill(_db).Provider.BackfillCategoriesAsync();
+
+        var cleaned = await _db.Events.AsNoTracking().SingleAsync(e => e.Uid == "a@t");
+        Assert.Equal(category.Id, cleaned.CategoryId);
+        Assert.Null(cleaned.Color);
     }
 }
 

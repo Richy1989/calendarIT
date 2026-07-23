@@ -9,8 +9,9 @@ namespace CalendarIT.Infrastructure.Persistence;
 /// <summary>
 /// One-time data upgrade for the categories feature: each distinct per-event color
 /// becomes a category for that user (named after its nearest CSS3 color name), and every
-/// colored event is assigned to it — so nothing changes visually. Idempotent: events that
-/// already carry a category are skipped, making later startups a no-op.
+/// colored event is assigned to it — so nothing changes visually. The legacy color is
+/// <b>cleared once consumed</b> (the category holds it now): leaving it in place made the
+/// next startup re-create categories the user had deleted in the meantime.
 /// </summary>
 public static class CategoryBackfill
 {
@@ -20,6 +21,17 @@ public static class CategoryBackfill
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var now = scope.ServiceProvider.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime;
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger(nameof(CategoryBackfill));
+
+        // Cleanup for databases touched by the first backfill version, which assigned
+        // categories but left the legacy color behind: consume (clear) it now so a later
+        // category delete stays deleted across restarts.
+        var cleared = await db.Events
+            .Where(e => e.CategoryId != null && e.Color != null)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.Color, (string?)null), cancellationToken);
+        if (cleared > 0)
+        {
+            logger.LogInformation("Category backfill: cleared {Count} consumed legacy event colors", cleared);
+        }
 
         var pending = await db.Events
             .Where(e => e.CategoryId == null && e.Color != null)
@@ -62,6 +74,7 @@ public static class CategoryBackfill
                     created++;
                 }
                 p.Event.CategoryId = category.Id;
+                p.Event.Color = null; // consumed — the category carries the color now
             }
         }
 

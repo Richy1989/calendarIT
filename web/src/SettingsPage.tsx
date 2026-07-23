@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteAvatar, getProfile, uploadAvatar } from './api/profile'
 import { exportIcs, importIcs } from './api/events'
@@ -332,6 +332,51 @@ function GeneralSection() {
   )
 }
 
+/** App-styled replacement for window.confirm, matching the event modal's look. */
+function ConfirmDialog({
+  title,
+  message,
+  confirmLabel = 'Delete',
+  onConfirm,
+  onClose,
+}: {
+  title: string
+  message: string
+  confirmLabel?: string
+  onConfirm: () => void
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div className="modal-overlay" onMouseDown={onClose}>
+      <div className="modal" role="alertdialog" aria-modal="true" aria-label={title} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <span className="eyebrow">{title}</span>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <p className="confirm-text">{message}</p>
+        <div className="modal-actions">
+          <span className="spacer" />
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+          <button type="button" className="btn-danger" autoFocus onClick={onConfirm}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** Manage the user's calendars: rename inline, create new ones, delete (with their events). */
 function CalendarsSection() {
   const queryClient = useQueryClient()
@@ -360,11 +405,10 @@ function CalendarsSection() {
     onError: (e) => setNotice((e as Error).message),
   })
 
-  const remove = (c: CalendarDto) => {
+  const [confirmDelete, setConfirmDelete] = useState<CalendarDto | null>(null)
+  const confirmMessage = (c: CalendarDto) => {
     const events = c.eventCount === 1 ? 'its 1 appointment' : `its ${c.eventCount} appointments`
-    if (window.confirm(`Delete "${c.name}" and ${events}? This cannot be undone.`)) {
-      deleteMut.mutate(c.id)
-    }
+    return `Delete "${c.name}" and ${events}? This cannot be undone.`
   }
 
   return (
@@ -381,11 +425,24 @@ function CalendarsSection() {
             key={c.id}
             calendar={c}
             onRename={(name) => renameMut.mutate({ id: c.id, name })}
-            onDelete={() => remove(c)}
+            onDelete={() => setConfirmDelete(c)}
             canDelete={calendars.length > 1}
           />
         ))}
       </ul>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete calendar"
+          message={confirmMessage(confirmDelete)}
+          confirmLabel="Delete calendar"
+          onConfirm={() => {
+            deleteMut.mutate(confirmDelete.id)
+            setConfirmDelete(null)
+          }}
+          onClose={() => setConfirmDelete(null)}
+        />
+      )}
 
       {adding ? (
         <form
@@ -543,13 +600,12 @@ function CategoriesSection() {
     onError: (e) => setNotice((e as Error).message),
   })
 
-  const remove = (c: CategoryDto) => {
+  const [confirmDelete, setConfirmDelete] = useState<CategoryDto | null>(null)
+  const confirmMessage = (c: CategoryDto) => {
     const count = Number(c.eventCount)
-    const events = count === 1 ? '1 appointment keeps' : `${count} appointments keep`
-    const warning = count > 0
-      ? `Delete "${c.name}"? Its ${events} existing but lose the color.`
-      : `Delete "${c.name}"?`
-    if (window.confirm(warning)) deleteMut.mutate(c.id)
+    if (count === 0) return `Delete the category "${c.name}"?`
+    const events = count === 1 ? 'Its 1 appointment' : `Its ${count} appointments`
+    return `Delete the category "${c.name}"? ${events} will be kept — they just lose the category and show the default color.`
   }
 
   return (
@@ -566,10 +622,23 @@ function CategoriesSection() {
             key={c.id}
             category={c}
             onSave={(name, color) => updateMut.mutate({ id: c.id, name, color })}
-            onDelete={() => remove(c)}
+            onDelete={() => setConfirmDelete(c)}
           />
         ))}
       </ul>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete category"
+          message={confirmMessage(confirmDelete)}
+          confirmLabel="Delete category"
+          onConfirm={() => {
+            deleteMut.mutate(confirmDelete.id)
+            setConfirmDelete(null)
+          }}
+          onClose={() => setConfirmDelete(null)}
+        />
+      )}
 
       {adding ? (
         <form

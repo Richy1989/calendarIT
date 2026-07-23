@@ -2,8 +2,13 @@ using System.ComponentModel.DataAnnotations;
 
 namespace CalendarIT.Application.Calendars;
 
-/// <summary>A user-defined event category (named color), as returned to the client.</summary>
-public sealed record CategoryDto(Guid Id, string Name, string Color, int EventCount);
+/// <summary>
+/// A user-defined event category (named color), as returned to the client.
+/// <paramref name="EventCount"/> is the all-time total; <paramref name="UpcomingEventCount"/>
+/// counts events that still lie ahead — singles ending now or later, plus every recurring
+/// series (a series whose rule ended in the past is over-counted; acceptable for a badge).
+/// </summary>
+public sealed record CategoryDto(Guid Id, string Name, string Color, int EventCount, int UpcomingEventCount);
 
 /// <summary>Create/update payload for a category.</summary>
 public sealed class SaveCategoryRequest

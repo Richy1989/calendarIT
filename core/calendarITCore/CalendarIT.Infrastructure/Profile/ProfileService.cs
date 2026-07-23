@@ -8,8 +8,10 @@ namespace CalendarIT.Infrastructure.Profile;
 public sealed class ProfileService(AppDbContext db) : IProfileService
 {
     // Views the client may persist; anything else is rejected so the DB stays clean.
+    // "agendaList" is the client's own upcoming list; "listMonth" is its retired
+    // predecessor, still accepted so previously saved values keep working.
     private static readonly HashSet<string> KnownViews =
-        new(StringComparer.Ordinal) { "dayGridMonth", "timeGridWeek", "timeGridDay" };
+        new(StringComparer.Ordinal) { "dayGridMonth", "timeGridWeek", "timeGridDay", "agendaList", "listMonth" };
 
     public async Task<ProfileDto?> GetAsync(Guid userId, CancellationToken cancellationToken = default)
     {

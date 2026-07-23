@@ -1416,6 +1416,8 @@ export interface components {
             color: string;
             /** Format: int32 */
             eventCount: number | string;
+            /** Format: int32 */
+            upcomingEventCount: number | string;
         };
         EventDto: {
             /** Format: uuid */
