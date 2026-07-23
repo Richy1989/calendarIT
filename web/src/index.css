@@ -371,9 +371,10 @@ button {
   height: 1px;
 }
 
-/* Now indicator: give the live line a subtle cyan glow */
+/* Now indicator: a clear 2px cyan line with a subtle glow, marking the current time */
 .calendar-shell .fc .fc-timegrid-now-indicator-line {
   border-color: var(--cyan);
+  border-top-width: 2px;
   box-shadow: 0 0 8px rgba(53, 224, 212, 0.6);
 }
 

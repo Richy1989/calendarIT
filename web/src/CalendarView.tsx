@@ -171,6 +171,17 @@ export default function CalendarView({
     [dtos, visibleCalendarIds, effectiveCategoryIds],
   )
 
+  // Open week/day scrolled to roughly the current time (with ~1.5h of lead-in above it), so the
+  // live "now" indicator line is visible on load instead of hidden below the default 6am scroll —
+  // the way Google/Apple calendars behave. Computed once on mount; the line itself keeps updating.
+  const scrollTime = useMemo(() => {
+    const now = new Date()
+    const minutes = Math.max(0, now.getHours() * 60 + now.getMinutes() - 90)
+    const hh = String(Math.floor(minutes / 60)).padStart(2, '0')
+    const mm = String(minutes % 60).padStart(2, '0')
+    return `${hh}:${mm}:00`
+  }, [])
+
   // New events land in the first visible calendar (or the first one overall).
   const defaultCalendarId = () =>
     calendars.find((c) => !visibleCalendarIds || visibleCalendarIds.includes(c.id))?.id ?? calendars[0]?.id
@@ -596,6 +607,8 @@ export default function CalendarView({
         }}
         height="100%"
         nowIndicator
+        scrollTime={scrollTime}
+        scrollTimeReset={false}
         slotEventOverlap={false}
         editable
         selectable

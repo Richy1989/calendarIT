@@ -58,8 +58,8 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
     <td width="50%"><a href="docs/ScreenShot_List_Search.png"><img src="docs/ScreenShot_List_Search.png" alt="CalendarIT — list view with instant search" /></a></td>
   </tr>
   <tr>
-    <td align="center"><sub><b>Week</b> — drag on the grid to create; drag events to move or resize.</sub></td>
-    <td align="center"><sub><b>List &amp; search</b> — every appointment in one scroll; jump to any by title or location.</sub></td>
+    <td align="center"><sub><b>Week View</b>.</sub></td>
+    <td align="center"><sub><b>List View</b>, and search for appointments (works in all views).</sub></td>
   </tr>
 </table>
 
