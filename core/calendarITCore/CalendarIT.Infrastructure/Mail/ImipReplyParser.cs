@@ -60,7 +60,7 @@ public static class ImipReplyParser
             {
                 return text.Text;
             }
-            if (part is MimePart mime &&
+            if (part is MimePart { Content: not null } mime &&
                 (mime.ContentType.IsMimeType("application", "ics")
                  || (mime.FileName?.EndsWith(".ics", StringComparison.OrdinalIgnoreCase) ?? false)))
             {

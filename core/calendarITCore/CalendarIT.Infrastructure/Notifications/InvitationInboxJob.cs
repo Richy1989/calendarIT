@@ -73,7 +73,8 @@ public sealed class InvitationInboxJob(
 
         using var client = new ImapClient();
         var socketOptions = account.ImapUseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
-        await client.ConnectAsync(account.ImapHost, account.ImapPort, socketOptions, cancellationToken);
+        // ImapHost is non-null here — candidates are filtered on ImapHost != null in Execute.
+        await client.ConnectAsync(account.ImapHost!, account.ImapPort, socketOptions, cancellationToken);
         await client.AuthenticateAsync(account.Username, password, cancellationToken);
 
         var inbox = client.Inbox;
