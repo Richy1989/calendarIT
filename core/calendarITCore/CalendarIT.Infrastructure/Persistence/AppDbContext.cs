@@ -136,6 +136,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             // One account per user: the user id doubles as the key.
             entity.HasKey(a => a.UserId);
             entity.Property(a => a.Address).HasMaxLength(320).IsRequired();
+            entity.Property(a => a.FromAddress).HasMaxLength(320);
             entity.Property(a => a.SmtpHost).HasMaxLength(255).IsRequired();
             entity.Property(a => a.ImapHost).HasMaxLength(255);
             entity.Property(a => a.Username).HasMaxLength(320).IsRequired();

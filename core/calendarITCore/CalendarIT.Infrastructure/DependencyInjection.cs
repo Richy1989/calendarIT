@@ -54,46 +54,29 @@ public static class DependencyInjection
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IEventService, EventService>();
+        services.AddScoped<IInternalInvitationDelivery, InternalInvitationDelivery>();
         services.AddScoped<ICalendarService, CalendarService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ICalendarIoService, CalendarIoService>();
         services.AddScoped<IProfileService, ProfileService>();
 
-        // Mail account + invitations. The concrete MailAccountService is also registered so
-        // the mailer can reach the decrypted password (internal API, never leaves the server).
+        // Mail account, invitations, and reply processing. The concrete MailAccountService is
+        // also registered so senders can reach the decrypted password (internal API, never leaves
+        // the server). All outgoing mail — invitations and reminders — goes through each user's
+        // own connected account; there is no global SMTP relay to configure.
         services.AddScoped<MailAccountService>();
         services.AddScoped<IMailAccountService>(sp => sp.GetRequiredService<MailAccountService>());
         services.AddScoped<IInvitationMailer, InvitationMailer>();
         services.AddScoped<IInvitationReplyService, InvitationReplyService>();
+        services.AddScoped<IUserMailSender, UserMailSender>();
 
-        AddReminders(services, configuration);
+        AddBackgroundJobs(services);
 
         return services;
     }
 
-    private static void AddReminders(IServiceCollection services, IConfiguration configuration)
+    private static void AddBackgroundJobs(IServiceCollection services)
     {
-        var smtp = new SmtpOptions
-        {
-            Host = configuration["SMTP_HOST"],
-            Port = int.TryParse(configuration["SMTP_PORT"], out var port) ? port : 587,
-            User = configuration["SMTP_USER"],
-            Password = configuration["SMTP_PASSWORD"],
-            From = configuration["SMTP_FROM"] ?? "calendarit@localhost",
-            UseSsl = bool.TryParse(configuration["SMTP_USE_SSL"], out var ssl) && ssl,
-        };
-        services.AddSingleton(Options.Create(smtp));
-
-        // Real SMTP when configured; otherwise log emails so reminders still run in dev.
-        if (smtp.IsConfigured)
-        {
-            services.AddScoped<IEmailSender, SmtpEmailSender>();
-        }
-        else
-        {
-            services.AddScoped<IEmailSender, LogEmailSender>();
-        }
-
         // Quartz: both jobs tick once a minute. The reminder job fires due reminders; the inbox
         // job scans each account no more often than its own ScanIntervalMinutes.
         services.AddQuartz(q =>

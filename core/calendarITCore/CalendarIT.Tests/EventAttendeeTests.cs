@@ -25,7 +25,7 @@ public sealed class EventAttendeeTests : IDisposable
         _db.Database.EnsureCreated();
         _db.Users.Add(new ApplicationUser { Id = _userId, UserName = "att@test", NormalizedUserName = "ATT@TEST" });
         _db.SaveChanges();
-        _events = new EventService(_db, TimeProvider.System, _mailer);
+        _events = new EventService(_db, TimeProvider.System, _mailer, new InternalInvitationDelivery(_db, TimeProvider.System));
     }
 
     public void Dispose()

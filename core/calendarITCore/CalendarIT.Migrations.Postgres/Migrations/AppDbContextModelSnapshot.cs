@@ -209,6 +209,10 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("FromAddress")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
                     b.Property<string>("ImapHost")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");

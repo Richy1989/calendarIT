@@ -32,9 +32,10 @@ public sealed class MailAccountServiceTests : IDisposable
         _connection.Dispose();
     }
 
-    private static SaveMailAccountRequest Request(string? password = "s3cret") => new()
+    private static SaveMailAccountRequest Request(string? password = "s3cret", string? fromAddress = null) => new()
     {
         Address = "richy@example.com",
+        FromAddress = fromAddress,
         SmtpHost = "smtp.example.com",
         SmtpPort = 587,
         SmtpUseSsl = false,
@@ -86,6 +87,16 @@ public sealed class MailAccountServiceTests : IDisposable
 
         Assert.NotNull(dto);
         Assert.False(dto!.HasPassword);
+    }
+
+    [Fact]
+    public async Task Save_RoundTripsTheFromAddress_AndBlankBecomesNull()
+    {
+        await _service.SaveAsync(_userId, Request(fromAddress: "  noreply@example.com "));
+        Assert.Equal("noreply@example.com", (await _service.GetAsync(_userId))!.FromAddress);
+
+        await _service.SaveAsync(_userId, Request(fromAddress: "   "));
+        Assert.Null((await _service.GetAsync(_userId))!.FromAddress);
     }
 
     [Fact]

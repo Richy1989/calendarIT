@@ -121,8 +121,12 @@ Everything is set through environment variables (12-factor):
 | `JWT_SIGNING_KEY`                         | **Required.** ≥ 32 chars                         |
 | `JWT_ISSUER` / `JWT_AUDIENCE`             | Token issuer / audience                          |
 | `Serilog__MinimumLevel__Default`          | Log level (console-only, to stdout). Default `Information` |
-| `SMTP_HOST` / `PORT` / `USER` / `PASSWORD` / `FROM` / `USE_SSL` | Email reminders. If `SMTP_HOST` is unset, reminders are logged instead of sent |
-| `SMTP_*`, `VAPID_*`                        | Email + Web Push (reminders)                     |
+| `VAPID_*`                                 | Web Push reminders (planned)                     |
+
+> **Email needs no environment variables.** Invitations and reminders are sent through each
+> user's own mail account, connected in-app under **Settings → Email** (SMTP + IMAP, password
+> stored encrypted). Users without a connected account simply get their reminders logged
+> instead of emailed.
 
 ## Project layout
 

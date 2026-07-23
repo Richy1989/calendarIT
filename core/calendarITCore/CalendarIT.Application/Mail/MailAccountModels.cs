@@ -5,6 +5,7 @@ namespace CalendarIT.Application.Mail;
 /// <summary>The user's mail account as returned to the client — never the password.</summary>
 public sealed record MailAccountDto(
     string Address,
+    string? FromAddress,
     string SmtpHost,
     int SmtpPort,
     bool SmtpUseSsl,
@@ -20,6 +21,11 @@ public sealed class SaveMailAccountRequest
 {
     [Required, EmailAddress, MaxLength(320)]
     public string Address { get; init; } = string.Empty;
+
+    /// <summary>Optional display "From" for reminders / password resets. May be a non-mailbox
+    /// address. Null/blank keeps the account address. Not validated as a deliverable mailbox.</summary>
+    [MaxLength(320)]
+    public string? FromAddress { get; init; }
 
     [Required, MaxLength(255)]
     public string SmtpHost { get; init; } = string.Empty;

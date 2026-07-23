@@ -26,7 +26,7 @@ public sealed class CategoryServiceTests : IDisposable
         _db.Users.Add(new ApplicationUser { Id = _userId, UserName = "cat@test", NormalizedUserName = "CAT@TEST" });
         _db.SaveChanges();
         _service = new CategoryService(_db, TimeProvider.System);
-        _events = new EventService(_db, TimeProvider.System, new FakeInvitationMailer());
+        _events = new EventService(_db, TimeProvider.System, new FakeInvitationMailer(), new InternalInvitationDelivery(_db, TimeProvider.System));
     }
 
     public void Dispose()

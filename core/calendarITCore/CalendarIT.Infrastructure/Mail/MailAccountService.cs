@@ -41,6 +41,7 @@ public sealed class MailAccountService(
         }
 
         entity.Address = request.Address.Trim();
+        entity.FromAddress = string.IsNullOrWhiteSpace(request.FromAddress) ? null : request.FromAddress.Trim();
         entity.SmtpHost = request.SmtpHost.Trim();
         entity.SmtpPort = request.SmtpPort;
         entity.SmtpUseSsl = request.SmtpUseSsl;
@@ -148,7 +149,7 @@ public sealed class MailAccountService(
     }
 
     private MailAccountDto ToDto(MailAccount a) =>
-        new(a.Address, a.SmtpHost, a.SmtpPort, a.SmtpUseSsl,
+        new(a.Address, a.FromAddress, a.SmtpHost, a.SmtpPort, a.SmtpUseSsl,
             a.ImapHost, a.ImapPort, a.ImapUseSsl, a.Username,
             a.ScanIntervalMinutes,
             HasPassword: UnprotectPassword(a) is not null);

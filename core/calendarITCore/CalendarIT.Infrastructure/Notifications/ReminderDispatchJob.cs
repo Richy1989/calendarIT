@@ -1,6 +1,8 @@
 using CalendarIT.Domain;
 using CalendarIT.Infrastructure.Calendars;
+using CalendarIT.Infrastructure.Mail;
 using CalendarIT.Infrastructure.Persistence;
+using MimeKit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -30,7 +32,7 @@ public sealed class ReminderDispatchJob(
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var email = scope.ServiceProvider.GetRequiredService<IEmailSender>();
+        var mail = scope.ServiceProvider.GetRequiredService<IUserMailSender>();
 
         var reminders = await db.Reminders
             .Include(r => r.Event!).ThenInclude(e => e.Calendar)
@@ -63,7 +65,8 @@ public sealed class ReminderDispatchJob(
                     continue;
                 }
 
-                await DispatchAsync(reminder, ev, occStart, emailByOwner.GetValueOrDefault(ev.Calendar!.OwnerUserId), email, cancellationToken);
+                var ownerUserId = ev.Calendar!.OwnerUserId;
+                await DispatchAsync(reminder, ev, occStart, ownerUserId, emailByOwner.GetValueOrDefault(ownerUserId), mail, cancellationToken);
 
                 db.NotificationLogs.Add(new NotificationLog
                 {
@@ -100,8 +103,8 @@ public sealed class ReminderDispatchJob(
     }
 
     private async Task DispatchAsync(
-        Reminder reminder, CalendarEvent ev, DateTime occStartUtc, string? ownerEmail,
-        IEmailSender email, CancellationToken cancellationToken)
+        Reminder reminder, CalendarEvent ev, DateTime occStartUtc, Guid ownerUserId, string? ownerEmail,
+        IUserMailSender mail, CancellationToken cancellationToken)
     {
         if (reminder.Channel == ReminderChannel.WebPush)
         {
@@ -120,9 +123,26 @@ public sealed class ReminderDispatchJob(
         var body = $"\"{ev.Title}\" starts at {localStart}." +
                    (string.IsNullOrWhiteSpace(ev.Location) ? "" : $"\nLocation: {ev.Location}");
 
-        await email.SendAsync(ownerEmail, subject, body, cancellationToken);
-        logger.LogInformation("Sent {Channel} reminder for {EventId} @ {Occurrence:o} to {Email}",
-            reminder.Channel, ev.Id, occStartUtc, ownerEmail);
+        var message = new MimeMessage();
+        message.To.Add(MailboxAddress.Parse(ownerEmail));
+        message.Subject = subject;
+        message.Body = new TextPart("plain") { Text = body };
+
+        // Sent through the owner's own connected mail account (From uses their FromAddress
+        // override when set). Without a configured account there's nothing to send from, so the
+        // reminder is logged instead — the same dev-friendly fallback the global SMTP path had.
+        var sent = await mail.TrySendAsync(ownerUserId, message, cancellationToken);
+        if (sent)
+        {
+            logger.LogInformation("Sent {Channel} reminder for {EventId} @ {Occurrence:o} to {Email}",
+                reminder.Channel, ev.Id, occStartUtc, ownerEmail);
+        }
+        else
+        {
+            logger.LogInformation(
+                "[reminder:no-mail-account] user {UserId} has no connected mail account; reminder for {EventId} not sent. To={Email} Subject={Subject}",
+                ownerUserId, ev.Id, ownerEmail, subject);
+        }
     }
 
     private static string FormatLocal(DateTime utc, string? timeZoneId)

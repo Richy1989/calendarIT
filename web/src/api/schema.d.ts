@@ -1466,6 +1466,7 @@ export interface components {
         };
         MailAccountDto: {
             address: string;
+            fromAddress: null | string;
             smtpHost: string;
             /** Format: int32 */
             smtpPort: number | string;
@@ -1540,6 +1541,7 @@ export interface components {
         };
         SaveMailAccountRequest: {
             address: string;
+            fromAddress?: null | string;
             smtpHost: string;
             /** Format: int32 */
             smtpPort?: number | string;

@@ -9,7 +9,8 @@ using Calendar = CalendarIT.Domain.Calendar;
 namespace CalendarIT.Infrastructure.Calendars;
 
 /// <summary>EF Core-backed <see cref="IEventService"/>. All queries are scoped by owner.</summary>
-public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IInvitationMailer mailer) : IEventService
+public sealed class EventService(
+    AppDbContext db, TimeProvider timeProvider, IInvitationMailer mailer, IInternalInvitationDelivery delivery) : IEventService
 {
     public async Task<IReadOnlyList<EventDto>> GetEventsAsync(
         Guid userId, DateTimeOffset? from, DateTimeOffset? to, CancellationToken cancellationToken = default)
@@ -147,6 +148,8 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
 
         // Invite the guests (no-op without a configured mail account; failures only log).
         await mailer.SendRequestAsync(userId, entity, [.. entity.Attendees], cancellationToken);
+        // Guests who are local users get the event straight on their own calendar.
+        await delivery.SyncAsync(entity, userId, [], cancellationToken);
         return ToDto(entity);
     }
 
@@ -218,6 +221,8 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
         // Everyone still invited gets the updated event; the removed get a cancellation.
         await mailer.SendRequestAsync(userId, entity, [.. entity.Attendees], cancellationToken);
         await mailer.SendCancelAsync(userId, entity, removed, cancellationToken);
+        // Mirror the change onto local guests' calendars (new copies, edits, and withdrawals).
+        await delivery.SyncAsync(entity, userId, removed, cancellationToken);
         return ToDto(entity);
     }
 
@@ -239,6 +244,8 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
             entity.ExDates = FormatExDates(exDates);
             entity.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
             await db.SaveChangesAsync(cancellationToken);
+            // Propagate the excluded occurrence to local guests' copies.
+            await delivery.SyncAsync(entity, userId, [], cancellationToken);
             return true;
         }
 
@@ -247,6 +254,8 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
         db.Events.Remove(entity);
         await db.SaveChangesAsync(cancellationToken);
         await mailer.SendCancelAsync(userId, entity, invited, cancellationToken);
+        // Withdraw the event from local guests' calendars too.
+        await delivery.RemoveAsync(entity, invited, userId, cancellationToken);
         return true;
     }
 

@@ -279,7 +279,7 @@ categories at startup (one per distinct color, named after its nearest CSS3 colo
   - `DATABASE_PROVIDER` = `Postgres` | `Sqlite`
   - `POSTGRES_CONNECTION` (host, port, db, user, password)
   - `APPDATA_PATH` = `/appdata` (SQLite file, uploaded .ics, VAPID keys, etc.)
-  - `SMTP_HOST/PORT/USER/PASSWORD/FROM`
+  - (no SMTP vars — email is sent via each user's own account, configured in-app; see §4.x)
   - `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`
   - `JWT_SIGNING_KEY`, `JWT_ISSUER`, `JWT_AUDIENCE`
   - `PUBLIC_BASE_URL` (for links, CalDAV principal URLs, push)
@@ -398,7 +398,7 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
      `.ics`; Import uploads a file and refetches. Verified round-trip incl. re-import dedup.
    - ⬜ *Deferred:* reading **EXDATE back on import** (export writes it; Ical.Net v5's
      `ExceptionDates` shape needs extra plumbing) and multi-VALARM/attendee mapping.
-5. **Reminders** — Quartz.NET jobs, email (SMTP), Web Push (VAPID), reminder UI.
+5. **Reminders** — Quartz.NET jobs, email (via each user's connected mail account), Web Push (VAPID), reminder UI.
    - ✅ *Done (5a — email):* `Reminder` (per event, `MinutesBefore` + `Channel`) and
      `NotificationLog` (unique on ReminderId+occurrence → idempotent) entities; migrations
      both providers. **Quartz.NET** `ReminderDispatchJob` runs every minute, computes each

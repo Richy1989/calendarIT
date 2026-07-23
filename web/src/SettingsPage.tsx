@@ -779,6 +779,7 @@ function EmailSection() {
   const [address, setAddress] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [fromAddress, setFromAddress] = useState('')
   const [smtpHost, setSmtpHost] = useState('')
   const [smtpPort, setSmtpPort] = useState(587)
   const [smtpUseSsl, setSmtpUseSsl] = useState(false)
@@ -796,6 +797,7 @@ function EmailSection() {
     setAddress(account?.address ?? '')
     setUsername(account?.username ?? '')
     setPassword('')
+    setFromAddress(account?.fromAddress ?? '')
     setSmtpHost(account?.smtpHost ?? '')
     setSmtpPort(Number(account?.smtpPort ?? 587))
     setSmtpUseSsl(account?.smtpUseSsl ?? false)
@@ -829,6 +831,7 @@ function EmailSection() {
     if (!canSave) return
     saveMut.mutate({
       address: address.trim(),
+      fromAddress: fromAddress.trim() || null,
       smtpHost: smtpHost.trim(),
       smtpPort,
       smtpUseSsl,
@@ -875,6 +878,21 @@ function EmailSection() {
         <p className="field-hint">
           For Gmail and most big providers you'll need an app password (requires two-factor auth).
         </p>
+        <div className="field">
+          <label htmlFor="ma-from">Reminder “From” address <span className="field-optional">optional</span></label>
+          <input
+            id="ma-from"
+            type="text"
+            value={fromAddress}
+            placeholder={address.trim() || 'noreply@example.com'}
+            onChange={(e) => setFromAddress(e.target.value)}
+          />
+          <p className="field-hint">
+            Shown as the sender on reminder (and, later, password-reset) emails — handy for a
+            no-reply address. Leave blank to use your email address. Invitations always send from
+            your real address. Note: some providers reject a “From” that isn’t your account.
+          </p>
+        </div>
       </div>
 
       <div className="mail-group">

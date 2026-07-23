@@ -1299,6 +1299,14 @@
   gap: 0.85rem;
 }
 
+.field-optional {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--text-dim);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .mail-scan-field {
   margin-top: 0.85rem;
 }

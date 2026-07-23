@@ -11,8 +11,14 @@ public class MailAccount
     /// <summary>Owning user; also the primary key (one account per user).</summary>
     public Guid UserId { get; set; }
 
-    /// <summary>The email identity invitations are sent from (e.g. rich@example.com).</summary>
+    /// <summary>The email identity invitations are sent from (e.g. rich@example.com). This is
+    /// also the iMIP ORGANIZER, so replies can be matched back — it must be a real address.</summary>
     public string Address { get; set; } = string.Empty;
+
+    /// <summary>Optional display "From" for system notifications (reminders, and later password
+    /// resets). Can be a non-mailbox address (e.g. noreply@…). Null/blank = use <see cref="Address"/>.
+    /// Not used for invitations, which must send as the real organizer address.</summary>
+    public string? FromAddress { get; set; }
 
     public string SmtpHost { get; set; } = string.Empty;
 
