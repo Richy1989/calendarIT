@@ -3,10 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteAvatar, getProfile, uploadAvatar } from './api/profile'
 import { exportIcs, importIcs } from './api/events'
 import { createCalendar, deleteCalendar, listCalendars, renameCalendar, type CalendarDto } from './api/calendars'
+import { createCategory, deleteCategory, listCategories, updateCategory, type CategoryDto } from './api/categories'
 import { deleteMailAccount, getMailAccount, saveMailAccount, testMailAccount } from './api/mailAccount'
 import Logo from './Logo'
 
-type Section = 'general' | 'calendars' | 'sync' | 'security' | 'email'
+type Section = 'general' | 'calendars' | 'categories' | 'sync' | 'security' | 'email'
 
 /** Dedicated, full-page settings screen: sidebar nav + a content card per section. */
 export default function SettingsPage({
@@ -38,6 +39,9 @@ export default function SettingsPage({
           <button className={navClass(section === 'calendars')} onClick={() => setSection('calendars')}>
             <CalendarIcon /> Calendars
           </button>
+          <button className={navClass(section === 'categories')} onClick={() => setSection('categories')}>
+            <TagIcon /> Categories
+          </button>
           <button className={navClass(section === 'sync')} onClick={() => setSection('sync')}>
             <PhoneIcon /> Sync
           </button>
@@ -58,6 +62,8 @@ export default function SettingsPage({
             <GeneralSection />
           ) : section === 'calendars' ? (
             <CalendarsSection />
+          ) : section === 'categories' ? (
+            <CategoriesSection />
           ) : section === 'sync' ? (
             <SyncSection />
           ) : section === 'email' ? (
@@ -502,6 +508,197 @@ function CalendarRow({
   )
 }
 
+// New categories cycle through these starter colors (exact CSS3-named hexes, so they
+// round-trip losslessly through the iCalendar COLOR property).
+const CATEGORY_COLORS = ['#7B68EE', '#6495ED', '#40E0D0', '#3CB371', '#DAA520', '#DB7093', '#FF6347', '#708090']
+
+/** Manage the user's categories: the named colors appointments take their color from. */
+function CategoriesSection() {
+  const queryClient = useQueryClient()
+  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: listCategories })
+  const [adding, setAdding] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newColor, setNewColor] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const nextColor = () => CATEGORY_COLORS[categories.length % CATEGORY_COLORS.length]
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['categories'] })
+    queryClient.invalidateQueries({ queryKey: ['events'] })
+  }
+  const createMut = useMutation({
+    mutationFn: (v: { name: string; color: string }) => createCategory(v.name, v.color),
+    onSuccess: () => { setNewName(''); setNewColor(null); setAdding(false); setNotice(null); refresh() },
+    onError: (e) => setNotice((e as Error).message),
+  })
+  const updateMut = useMutation({
+    mutationFn: (v: { id: string; name: string; color: string }) => updateCategory(v.id, v.name, v.color),
+    onSuccess: () => { setNotice(null); refresh() },
+    onError: (e) => setNotice((e as Error).message),
+  })
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteCategory(id),
+    onSuccess: () => { setNotice(null); refresh() },
+    onError: (e) => setNotice((e as Error).message),
+  })
+
+  const remove = (c: CategoryDto) => {
+    const count = Number(c.eventCount)
+    const events = count === 1 ? '1 appointment keeps' : `${count} appointments keep`
+    const warning = count > 0
+      ? `Delete "${c.name}"? Its ${events} existing but lose the color.`
+      : `Delete "${c.name}"?`
+    if (window.confirm(warning)) deleteMut.mutate(c.id)
+  }
+
+  return (
+    <div className="settings-card">
+      <h2>Categories</h2>
+      <p className="settings-sub">
+        Categories are named colors for your appointments — Work, Family, Sports… Recolor one here and
+        every appointment in it follows. They sync to your phone via the iCalendar CATEGORIES property.
+      </p>
+
+      <ul className="cal-list">
+        {categories.map((c) => (
+          <CategoryRow
+            key={c.id}
+            category={c}
+            onSave={(name, color) => updateMut.mutate({ id: c.id, name, color })}
+            onDelete={() => remove(c)}
+          />
+        ))}
+      </ul>
+
+      {adding ? (
+        <form
+          className="cal-add-row"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (newName.trim()) createMut.mutate({ name: newName.trim(), color: newColor ?? nextColor() })
+          }}
+        >
+          <label className="category-dot-pick" style={{ ['--sw']: newColor ?? nextColor() } as React.CSSProperties} title="Pick color">
+            <input type="color" value={newColor ?? nextColor()} onChange={(e) => setNewColor(e.target.value)} />
+          </label>
+          {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+          <input
+            value={newName}
+            autoFocus
+            placeholder="Category name"
+            maxLength={100}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setAdding(false)
+                setNewName('')
+                setNewColor(null)
+              }
+            }}
+          />
+          <button type="submit" className="btn-primary" disabled={!newName.trim() || createMut.isPending}>
+            Add
+          </button>
+          <button type="button" className="btn-ghost" onClick={() => { setAdding(false); setNewName(''); setNewColor(null) }}>
+            Cancel
+          </button>
+        </form>
+      ) : (
+        <button type="button" className="cal-add" onClick={() => setAdding(true)}>
+          ＋ New category
+        </button>
+      )}
+
+      {notice && <p className="error">{notice}</p>}
+    </div>
+  )
+}
+
+/** One category in the list: color dot (click to recolor), name (✎ to rename), count, delete. */
+function CategoryRow({
+  category,
+  onSave,
+  onDelete,
+}: {
+  category: CategoryDto
+  onSave: (name: string, color: string) => void
+  onDelete: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(category.name)
+
+  const commit = () => {
+    setEditing(false)
+    const trimmed = name.trim()
+    if (!trimmed || trimmed === category.name) {
+      setName(category.name) // nothing to save (and never blank a name)
+    } else {
+      onSave(trimmed, category.color)
+    }
+  }
+
+  const count = category.eventCount === 1 ? '1 appointment' : `${category.eventCount} appointments`
+
+  return (
+    <li className="cal-item">
+      <label
+        className="category-dot-pick"
+        style={{ ['--sw']: category.color } as React.CSSProperties}
+        title={`Recolor ${category.name}`}
+      >
+        <input
+          type="color"
+          value={category.color}
+          onChange={(e) => onSave(category.name, e.target.value)}
+        />
+      </label>
+
+      <span className="cal-item-body">
+        {editing ? (
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          <input
+            className="cal-item-rename"
+            value={name}
+            autoFocus
+            maxLength={100}
+            aria-label={`Rename ${category.name}`}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit()
+              if (e.key === 'Escape') {
+                setName(category.name)
+                setEditing(false)
+              }
+            }}
+          />
+        ) : (
+          <span className="cal-item-name">{category.name}</span>
+        )}
+        <span className="cal-item-meta">{count}</span>
+      </span>
+
+      <span className="cal-item-actions">
+        {!editing && (
+          <button type="button" className="cal-item-action" onClick={() => setEditing(true)} aria-label={`Rename ${category.name}`} title="Rename">
+            ✎
+          </button>
+        )}
+        <button
+          type="button"
+          className="cal-item-action danger"
+          onClick={onDelete}
+          aria-label={`Delete ${category.name}`}
+          title="Delete"
+        >
+          ✕
+        </button>
+      </span>
+    </li>
+  )
+}
+
 /**
  * The user's personal email account: the identity appointment invitations are sent from
  * (and, once inbox scanning ships, received into). Password is write-only.
@@ -753,6 +950,9 @@ function MailIcon() {
 }
 function CalendarIcon() {
   return <svg {...iconProps}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+}
+function TagIcon() {
+  return <svg {...iconProps}><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" /><path d="M7 7h.01" /></svg>
 }
 function PhoneIcon() {
   return <svg {...iconProps}><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M12 18h.01" /></svg>

@@ -578,6 +578,178 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CategoryDto"][];
+                        "application/json": components["schemas"]["CategoryDto"][];
+                        "text/json": components["schemas"]["CategoryDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveCategoryRequest"];
+                    "text/json": components["schemas"]["SaveCategoryRequest"];
+                    "application/*+json": components["schemas"]["SaveCategoryRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CategoryDto"];
+                        "application/json": components["schemas"]["CategoryDto"];
+                        "text/json": components["schemas"]["CategoryDto"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/categories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveCategoryRequest"];
+                    "text/json": components["schemas"]["SaveCategoryRequest"];
+                    "application/*+json": components["schemas"]["SaveCategoryRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CategoryDto"];
+                        "application/json": components["schemas"]["CategoryDto"];
+                        "text/json": components["schemas"]["CategoryDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events/export.ics": {
         parameters: {
             query?: never;
@@ -1237,6 +1409,14 @@ export interface components {
             /** Format: int32 */
             eventCount: number | string;
         };
+        CategoryDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            color: string;
+            /** Format: int32 */
+            eventCount: number | string;
+        };
         EventDto: {
             /** Format: uuid */
             id: string;
@@ -1245,6 +1425,8 @@ export interface components {
             title: string;
             description: null | string;
             location: null | string;
+            /** Format: uuid */
+            categoryId: null | string;
             color: null | string;
             /** Format: date-time */
             start: string;
@@ -1330,11 +1512,16 @@ export interface components {
         SaveCalendarRequest: {
             name: string;
         };
+        SaveCategoryRequest: {
+            name: string;
+            color: string;
+        };
         SaveEventRequest: {
             title: string;
             description?: null | string;
             location?: null | string;
-            color?: null | string;
+            /** Format: uuid */
+            categoryId?: null | string;
             /** Format: date-time */
             start: string;
             /** Format: date-time */

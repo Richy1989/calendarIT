@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using CalendarIT.Application.Auth;
+using CalendarIT.Infrastructure.Calendars;
 using CalendarIT.Infrastructure.Identity;
 using CalendarIT.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -39,6 +40,11 @@ public sealed class AuthService(
         {
             return AuthResult.Failure(created.Errors.Select(e => e.Description).ToArray());
         }
+
+        // Every new account starts with the default category set (events take their
+        // display color from categories).
+        CategoryDefaults.Seed(db, user.Id, timeProvider.GetUtcNow().UtcDateTime);
+        await db.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation("Registered new user {UserId}", user.Id);
         var tokens = await IssueTokensAsync(user, cancellationToken);

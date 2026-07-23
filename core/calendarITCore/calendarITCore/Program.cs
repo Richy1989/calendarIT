@@ -42,6 +42,8 @@ var app = builder.Build();
 if (app.Configuration.GetValue("APPLY_MIGRATIONS", true))
 {
     await app.Services.MigrateDatabaseAsync();
+    // One-time data upgrade: per-event colors → categories (no-op once assigned).
+    await app.Services.BackfillCategoriesAsync();
     app.Logger.LogInformation("Database migrations applied");
 }
 

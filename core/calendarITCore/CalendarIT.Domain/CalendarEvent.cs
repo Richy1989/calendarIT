@@ -21,8 +21,14 @@ public class CalendarEvent
 
     public string? Location { get; set; }
 
-    /// <summary>Per-event color as hex (serialized to the iCalendar COLOR property, RFC 7986).</summary>
+    /// <summary>Legacy per-event color as hex. Display color now comes from
+    /// <see cref="Category"/>; this remains only as a fallback for uncategorized events
+    /// (e.g. synced in while the user had no categories).</summary>
     public string? Color { get; set; }
+
+    /// <summary>The category (named color) this event takes its display color from.
+    /// Null = uncategorized (default color).</summary>
+    public Guid? CategoryId { get; set; }
 
     /// <summary>UTC start. Stored as <see cref="DateTime"/> (Kind=Utc) for cross-provider
     /// ordering/comparison — SQLite can't sort <c>DateTimeOffset</c> in SQL.</summary>
@@ -49,6 +55,8 @@ public class CalendarEvent
     public DateTime UpdatedAt { get; set; }
 
     public Calendar? Calendar { get; set; }
+
+    public Category? Category { get; set; }
 
     public ICollection<Reminder> Reminders { get; set; } = new List<Reminder>();
 

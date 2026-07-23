@@ -17,10 +17,12 @@ import type {
 import EventModal, { type EventDraft } from './EventModal'
 import { createEvent, deleteEvent, getEvent, listEvents, updateEvent, type EventDto, type SaveEventRequest } from './api/events'
 import { listCalendars } from './api/calendars'
+import { listCategories } from './api/categories'
 import { saveDefaultView } from './api/profile'
 import { getSavedView, saveView } from './prefs'
 
-const DEFAULT_COLOR = '#7B68EE' // mediumslateblue
+// Uncategorized events render in this neutral default (categories carry the real colors).
+const DEFAULT_COLOR = '#708090' // slategray
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
@@ -70,7 +72,7 @@ function dtoToInput(dto: EventDto): EventInput {
       seriesId: dto.id,
       recurring: dto.recurring,
       occurrenceStart: dto.start,
-      color,
+      categoryId: dto.categoryId ?? null,
       location: dto.location ?? '',
       description: dto.description ?? '',
       reminders: dto.reminders,
@@ -90,7 +92,7 @@ function draftToRequest(d: EventDraft): SaveEventRequest {
     title: d.title,
     description: d.description || null,
     location: d.location || null,
-    color: d.color,
+    categoryId: d.categoryId,
     start: toApiIso(d.start, d.allDay),
     end: d.end ? toApiIso(d.end, d.allDay) : null,
     allDay: d.allDay,
@@ -131,6 +133,7 @@ export default function CalendarView({
     enabled: !!range,
   })
   const { data: calendars = [] } = useQuery({ queryKey: ['calendars'], queryFn: listCalendars })
+  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: listCategories })
   const events = useMemo(
     () =>
       dtos
@@ -333,8 +336,11 @@ export default function CalendarView({
     openNewOn(start, false)
   }
 
+  // New events start in the first category (so they get a color without extra clicks).
+  const defaultCategoryId = () => categories[0]?.id ?? null
+
   const openNewOn = (date: Date, allDay: boolean) => {
-    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
+    const blank = { title: '', categoryId: defaultCategoryId(), location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
     if (allDay) {
       const day = toLocalInput(date).slice(0, 10)
       setDraft({ ...blank, start: day, end: day, allDay: true })
@@ -351,7 +357,7 @@ export default function CalendarView({
   // Opens the new-appointment editor prefilled with exactly what was selected.
   const handleSelect = (arg: DateSelectArg) => {
     setSelectedDate(dayKey(arg.start))
-    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
+    const blank = { title: '', categoryId: defaultCategoryId(), location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
     if (arg.allDay) {
       const startDay = dayKey(arg.start)
       const endDay = addDays(dayKey(arg.end), -1) // exclusive → inclusive last day
@@ -392,7 +398,7 @@ export default function CalendarView({
       allDay,
       start: startLocal,
       end: endLocal,
-      color: dto.color ?? DEFAULT_COLOR,
+      categoryId: dto.categoryId ?? null,
       location: dto.location ?? '',
       description: dto.description ?? '',
       recurrence: dto.recurrence ?? '',
@@ -420,7 +426,7 @@ export default function CalendarView({
       title: ev.title,
       description: (ev.extendedProps.description as string) || null,
       location: (ev.extendedProps.location as string) || null,
-      color: (ev.extendedProps.color as string) ?? DEFAULT_COLOR,
+      categoryId: (ev.extendedProps.categoryId as string | null) ?? null, // keep the assignment on drag edits
       start: ev.allDay ? toApiIso(ev.startStr, true) : (ev.start ?? new Date()).toISOString(),
       // FullCalendar's all-day end is exclusive; the API stores an inclusive last day.
       end: ev.end ? (ev.allDay ? toApiIso(addDays(ev.endStr.slice(0, 10), -1), true) : ev.end.toISOString()) : null,

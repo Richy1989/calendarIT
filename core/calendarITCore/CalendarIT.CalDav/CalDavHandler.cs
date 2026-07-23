@@ -177,7 +177,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
                 .Where(u => u is not null)
                 .Cast<string>()
                 .ToList();
-            events = await db.Events.AsNoTracking()
+            events = await db.Events.AsNoTracking().Include(e => e.Category)
                 .Where(e => e.CalendarId == cal.Id && uids.Contains(e.Uid))
                 .ToListAsync(ctx.RequestAborted);
 
@@ -194,7 +194,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         {
             // Time-range filters are not applied server-side: the whole calendar is returned
             // and the client (which expands recurrences anyway) narrows it down.
-            events = await db.Events.AsNoTracking()
+            events = await db.Events.AsNoTracking().Include(e => e.Category)
                 .Where(e => e.CalendarId == cal.Id)
                 .ToListAsync(ctx.RequestAborted);
             return MultiStatus([.. events.Select(e => EventDataResponse(cal.Id, e))]);
@@ -256,13 +256,19 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         var existing = await db.Events.FirstOrDefaultAsync(
             e => e.CalendarId == cal.Id && e.Uid == uid, ctx.RequestAborted);
 
+        // For category resolution: an incoming CATEGORIES/COLOR is matched against the
+        // user's categories (by name, else nearest color) inside the mapper.
+        var categories = await db.Categories.AsNoTracking()
+            .Where(c => c.OwnerUserId == cal.OwnerUserId)
+            .ToListAsync(ctx.RequestAborted);
+
         if (existing is null)
         {
             if (!string.IsNullOrEmpty(ifMatch))
             {
                 return Results.StatusCode(StatusCodes.Status412PreconditionFailed);
             }
-            var created = ICalEventMapper.FromICalEvent(ve, cal.Id, uid, now);
+            var created = ICalEventMapper.FromICalEvent(ve, cal.Id, uid, now, categories);
             db.Events.Add(created);
             await db.SaveChangesAsync(ctx.RequestAborted);
             ctx.Response.Headers.ETag = ETagOf(created.UpdatedAt);
@@ -274,7 +280,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             return Results.StatusCode(StatusCodes.Status412PreconditionFailed);
         }
 
-        ICalEventMapper.Apply(ve, existing, now);
+        ICalEventMapper.Apply(ve, existing, now, categories);
         await db.SaveChangesAsync(ctx.RequestAborted);
         ctx.Response.Headers.ETag = ETagOf(existing.UpdatedAt);
         return Results.StatusCode(StatusCodes.Status204NoContent);
@@ -348,7 +354,8 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         }
         var uid = Uri.UnescapeDataString(resource[..^4]);
         var query = track ? db.Events : db.Events.AsNoTracking();
-        return await query.FirstOrDefaultAsync(e => e.CalendarId == cal.Id && e.Uid == uid, ct);
+        return await query.Include(e => e.Category)
+            .FirstOrDefaultAsync(e => e.CalendarId == cal.Id && e.Uid == uid, ct);
     }
 
     private async Task<Dictionary<XName, object?>> CalendarPropsAsync(Calendar cal)

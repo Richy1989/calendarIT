@@ -103,6 +103,17 @@ public static class CssColorMap
         return NameToHex.TryGetValue(name.Trim(), out var hex) ? hex : null;
     }
 
+    /// <summary>Squared RGB distance between two hex colors; null when either fails to parse.</summary>
+    public static int? Distance(string? hexA, string? hexB)
+    {
+        if (!TryParseHex(hexA, out var r1, out var g1, out var b1)
+            || !TryParseHex(hexB, out var r2, out var g2, out var b2))
+        {
+            return null;
+        }
+        return (r1 - r2) * (r1 - r2) + (g1 - g2) * (g1 - g2) + (b1 - b2) * (b1 - b2);
+    }
+
     private static bool TryParseHex(string? hex, out byte r, out byte g, out byte b)
     {
         r = g = b = 0;

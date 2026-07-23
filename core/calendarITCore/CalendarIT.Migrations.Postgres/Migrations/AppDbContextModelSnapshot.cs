@@ -96,6 +96,9 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Property<Guid>("CalendarId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("CategoryId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Color")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
@@ -151,9 +154,46 @@ namespace CalendarIT.Migrations.Postgres.Migrations
 
                     b.HasIndex("CalendarId");
 
+                    b.HasIndex("CategoryId");
+
                     b.HasIndex("CalendarId", "StartUtc");
 
                     b.ToTable("Events");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.Category", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("OwnerUserId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Categories");
                 });
 
             modelBuilder.Entity("CalendarIT.Domain.MailAccount", b =>
@@ -525,7 +565,23 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("CalendarIT.Domain.Category", "Category")
+                        .WithMany("Events")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Calendar");
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.Category", b =>
+                {
+                    b.HasOne("CalendarIT.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CalendarIT.Domain.MailAccount", b =>
@@ -618,6 +674,11 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Navigation("Attendees");
 
                     b.Navigation("Reminders");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.Category", b =>
+                {
+                    b.Navigation("Events");
                 });
 #pragma warning restore 612, 618
         }

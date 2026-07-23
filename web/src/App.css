@@ -1447,43 +1447,75 @@
   accent-color: var(--violet);
 }
 
-/* Color swatches */
-.swatches {
+/* Category picker (modal): one chip per category, colored by --sw */
+.category-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.55rem;
+  gap: 0.45rem;
 }
 
-.swatch {
-  width: 26px;
-  height: 26px;
-  padding: 0;
+.category-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.32rem 0.7rem 0.32rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface-3);
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.category-chip:hover {
+  color: var(--text);
+  border-color: var(--sw);
+}
+
+.category-chip.active {
+  color: var(--text);
+  border-color: var(--sw);
+  background: color-mix(in srgb, var(--sw) 16%, transparent);
+}
+
+.category-chip-dot {
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  border: none;
   background: var(--sw);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
-  cursor: pointer;
-  position: relative;
-  transition: transform 0.12s ease;
+  flex: none;
 }
 
-.swatch:hover {
-  transform: scale(1.08);
+.category-chip-dot-none {
+  background: transparent;
+  border: 1.5px dashed var(--sw);
 }
 
-.swatch.active {
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--sw);
-}
-
-.swatch-custom {
+/* Category color dot (settings): a round color input disguised as a dot */
+.category-dot-pick {
+  width: 36px;
+  height: 36px;
+  flex: none;
   display: grid;
   place-items: center;
-  overflow: hidden;
-  background:
-    conic-gradient(from 210deg, #ff6347, #daa520, #3cb371, #40e0d0, #6495ed, #7b68ee, #db7093, #ff6347);
+  position: relative;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--sw) 18%, transparent);
+  cursor: pointer;
 }
 
-.swatch-custom input {
+.category-dot-pick::after {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--sw);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+.category-dot-pick input {
   position: absolute;
   inset: 0;
   opacity: 0;
