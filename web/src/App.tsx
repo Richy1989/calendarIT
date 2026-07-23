@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { api } from './api/client'
 import { getProfile } from './api/profile'
-import { getVisibleCalendars, saveVisibleCalendars } from './prefs'
+import { getVisibleCalendars, getVisibleCategories, saveVisibleCalendars, saveVisibleCategories } from './prefs'
 import { getTokens, setTokens, type AuthTokens } from './auth/authStorage'
 import CalendarView from './CalendarView'
 import SearchBar from './SearchBar'
@@ -18,12 +18,13 @@ export default function App() {
   // early return, or the hook count changes between logged-out/in renders and React throws.
   const [tokens, setAuth] = useState<AuthTokens | null>(getTokens())
   // null = calendar screen; otherwise the settings page, opened on that section.
-  const [settingsSection, setSettingsSection] = useState<'general' | 'calendars' | null>(null)
+  const [settingsSection, setSettingsSection] = useState<'general' | 'calendars' | 'categories' | null>(null)
   // A search pick sets this; CalendarView watches it and jumps to that day. The bumping
   // counter lets picking the same date twice re-trigger the navigation.
   const [focus, setFocus] = useState<{ date: string; n: number } | null>(null)
-  // Which calendars are shown: null = all. Persisted locally so the choice sticks.
+  // Which calendars/categories are shown: null = all. Persisted locally so the choice sticks.
   const [visibleCals, setVisibleCals] = useState<string[] | null>(getVisibleCalendars())
+  const [visibleCats, setVisibleCats] = useState<string[] | null>(getVisibleCategories())
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: getProfile, enabled: !!tokens })
 
   const persist = (t: AuthTokens | null) => {
@@ -86,6 +87,12 @@ export default function App() {
               saveVisibleCalendars(ids)
             }}
             onManage={() => setSettingsSection('calendars')}
+            visibleCategoryIds={visibleCats}
+            onChangeVisibleCategories={(ids) => {
+              setVisibleCats(ids)
+              saveVisibleCategories(ids)
+            }}
+            onManageCategories={() => setSettingsSection('categories')}
           />
         </section>
       </main>

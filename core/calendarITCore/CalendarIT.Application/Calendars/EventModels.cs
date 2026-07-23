@@ -14,6 +14,7 @@ public sealed record EventDto(
     string Title,
     string? Description,
     string? Location,
+    Guid? CategoryId,
     string? Color,
     DateTimeOffset Start,
     DateTimeOffset? End,
@@ -54,9 +55,8 @@ public sealed class SaveEventRequest
     [MaxLength(500)]
     public string? Location { get; init; }
 
-    /// <summary>Hex color (e.g. "#7B68EE"). Optional.</summary>
-    [MaxLength(32)]
-    public string? Color { get; init; }
+    /// <summary>Category supplying the event's color. Null = uncategorized (default color).</summary>
+    public Guid? CategoryId { get; init; }
 
     [Required]
     public DateTimeOffset Start { get; init; }

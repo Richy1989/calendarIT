@@ -19,7 +19,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
         var results = new List<EventDto>();
 
         // Single (non-recurring) events: filter by range in SQL.
-        var singles = db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees)
+        var singles = db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees).Include(e => e.Category)
             .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule == null);
         if (toUtc is not null)
         {
@@ -34,7 +34,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
         // Recurring series: fetch masters, expand within the window (needs a bounded range).
         if (fromUtc is not null && toUtc is not null)
         {
-            var masters = await db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees)
+            var masters = await db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees).Include(e => e.Category)
                 .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule != null)
                 .ToListAsync(cancellationToken);
 
@@ -47,7 +47,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
                 foreach (var occ in RecurrenceExpander.Expand(m.StartUtc, end, m.TimeZoneId, m.RRule!, exDates, fromUtc.Value, toUtc.Value))
                 {
                     results.Add(new EventDto(
-                        m.Id, m.CalendarId, m.Title, m.Description, m.Location, m.Color,
+                        m.Id, m.CalendarId, m.Title, m.Description, m.Location, m.CategoryId, DisplayColor(m),
                         new DateTimeOffset(occ.StartUtc, TimeSpan.Zero),
                         new DateTimeOffset(occ.EndUtc, TimeSpan.Zero),
                         m.IsAllDay, Recurring: true, Recurrence: m.RRule, Reminders: reminders, Attendees: attendees));
@@ -71,7 +71,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
         // Case-insensitive substring on title/location. ToLower().Contains() translates to
         // `lower(col) LIKE '%q%'` on both SQLite and Npgsql, so this stays provider-agnostic.
         var needle = q.ToLowerInvariant();
-        var matches = await db.Events.AsNoTracking()
+        var matches = await db.Events.AsNoTracking().Include(e => e.Category)
             .Where(e => e.Calendar!.OwnerUserId == userId
                 && (e.Title.ToLower().Contains(needle)
                     || (e.Location != null && e.Location.ToLower().Contains(needle))))
@@ -82,7 +82,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
         {
             var start = e.RRule is null ? e.StartUtc : RepresentativeOccurrenceUtc(e, now);
             return new EventSearchResult(
-                e.Id, e.Title, e.Location, e.Color,
+                e.Id, e.Title, e.Location, DisplayColor(e),
                 new DateTimeOffset(DateTime.SpecifyKind(start, DateTimeKind.Utc)),
                 e.IsAllDay, e.RRule is not null);
         });
@@ -118,7 +118,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
 
     public async Task<EventDto?> GetByIdAsync(Guid userId, Guid eventId, CancellationToken cancellationToken = default)
     {
-        var entity = await db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees)
+        var entity = await db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees).Include(e => e.Category)
             .Where(e => e.Id == eventId && e.Calendar!.OwnerUserId == userId)
             .SingleOrDefaultAsync(cancellationToken);
         return entity is null ? null : ToDto(entity);
@@ -137,11 +137,13 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
             CreatedAt = now,
         };
         Apply(entity, request, now);
+        entity.CategoryId = await ResolveCategoryIdAsync(userId, request.CategoryId, fallback: null, cancellationToken);
         entity.Reminders = MapReminders(request.Reminders);
         entity.Attendees = MapAttendees(request.Attendees, existing: null);
 
         db.Events.Add(entity);
         await db.SaveChangesAsync(cancellationToken);
+        await db.Entry(entity).Reference(e => e.Category).LoadAsync(cancellationToken);
 
         // Invite the guests (no-op without a configured mail account; failures only log).
         await mailer.SendRequestAsync(userId, entity, [.. entity.Attendees], cancellationToken);
@@ -171,6 +173,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
         }
 
         Apply(entity, request, timeProvider.GetUtcNow().UtcDateTime);
+        entity.CategoryId = await ResolveCategoryIdAsync(userId, request.CategoryId, fallback: entity.CategoryId, cancellationToken);
         // Replace the reminder set; orphaned rows are deleted (required FK). The new rows
         // must be marked Added explicitly: they carry pre-set Guid keys, and EF assumes
         // navigation-discovered entities with a set store-generated key already exist
@@ -210,6 +213,7 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        await db.Entry(entity).Reference(e => e.Category).LoadAsync(cancellationToken);
 
         // Everyone still invited gets the updated event; the removed get a cancellation.
         await mailer.SendRequestAsync(userId, entity, [.. entity.Attendees], cancellationToken);
@@ -251,7 +255,6 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
         entity.Title = request.Title.Trim();
         entity.Description = request.Description;
         entity.Location = request.Location;
-        entity.Color = request.Color;
         entity.StartUtc = request.Start.UtcDateTime;
         entity.EndUtc = request.End?.UtcDateTime;
         entity.IsAllDay = request.AllDay;
@@ -261,9 +264,12 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
         entity.UpdatedAt = now;
     }
 
+    /// <summary>Display color: the category's color, else the legacy per-event fallback.</summary>
+    private static string? DisplayColor(CalendarEvent e) => e.Category?.Color ?? e.Color;
+
     private static EventDto ToDto(CalendarEvent e) =>
         new(
-            e.Id, e.CalendarId, e.Title, e.Description, e.Location, e.Color,
+            e.Id, e.CalendarId, e.Title, e.Description, e.Location, e.CategoryId, DisplayColor(e),
             new DateTimeOffset(DateTime.SpecifyKind(e.StartUtc, DateTimeKind.Utc)),
             e.EndUtc is null ? null : new DateTimeOffset(DateTime.SpecifyKind(e.EndUtc.Value, DateTimeKind.Utc)),
             e.IsAllDay, Recurring: e.RRule is not null, Recurrence: e.RRule,
@@ -342,6 +348,19 @@ public sealed class EventService(AppDbContext db, TimeProvider timeProvider, IIn
 
     private static DateTime TruncateToSeconds(DateTime dt) =>
         new(dt.Ticks - (dt.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc);
+
+    /// <summary>Null clears the category; a category the user owns is assigned; anything
+    /// else keeps <paramref name="fallback"/> (the current assignment on update).</summary>
+    private async Task<Guid?> ResolveCategoryIdAsync(Guid userId, Guid? requested, Guid? fallback, CancellationToken cancellationToken)
+    {
+        if (requested is not { } id)
+        {
+            return null;
+        }
+        var owned = await db.Categories.AnyAsync(
+            c => c.Id == id && c.OwnerUserId == userId, cancellationToken);
+        return owned ? id : fallback;
+    }
 
     /// <summary>The calendar a new event lands in: the requested one when the user owns it,
     /// otherwise the default (first) calendar, created on first use.</summary>

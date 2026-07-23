@@ -1,4 +1,5 @@
 using CalendarIT.Application.Calendars;
+using CalendarIT.Domain;
 using CalendarIT.Infrastructure.Persistence;
 using Ical.Net.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -13,7 +14,7 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
     public async Task<string> ExportAsync(
         Guid userId, IReadOnlyCollection<Guid>? calendarIds = null, CancellationToken cancellationToken = default)
     {
-        var query = db.Events.AsNoTracking()
+        var query = db.Events.AsNoTracking().Include(e => e.Category)
             .Where(e => e.Calendar!.OwnerUserId == userId);
         if (calendarIds is { Count: > 0 })
         {
@@ -49,6 +50,9 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
         var known = new HashSet<string>(existingUids, StringComparer.OrdinalIgnoreCase);
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
+        var categories = await db.Categories
+            .Where(c => c.OwnerUserId == userId)
+            .ToListAsync(cancellationToken);
         int imported = 0, skipped = 0;
 
         foreach (var ve in parsed.Events)
@@ -66,12 +70,40 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
                 continue;
             }
 
-            db.Events.Add(ICalEventMapper.FromICalEvent(ve, calendar.Id, uid, now));
+            // A CATEGORIES name the user doesn't have yet becomes a new category, colored
+            // from the incoming COLOR when present — so imports keep their grouping.
+            EnsureCategoryExists(ve, userId, categories, now);
+            db.Events.Add(ICalEventMapper.FromICalEvent(ve, calendar.Id, uid, now, categories));
             imported++;
         }
 
         await db.SaveChangesAsync(cancellationToken);
         return new ImportResult(imported, skipped);
+    }
+
+    /// <summary>Creates (stages) a category for an incoming CATEGORIES name the user
+    /// doesn't have yet, colored from the VEVENT's COLOR when present.</summary>
+    private void EnsureCategoryExists(
+        Ical.Net.CalendarComponents.CalendarEvent ve, Guid userId, List<Category> categories, DateTime now)
+    {
+        var name = ICalEventMapper.ReadCategoryName(ve);
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 100
+            || categories.Any(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        var category = new Category
+        {
+            Id = Guid.NewGuid(),
+            OwnerUserId = userId,
+            Name = name,
+            Color = ICalEventMapper.ReadColorHex(ve) ?? "#708090", // slategray default
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.Categories.Add(category);
+        categories.Add(category);
     }
 
     /// <summary>Where imported events land: a fresh calendar when a name was given, else the

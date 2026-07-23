@@ -1,4 +1,5 @@
 using System.Globalization;
+using CalendarIT.Domain;
 using Ical.Net.DataTypes;
 using Ical.Net.Serialization.DataTypes;
 using DomainEvent = CalendarIT.Domain.CalendarEvent;
@@ -54,15 +55,22 @@ public static class ICalEventMapper
             ve.ExceptionDates.Add(new CalDateTime(DateTime.SpecifyKind(ex, DateTimeKind.Utc)));
         }
 
-        var colorName = CssColorMap.ToNearestName(e.Color);
+        // The category rides along as CATEGORIES (RFC 5545); its color as COLOR (RFC 7986).
+        // Callers must have the Category navigation loaded for categorized events.
+        var colorName = CssColorMap.ToNearestName(e.Category?.Color ?? e.Color);
         if (colorName is not null)
         {
             ve.AddProperty("COLOR", colorName);
         }
+        if (e.Category is not null)
+        {
+            ve.AddProperty("CATEGORIES", e.Category.Name);
+        }
         return ve;
     }
 
-    public static DomainEvent FromICalEvent(ICalEvent ve, Guid calendarId, string uid, DateTime now)
+    public static DomainEvent FromICalEvent(
+        ICalEvent ve, Guid calendarId, string uid, DateTime now, IReadOnlyList<Category>? categories = null)
     {
         var e = new DomainEvent
         {
@@ -71,7 +79,7 @@ public static class ICalEventMapper
             Uid = uid,
             CreatedAt = now,
         };
-        Apply(ve, e, now);
+        Apply(ve, e, now, categories);
         return e;
     }
 
@@ -81,7 +89,9 @@ public static class ICalEventMapper
     /// (Ical.Net v5's ExceptionDates shape needs extra plumbing), and dropping them here
     /// would resurrect occurrences the user deleted in the web UI.
     /// </summary>
-    public static void Apply(ICalEvent ve, DomainEvent e, DateTime now)
+    /// <param name="categories">The owner's categories, for resolving the event's category
+    /// from CATEGORIES (by name) or COLOR (nearest color). Null skips category resolution.</param>
+    public static void Apply(ICalEvent ve, DomainEvent e, DateTime now, IReadOnlyList<Category>? categories = null)
     {
         var isAllDay = !ve.Start!.HasTime;
         var startUtc = ve.Start.AsUtc;
@@ -100,17 +110,31 @@ public static class ICalEventMapper
             ? new RecurrencePatternSerializer().SerializeToString(ve.RecurrenceRules[0])
             : null;
 
-        // Only overwrite the stored color when the VEVENT actually carries one: most CalDAV
-        // clients don't round-trip the RFC 7986 COLOR property, and an edit synced from a
-        // phone must not wipe the color chosen in the web UI.
-        var colorValue = ve.Properties["COLOR"]?.Value?.ToString();
+        // Category resolution, most-specific first: a CATEGORIES name matching one of the
+        // user's categories wins; else an incoming COLOR snaps to the category with the
+        // nearest color (phones typically send only COLOR). Nothing resolvable — no
+        // property at all, or a value we can't parse — leaves the assignment unchanged, so
+        // an edit synced from a phone never wipes what was chosen in the web UI.
+        var colorHex = ReadColorHex(ve);
+        var categoryName = ReadCategoryName(ve);
 
         e.Title = string.IsNullOrWhiteSpace(ve.Summary) ? "(untitled)" : ve.Summary;
         e.Description = ve.Description;
         e.Location = ve.Location;
-        if (colorValue is not null)
+        if (categories is { Count: > 0 })
         {
-            e.Color = CssColorMap.ToHex(colorValue);
+            var resolved = (string.IsNullOrWhiteSpace(categoryName)
+                    ? null
+                    : categories.FirstOrDefault(c => string.Equals(c.Name, categoryName, StringComparison.OrdinalIgnoreCase)))
+                ?? NearestByColor(categories, colorHex);
+            if (resolved is not null)
+            {
+                e.CategoryId = resolved.Id;
+            }
+        }
+        else if (colorHex is not null)
+        {
+            e.Color = colorHex; // no categories to snap to — keep the hex as the legacy fallback
         }
         e.StartUtc = startUtc;
         e.EndUtc = endUtc;
@@ -118,6 +142,34 @@ public static class ICalEventMapper
         e.TimeZoneId = ve.Start.TzId;
         e.RRule = rrule;
         e.UpdatedAt = now;
+    }
+
+    /// <summary>The VEVENT's COLOR as hex, or null when absent/unresolvable.</summary>
+    public static string? ReadColorHex(ICalEvent ve)
+        => CssColorMap.ToHex(ve.Properties["COLOR"]?.Value?.ToString());
+
+    /// <summary>The first non-blank CATEGORIES entry, or null. Ical.Net may surface the
+    /// property value as a string list or a single string depending on the source.</summary>
+    public static string? ReadCategoryName(ICalEvent ve)
+        => (ve.Properties["CATEGORIES"]?.Value as IEnumerable<object>)?
+               .Select(v => v?.ToString()).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n))?.Trim()
+           ?? ve.Properties["CATEGORIES"]?.Value?.ToString()?.Trim();
+
+    /// <summary>The category whose color is nearest to <paramref name="hex"/> (squared RGB
+    /// distance), or null when the hex or every category color fails to parse.</summary>
+    private static Category? NearestByColor(IReadOnlyList<Category> categories, string? hex)
+    {
+        Category? best = null;
+        var bestDist = int.MaxValue;
+        foreach (var c in categories)
+        {
+            if (CssColorMap.Distance(c.Color, hex) is { } d && d < bestDist)
+            {
+                bestDist = d;
+                best = c;
+            }
+        }
+        return best;
     }
 
     /// <summary>Parses newline-separated ISO UTC EXDATEs (the stored format) into UTC instants.</summary>

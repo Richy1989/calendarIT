@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Xml.Linq;
 using CalendarIT.CalDav;
+using CalendarIT.Domain;
 using CalendarIT.Infrastructure.Identity;
 using CalendarIT.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
@@ -157,6 +158,97 @@ public sealed class CalDavHandlerTests : IDisposable
 
         var updated = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
         Assert.Equal("Edited on the phone", updated.Title);
+        Assert.Equal("#7B68EE", updated.Color);
+    }
+
+    [Fact]
+    public async Task Put_WithColorProperty_UpdatesStoredColor()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+
+        var ctx = Context(PutIcs);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+        var stored = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        stored.Color = "#7B68EE"; // as chosen in the web UI
+        await _db.SaveChangesAsync();
+
+        // DAVx⁵ snaps the Android color to the nearest of ALL 147 CSS3 names, so names
+        // outside the default swatches (e.g. darkseagreen) must resolve too. (This user
+        // has no categories, so the hex lands on the legacy per-event fallback.)
+        ctx = Context(PutIcs.Replace("SUMMARY:From the phone", "SUMMARY:From the phone\r\nCOLOR:darkseagreen"));
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        var updated = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        Assert.Equal("#8FBC8F", updated.Color);
+    }
+
+    [Fact]
+    public async Task Put_WithColor_SnapsToNearestCategory()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        var now = DateTime.UtcNow;
+        var work = new Category { Id = Guid.NewGuid(), OwnerUserId = _userId, Name = "Work", Color = "#6495ED", CreatedAt = now, UpdatedAt = now };
+        var urgent = new Category { Id = Guid.NewGuid(), OwnerUserId = _userId, Name = "Urgent", Color = "#FF6347", CreatedAt = now, UpdatedAt = now };
+        _db.Categories.AddRange(work, urgent);
+        await _db.SaveChangesAsync();
+
+        // A phone edit carrying only COLOR (crimson ≈ tomato) lands on the nearest category.
+        var ctx = Context(PutIcs.Replace("SUMMARY:From the phone", "SUMMARY:From the phone\r\nCOLOR:crimson"));
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+        var stored = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        Assert.Equal(urgent.Id, stored.CategoryId);
+
+        // A CATEGORIES name wins over the color when both are present.
+        var body = PutIcs.Replace("SUMMARY:From the phone", "SUMMARY:From the phone\r\nCATEGORIES:Work\r\nCOLOR:crimson");
+        ctx = Context(body);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+        stored = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        Assert.Equal(work.Id, stored.CategoryId);
+
+        // No COLOR/CATEGORIES at all leaves the assignment untouched.
+        ctx = Context(PutIcs.Replace("From the phone", "Edited on the phone"));
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+        stored = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        Assert.Equal(work.Id, stored.CategoryId);
+    }
+
+    [Fact]
+    public async Task GetEvent_CategorizedEvent_EmitsCategoriesAndColor()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        var now = DateTime.UtcNow;
+        var work = new Category { Id = Guid.NewGuid(), OwnerUserId = _userId, Name = "Work", Color = "#6495ED", CreatedAt = now, UpdatedAt = now };
+        _db.Categories.Add(work);
+        await _db.SaveChangesAsync();
+
+        var ctx = Context(PutIcs);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+        var stored = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        stored.CategoryId = work.Id;
+        await _db.SaveChangesAsync();
+
+        var getCtx = Context();
+        var ics = await ExecuteAsync(await _handler.GetEvent(calId, "phone-1@test.ics", getCtx), getCtx);
+        Assert.Contains("CATEGORIES:Work", ics);
+        Assert.Contains("COLOR:cornflowerblue", ics);
+    }
+
+    [Fact]
+    public async Task Put_WithUnresolvableColor_PreservesStoredColor()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+
+        var ctx = Context(PutIcs);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+        var stored = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        stored.Color = "#7B68EE";
+        await _db.SaveChangesAsync();
+
+        // A COLOR value we can't map to a hex must not wipe the color chosen in the web UI.
+        ctx = Context(PutIcs.Replace("SUMMARY:From the phone", "SUMMARY:From the phone\r\nCOLOR:not-a-css-color"));
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        var updated = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
         Assert.Equal("#7B68EE", updated.Color);
     }
 

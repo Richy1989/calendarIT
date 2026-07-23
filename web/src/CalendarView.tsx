@@ -15,12 +15,15 @@ import type {
   EventInput,
 } from '@fullcalendar/core'
 import EventModal, { type EventDraft } from './EventModal'
+import AgendaView from './AgendaView'
 import { createEvent, deleteEvent, getEvent, listEvents, updateEvent, type EventDto, type SaveEventRequest } from './api/events'
 import { listCalendars } from './api/calendars'
+import { listCategories } from './api/categories'
 import { saveDefaultView } from './api/profile'
-import { getSavedView, saveView } from './prefs'
+import { getSavedView, saveView, UNCATEGORIZED } from './prefs'
 
-const DEFAULT_COLOR = '#7B68EE' // mediumslateblue
+// Uncategorized events render in this neutral default (categories carry the real colors).
+const DEFAULT_COLOR = '#708090' // slategray
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
@@ -70,7 +73,7 @@ function dtoToInput(dto: EventDto): EventInput {
       seriesId: dto.id,
       recurring: dto.recurring,
       occurrenceStart: dto.start,
-      color,
+      categoryId: dto.categoryId ?? null,
       location: dto.location ?? '',
       description: dto.description ?? '',
       reminders: dto.reminders,
@@ -90,7 +93,7 @@ function draftToRequest(d: EventDraft): SaveEventRequest {
     title: d.title,
     description: d.description || null,
     location: d.location || null,
-    color: d.color,
+    categoryId: d.categoryId,
     start: toApiIso(d.start, d.allDay),
     end: d.end ? toApiIso(d.end, d.allDay) : null,
     allDay: d.allDay,
@@ -113,6 +116,9 @@ export default function CalendarView({
   visibleCalendarIds,
   onChangeVisible,
   onManage,
+  visibleCategoryIds,
+  onChangeVisibleCategories,
+  onManageCategories,
 }: {
   focus?: { date: string; n: number } | null
   serverView?: string | null
@@ -122,8 +128,19 @@ export default function CalendarView({
   onChangeVisible?: (ids: string[] | null) => void
   /** Opens Settings → Calendars ("Manage calendars…"). */
   onManage?: () => void
+  /** Categories to show; null/undefined = all (incl. uncategorized, see UNCATEGORIZED). */
+  visibleCategoryIds?: string[] | null
+  /** Called when the user toggles category visibility in the toolbar picker. */
+  onChangeVisibleCategories?: (ids: string[] | null) => void
+  /** Opens Settings → Categories ("Manage categories…"). */
+  onManageCategories?: () => void
 }) {
   const queryClient = useQueryClient()
+  // "list" is our own agenda panel, not a FullCalendar view: while active, FullCalendar
+  // stays mounted (hidden) so its date/view state survives the round trip.
+  const savedView = getSavedView()
+  const [agendaMode, setAgendaMode] = useState(savedView === 'agendaList')
+  const initialFcView = savedView === 'agendaList' ? 'dayGridMonth' : savedView
   const [range, setRange] = useState<{ from: string; to: string } | null>(null)
   const { data: dtos = [] } = useQuery({
     queryKey: ['events', range?.from, range?.to],
@@ -131,12 +148,27 @@ export default function CalendarView({
     enabled: !!range,
   })
   const { data: calendars = [] } = useQuery({ queryKey: ['calendars'], queryFn: listCalendars })
+  const { data: categories = [], isSuccess: categoriesLoaded } = useQuery({ queryKey: ['categories'], queryFn: listCategories })
+
+  // The persisted category filter may reference categories deleted since (their events
+  // are now uncategorized). Drop stale ids — and when the filter pointed only at deleted
+  // categories, fall back to "all" instead of a mysteriously empty calendar. A
+  // deliberately empty selection ([]) is preserved.
+  const effectiveCategoryIds = useMemo(() => {
+    if (!visibleCategoryIds || !categoriesLoaded) return visibleCategoryIds ?? null
+    const known = new Set([...categories.map((c) => c.id), UNCATEGORIZED])
+    const pruned = visibleCategoryIds.filter((id) => known.has(id))
+    if (pruned.length === 0 && visibleCategoryIds.length > 0) return null
+    return pruned
+  }, [visibleCategoryIds, categories, categoriesLoaded])
+
   const events = useMemo(
     () =>
       dtos
         .filter((d) => !visibleCalendarIds || visibleCalendarIds.includes(d.calendarId))
+        .filter((d) => !effectiveCategoryIds || effectiveCategoryIds.includes(d.categoryId ?? UNCATEGORIZED))
         .map(dtoToInput),
-    [dtos, visibleCalendarIds],
+    [dtos, visibleCalendarIds, effectiveCategoryIds],
   )
 
   // New events land in the first visible calendar (or the first one overall).
@@ -156,11 +188,37 @@ export default function CalendarView({
           ? `${calendars.find((c) => isCalVisible(c.id))?.name} ▾`
           : `${shownCount} of ${calendars.length} ▾`
 
+  // Deselecting down to nothing is allowed — an empty array means "show nothing",
+  // while null keeps meaning "all". The "All" row toggles between the two.
   const toggleCal = (id: string) => {
     const next = calendars.filter((c) => (c.id === id ? !isCalVisible(c.id) : isCalVisible(c.id))).map((c) => c.id)
-    if (next.length === 0) return // never blank the whole view
     onChangeVisible?.(next.length === calendars.length ? null : next)
   }
+
+  const toggleAllCals = () => onChangeVisible?.(shownCount === calendars.length ? [] : null)
+
+  // Category visibility picker — same pattern as the calendar picker; the extra
+  // UNCATEGORIZED entry covers events without a category.
+  const [catPop, setCatPop] = useState<{ x: number; y: number } | null>(null)
+  const allCatIds = [...categories.map((c) => c.id), UNCATEGORIZED]
+  const isCatVisible = (id: string) => !effectiveCategoryIds || effectiveCategoryIds.includes(id)
+  const shownCatCount = allCatIds.filter(isCatVisible).length
+  const catPickerLabel =
+    categories.length === 0
+      ? 'Categories ▾'
+      : shownCatCount === allCatIds.length
+        ? 'All categories ▾'
+        : shownCatCount === 1
+          ? `${categories.find((c) => isCatVisible(c.id))?.name ?? 'Uncategorized'} ▾`
+          : `${shownCatCount} of ${allCatIds.length} ▾`
+
+  // Same contract as the calendars: empty array = nothing, null = all.
+  const toggleCat = (id: string) => {
+    const next = allCatIds.filter((x) => (x === id ? !isCatVisible(x) : isCatVisible(x)))
+    onChangeVisibleCategories?.(next.length === allCatIds.length ? null : next)
+  }
+
+  const toggleAllCats = () => onChangeVisibleCategories?.(shownCatCount === allCatIds.length ? [] : null)
 
   const [draft, setDraft] = useState<EventDraft | null>(null)
   const [menu, setMenu] = useState<ContextMenu | null>(null)
@@ -204,6 +262,11 @@ export default function CalendarView({
   useEffect(() => {
     if (appliedServerView.current || !serverView) return
     appliedServerView.current = true
+    if (serverView === 'agendaList' || serverView === 'listMonth') {
+      setAgendaMode(true)
+      saveView('agendaList')
+      return
+    }
     const api = calendarRef.current?.getApi()
     if (!api || api.view.type === serverView) return
     suppressPersist.current = true // don't PUT back a value we just read from the server
@@ -211,11 +274,32 @@ export default function CalendarView({
     saveView(serverView)
   }, [serverView])
 
+  // Entering / leaving the agenda list, persisted like any other view choice.
+  const enterAgenda = () => {
+    setAgendaMode(true)
+    saveView('agendaList')
+    saveDefaultView('agendaList').catch(() => {})
+  }
+
+  const exitAgenda = (view: 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay') => {
+    setAgendaMode(false)
+    const api = calendarRef.current?.getApi()
+    if (api && api.view.type !== view) {
+      api.changeView(view) // datesSet fires and persists the choice
+    } else {
+      saveView(view)
+      saveDefaultView(view).catch(() => {})
+    }
+    // FullCalendar was display:none while the list was up; re-measure once visible.
+    requestAnimationFrame(() => calendarRef.current?.getApi().updateSize())
+  }
+
   // A search pick (from the header) jumps the calendar to that appointment's day view.
   useEffect(() => {
     if (!focus) return
     const api = calendarRef.current?.getApi()
     if (!api) return
+    setAgendaMode(false) // a date jump is a grid concern; leave the list if it's up
     const d = new Date(focus.date)
     api.changeView('timeGridDay', d)
     setSelectedDate(dayKey(d))
@@ -225,7 +309,8 @@ export default function CalendarView({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
-      if (draft || menu || yearPop || calPop) return // don't steal keys from the editor / popovers
+      if (draft || menu || yearPop || calPop || catPop) return // don't steal keys from the editor / popovers
+      if (agendaMode) return // the list has no prev/next pages
       if (e.metaKey || e.ctrlKey || e.altKey) return
       const target = e.target as HTMLElement | null
       const tag = target?.tagName
@@ -238,7 +323,17 @@ export default function CalendarView({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [draft, menu, yearPop, calPop])
+  }, [draft, menu, yearPop, calPop, catPop, agendaMode])
+
+  // Popover openers, shared by the FullCalendar toolbar buttons and the agenda toolbar.
+  const openCalPop = (rect: DOMRect) => {
+    setCatPop(null)
+    setCalPop((p) => (p ? null : { x: rect.left, y: rect.bottom + 6 }))
+  }
+  const openCatPop = (rect: DOMRect) => {
+    setCalPop(null)
+    setCatPop((p) => (p ? null : { x: rect.left, y: rect.bottom + 6 }))
+  }
 
   useEffect(() => {
     if (!calPop) return
@@ -253,6 +348,20 @@ export default function CalendarView({
       window.removeEventListener('keydown', onKey)
     }
   }, [calPop])
+
+  useEffect(() => {
+    if (!catPop) return
+    const close = () => setCatPop(null)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setCatPop(null)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [catPop])
 
   // Clicking the toolbar title ("August 2026") opens a small popover to jump years.
   // FullCalendar owns the toolbar DOM, so the listener is delegated from the document.
@@ -333,8 +442,11 @@ export default function CalendarView({
     openNewOn(start, false)
   }
 
+  // New events start in the first category (so they get a color without extra clicks).
+  const defaultCategoryId = () => categories[0]?.id ?? null
+
   const openNewOn = (date: Date, allDay: boolean) => {
-    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
+    const blank = { title: '', categoryId: defaultCategoryId(), location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
     if (allDay) {
       const day = toLocalInput(date).slice(0, 10)
       setDraft({ ...blank, start: day, end: day, allDay: true })
@@ -351,7 +463,7 @@ export default function CalendarView({
   // Opens the new-appointment editor prefilled with exactly what was selected.
   const handleSelect = (arg: DateSelectArg) => {
     setSelectedDate(dayKey(arg.start))
-    const blank = { title: '', color: DEFAULT_COLOR, location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
+    const blank = { title: '', categoryId: defaultCategoryId(), location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
     if (arg.allDay) {
       const startDay = dayKey(arg.start)
       const endDay = addDays(dayKey(arg.end), -1) // exclusive → inclusive last day
@@ -392,7 +504,7 @@ export default function CalendarView({
       allDay,
       start: startLocal,
       end: endLocal,
-      color: dto.color ?? DEFAULT_COLOR,
+      categoryId: dto.categoryId ?? null,
       location: dto.location ?? '',
       description: dto.description ?? '',
       recurrence: dto.recurrence ?? '',
@@ -420,7 +532,7 @@ export default function CalendarView({
       title: ev.title,
       description: (ev.extendedProps.description as string) || null,
       location: (ev.extendedProps.location as string) || null,
-      color: (ev.extendedProps.color as string) ?? DEFAULT_COLOR,
+      categoryId: (ev.extendedProps.categoryId as string | null) ?? null, // keep the assignment on drag edits
       start: ev.allDay ? toApiIso(ev.startStr, true) : (ev.start ?? new Date()).toISOString(),
       // FullCalendar's all-day end is exclusive; the API stores an inclusive last day.
       end: ev.end ? (ev.allDay ? toApiIso(addDays(ev.endStr.slice(0, 10), -1), true) : ev.end.toISOString()) : null,
@@ -459,25 +571,28 @@ export default function CalendarView({
 
   return (
     <>
+      <div className="calendar-fc-host" style={agendaMode ? { display: 'none' } : undefined}>
       <FullCalendar
         ref={calendarRef}
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-        initialView={getSavedView()}
+        initialView={initialFcView}
         customButtons={{
           addEvent: { text: '+  New', click: openNew },
           todaySelect: { text: 'today', click: goToday },
           calPicker: {
             text: calPickerLabel,
-            click: (_ev, element) => {
-              const rect = element.getBoundingClientRect()
-              setCalPop((p) => (p ? null : { x: rect.left, y: rect.bottom + 6 }))
-            },
+            click: (_ev, element) => openCalPop(element.getBoundingClientRect()),
           },
+          catPicker: {
+            text: catPickerLabel,
+            click: (_ev, element) => openCatPop(element.getBoundingClientRect()),
+          },
+          listBtn: { text: 'list', click: enterAgenda },
         }}
         headerToolbar={{
-          left: 'addEvent calPicker',
+          left: 'addEvent calPicker catPicker',
           center: 'title',
-          right: 'prev,next todaySelect dayGridMonth,timeGridWeek,timeGridDay',
+          right: 'prev,next todaySelect dayGridMonth,timeGridWeek,timeGridDay,listBtn',
         }}
         height="100%"
         nowIndicator
@@ -498,6 +613,24 @@ export default function CalendarView({
         dayCellDidMount={onDateCellMount}
         eventDidMount={onEventMount}
       />
+      </div>
+
+      {agendaMode && (
+        <AgendaView
+          visibleCalendarIds={visibleCalendarIds}
+          visibleCategoryIds={effectiveCategoryIds}
+          calPickerLabel={calPickerLabel}
+          catPickerLabel={catPickerLabel}
+          onOpenCalPicker={openCalPop}
+          onOpenCatPicker={openCatPop}
+          onNew={openNew}
+          onExit={exitAgenda}
+          onEdit={openForEdit}
+          onEventContext={(x, y, e) =>
+            setMenu({ kind: 'event', x, y, seriesId: e.seriesId, recurring: e.recurring, occurrenceStart: e.occurrenceStart })
+          }
+        />
+      )}
 
       {menu && (
         <div
@@ -563,17 +696,26 @@ export default function CalendarView({
           >
             {calendars.length > 1 && (
               <>
-                <button type="button" className="cal-switcher-item" onClick={() => onChangeVisible?.(null)}>
+                <button type="button" className="cal-switcher-item" onClick={toggleAllCals}>
                   <span className={'cal-check' + (shownCount === calendars.length ? ' on' : '')} />
                   All calendars
                 </button>
                 <div className="cal-switcher-divider" />
                 {calendars.map((c) => (
-                  <button key={c.id} type="button" className="cal-switcher-item" onClick={() => toggleCal(c.id)}>
-                    <span className={'cal-check' + (isCalVisible(c.id) ? ' on' : '')} />
-                    <span className="cal-switcher-name">{c.name}</span>
-                    <span className="cal-switcher-count">{c.eventCount}</span>
-                  </button>
+                  <div key={c.id} className="cal-switcher-row">
+                    <button type="button" className="cal-switcher-item" onClick={() => toggleCal(c.id)}>
+                      <span className={'cal-check' + (isCalVisible(c.id) ? ' on' : '')} />
+                      <span className="cal-switcher-name">{c.name}</span>
+                      <span className="cal-switcher-count">{c.eventCount}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="cal-switcher-only"
+                      onClick={() => onChangeVisible?.(calendars.length === 1 ? null : [c.id])}
+                    >
+                      only
+                    </button>
+                  </div>
                 ))}
                 <div className="cal-switcher-divider" />
               </>
@@ -587,6 +729,68 @@ export default function CalendarView({
               }}
             >
               Manage calendars…
+            </button>
+          </div>
+        </div>
+      )}
+
+      {catPop && (
+        <div
+          className="ctx-backdrop"
+          onMouseDown={() => setCatPop(null)}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            setCatPop(null)
+          }}
+        >
+          <div
+            className="cal-switcher-menu"
+            style={{ position: 'fixed', left: catPop.x, top: catPop.y }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {categories.length > 0 && (
+              <>
+                <button type="button" className="cal-switcher-item" onClick={toggleAllCats}>
+                  <span className={'cal-check' + (shownCatCount === allCatIds.length ? ' on' : '')} />
+                  All categories
+                </button>
+                <div className="cal-switcher-divider" />
+                {categories.map((c) => (
+                  <div key={c.id} className="cal-switcher-row">
+                    <button type="button" className="cal-switcher-item" onClick={() => toggleCat(c.id)}>
+                      <span className={'cal-check' + (isCatVisible(c.id) ? ' on' : '')} />
+                      <span className="cat-dot" style={{ background: c.color }} aria-hidden="true" />
+                      <span className="cal-switcher-name">{c.name}</span>
+                      {/* Upcoming appointments, not the all-time total — matches what the list view can actually show. */}
+                      <span className="cal-switcher-count">{c.upcomingEventCount}</span>
+                    </button>
+                    <button type="button" className="cal-switcher-only" onClick={() => onChangeVisibleCategories?.([c.id])}>
+                      only
+                    </button>
+                  </div>
+                ))}
+                <div className="cal-switcher-row">
+                  <button type="button" className="cal-switcher-item" onClick={() => toggleCat(UNCATEGORIZED)}>
+                    <span className={'cal-check' + (isCatVisible(UNCATEGORIZED) ? ' on' : '')} />
+                    <span className="cat-dot cat-dot-none" aria-hidden="true" />
+                    <span className="cal-switcher-name">Uncategorized</span>
+                  </button>
+                  <button type="button" className="cal-switcher-only" onClick={() => onChangeVisibleCategories?.([UNCATEGORIZED])}>
+                    only
+                  </button>
+                </div>
+                <div className="cal-switcher-divider" />
+              </>
+            )}
+            <button
+              type="button"
+              className="cal-switcher-item cal-switcher-manage"
+              onClick={() => {
+                setCatPop(null)
+                onManageCategories?.()
+              }}
+            >
+              Manage categories…
             </button>
           </div>
         </div>

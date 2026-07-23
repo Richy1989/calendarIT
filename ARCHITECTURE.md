@@ -193,6 +193,18 @@ Design:
   nearest name on the wire. (Actual `COLOR` (de)serialization lands with iCal/CalDAV in
   Phases 4/6; the web UI already stores/edits the color.)
 
+**Categories (2026-07-23):** per-event colors were replaced by **user-managed categories**
+(`Category`: name + hex color, unique name per user; managed in Settings). An event holds
+a nullable `CategoryId` (FK `SetNull` on category delete) and takes its display color from
+the category; `Event.Color` remains only as a legacy fallback for uncategorized events.
+Wire mapping: export emits `CATEGORIES:<name>` (RFC 5545) + `COLOR:<nearest CSS3 name>`
+(RFC 7986); import matches `CATEGORIES` by name (creating the category when new, colored
+from the incoming `COLOR`); a CalDAV PUT resolves the category by name first, else snaps
+the incoming `COLOR` to the user's **nearest category by RGB distance**, and leaves the
+assignment untouched when nothing resolves. New accounts get a seeded default set
+(Work/Personal/Family/Important); existing per-event colors were **backfilled** into
+categories at startup (one per distinct color, named after its nearest CSS3 color name).
+
 ### 4.3 Timezone strategy
 
 - Store timestamps in **UTC** plus the **originating IANA time zone id** (e.g.

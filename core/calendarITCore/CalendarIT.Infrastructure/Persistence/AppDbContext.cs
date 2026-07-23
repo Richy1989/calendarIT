@@ -20,6 +20,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public DbSet<CalendarEvent> Events => Set<CalendarEvent>();
 
+    public DbSet<Category> Categories => Set<Category>();
+
     public DbSet<Reminder> Reminders => Set<Reminder>();
 
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
@@ -86,6 +88,28 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.HasOne(e => e.Calendar)
                 .WithMany(c => c.Events)
                 .HasForeignKey(e => e.CalendarId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Deleting a category leaves its events uncategorized (default color).
+            entity.HasIndex(e => e.CategoryId);
+            entity.HasOne(e => e.Category)
+                .WithMany(c => c.Events)
+                .HasForeignKey(e => e.CategoryId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<Category>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Name).HasMaxLength(100).IsRequired();
+            entity.Property(c => c.Color).HasMaxLength(32).IsRequired();
+            entity.HasIndex(c => c.OwnerUserId);
+            // Names are unique per user (the service checks case-insensitively; this is the backstop).
+            entity.HasIndex(c => new { c.OwnerUserId, c.Name }).IsUnique();
+
+            entity.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(c => c.OwnerUserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

@@ -42,8 +42,9 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
 - 🔁 **Recurring events** — repeat rules with exceptions (RRULE).
 - ⏰ **Reminders** — by email (browser Web Push is in progress).
 - 🌍 **Time zones** — stored correctly, displayed in yours, DST-safe.
-- 🎨 **Event colors** — pick a color per event; it syncs (via the iCalendar `COLOR`
-  property) to clients that support it.
+- 🎨 **Categories** — named colors (Work, Family, …) managed in Settings; recolor a
+  category and every appointment in it follows. Syncs via the iCalendar `CATEGORIES` +
+  `COLOR` properties; a color picked on the phone maps back to the nearest category.
 - 🔎 **Search** — find any appointment by title or location, keyboard-first.
 - 📲 **Phone sync** — a built-in **CalDAV** server, so any CalDAV-capable app can
   subscribe and sync two-way.
@@ -151,6 +152,8 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
   fall back to CTag polling; reminders don't map to VALARM yet)
 - ✅ Multiple calendars — create/rename/delete in Settings, per-calendar visibility
   toggles, each exposed as its own CalDAV collection
+- ✅ Categories — events take their color from a named category (managed in Settings);
+  existing per-event colors were auto-migrated into categories on first startup
 - 🚧 Web Push reminders (VAPID + service worker)
 - ✅ Inviting guests — connect your own email account (Settings → Email, password stored
   encrypted), add guests to an event, and they get a standard iMIP invite with Accept/Decline

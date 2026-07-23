@@ -3,6 +3,7 @@ using System;
 using CalendarIT.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CalendarIT.Migrations.Postgres.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260723125738_Categories")]
+    partial class Categories
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -213,30 +216,16 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
-                    b.Property<long?>("ImapLastUid")
-                        .HasColumnType("bigint");
-
                     b.Property<int>("ImapPort")
                         .HasColumnType("integer");
 
-                    b.Property<long?>("ImapUidValidity")
-                        .HasColumnType("bigint");
-
                     b.Property<bool>("ImapUseSsl")
                         .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("LastScanAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PasswordProtected")
                         .IsRequired()
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
-
-                    b.Property<int>("ScanIntervalMinutes")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(5);
 
                     b.Property<string>("SmtpHost")
                         .IsRequired()

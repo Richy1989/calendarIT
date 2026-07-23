@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getMailAccount } from './api/mailAccount'
+import { listCategories } from './api/categories'
 
 export type EventDraft = {
   id?: string
@@ -11,9 +12,9 @@ export type EventDraft = {
   start: string
   end: string
   allDay: boolean
-  /** Hex color. Default swatches are CSS3 named colors so they sync losslessly via
-   *  the iCalendar COLOR property (RFC 7986); custom hex snaps to the nearest name. */
-  color: string
+  /** The category (named color, managed in Settings) the event takes its color from;
+   *  null = uncategorized (default color). */
+  categoryId: string | null
   location: string
   description: string
   /** iCalendar RRULE, or '' for a one-off event. */
@@ -44,19 +45,10 @@ const REPEATS: { label: string; value: string }[] = [
   { label: 'Yearly', value: 'FREQ=YEARLY' },
 ]
 
-// Each swatch value is an exact CSS3 color name's hex, for lossless CalDAV COLOR sync.
-const SWATCHES: { name: string; hex: string }[] = [
-  { name: 'Indigo', hex: '#7B68EE' }, // mediumslateblue
-  { name: 'Blue', hex: '#6495ED' }, // cornflowerblue
-  { name: 'Turquoise', hex: '#40E0D0' }, // turquoise
-  { name: 'Green', hex: '#3CB371' }, // mediumseagreen
-  { name: 'Amber', hex: '#DAA520' }, // goldenrod
-  { name: 'Rose', hex: '#DB7093' }, // palevioletred
-  { name: 'Tomato', hex: '#FF6347' }, // tomato
-  { name: 'Slate', hex: '#708090' }, // slategray
-]
-
 const cssVar = (hex: string) => ({ ['--sw']: hex }) as React.CSSProperties
+
+/** Uncategorized events render in this neutral default. */
+const NO_CATEGORY_COLOR = '#708090' // slategray
 
 export default function EventModal({
   draft,
@@ -77,7 +69,7 @@ export default function EventModal({
   const [allDay, setAllDay] = useState(draft.allDay)
   const [start, setStart] = useState(draft.start)
   const [end, setEnd] = useState(draft.end)
-  const [color, setColor] = useState(draft.color)
+  const [categoryId, setCategoryId] = useState(draft.categoryId)
   const [recurrence, setRecurrence] = useState(draft.recurrence)
   const [reminders, setReminders] = useState(draft.reminders)
   const [location, setLocation] = useState(draft.location)
@@ -94,6 +86,9 @@ export default function EventModal({
 
   // Invitations are sent from the user's own mailbox; without one they're saved but not mailed.
   const { data: mailAccount } = useQuery({ queryKey: ['mail-account'], queryFn: getMailAccount, staleTime: 60_000 })
+
+  // Categories (named colors, managed in Settings) — the event takes its color from one.
+  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: listCategories, staleTime: 60_000 })
 
   const addGuest = () => {
     const email = guestInput.trim().replace(/[,;]$/, '')
@@ -121,7 +116,6 @@ export default function EventModal({
     status === 'Accepted' ? { mark: '✓', cls: ' ok' } :
     status === 'Declined' ? { mark: '✕', cls: ' no' } :
     status === 'Tentative' ? { mark: '?', cls: '' } : null
-  const isCustom = !SWATCHES.some((s) => s.hex.toLowerCase() === color.toLowerCase())
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -144,7 +138,7 @@ export default function EventModal({
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
-    onSave({ id: draft.id, calendarId, title: title.trim(), start, end, allDay, color, location, description, recurrence, reminders, attendees })
+    onSave({ id: draft.id, calendarId, title: title.trim(), start, end, allDay, categoryId, location, description, recurrence, reminders, attendees })
   }
 
   const inputType = allDay ? 'date' : 'datetime-local'
@@ -240,27 +234,33 @@ export default function EventModal({
         </div>
 
         <div className="field">
-          <label>Color</label>
-          <div className="swatches">
-            {SWATCHES.map((s) => (
+          <label>Category</label>
+          <div className="category-chips">
+            {categories.map((c) => (
               <button
-                key={s.hex}
+                key={c.id}
                 type="button"
-                className={'swatch' + (!isCustom && color.toLowerCase() === s.hex.toLowerCase() ? ' active' : '')}
-                style={cssVar(s.hex)}
-                title={s.name}
-                aria-label={s.name}
-                onClick={() => setColor(s.hex)}
-              />
+                className={'category-chip' + (categoryId === c.id ? ' active' : '')}
+                style={cssVar(c.color)}
+                onClick={() => setCategoryId(c.id)}
+              >
+                <span className="category-chip-dot" aria-hidden="true" />
+                {c.name}
+              </button>
             ))}
-            <label
-              className={'swatch swatch-custom' + (isCustom ? ' active' : '')}
-              style={cssVar(color)}
-              title="Custom color"
+            <button
+              type="button"
+              className={'category-chip' + (categoryId === null ? ' active' : '')}
+              style={cssVar(NO_CATEGORY_COLOR)}
+              onClick={() => setCategoryId(null)}
             >
-              <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
-            </label>
+              <span className="category-chip-dot category-chip-dot-none" aria-hidden="true" />
+              None
+            </button>
           </div>
+          {categories.length === 0 && (
+            <p className="field-hint">Create categories in Settings → Categories to color your appointments.</p>
+          )}
         </div>
 
         <button

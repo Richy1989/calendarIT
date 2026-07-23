@@ -91,6 +91,9 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.Property<Guid>("CalendarId")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("CategoryId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Color")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
@@ -146,9 +149,46 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
 
                     b.HasIndex("CalendarId");
 
+                    b.HasIndex("CategoryId");
+
                     b.HasIndex("CalendarId", "StartUtc");
 
                     b.ToTable("Events");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.Category", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("OwnerUserId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Categories");
                 });
 
             modelBuilder.Entity("CalendarIT.Domain.MailAccount", b =>
@@ -530,7 +570,23 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("CalendarIT.Domain.Category", "Category")
+                        .WithMany("Events")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Calendar");
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.Category", b =>
+                {
+                    b.HasOne("CalendarIT.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CalendarIT.Domain.MailAccount", b =>
@@ -623,6 +679,11 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.Navigation("Attendees");
 
                     b.Navigation("Reminders");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.Category", b =>
+                {
+                    b.Navigation("Events");
                 });
 #pragma warning restore 612, 618
         }
