@@ -47,6 +47,13 @@ public static class DependencyInjection
             {
                 options.User.RequireUniqueEmail = true;
                 options.Password.RequiredLength = 8;
+                // Brute-force brake for both the web login and CalDAV Basic (AuthService and
+                // CalDavBasicAuthHandler drive the counter themselves — this API has no
+                // SignInManager, which is what would normally apply it). Generous enough that a
+                // phone still holding an old password doesn't lock its owner out for long.
+                options.Lockout.AllowedForNewUsers = true;
+                options.Lockout.MaxFailedAccessAttempts = 10;
+                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
             })
             .AddRoles<IdentityRole<Guid>>()
             .AddEntityFrameworkStores<AppDbContext>();

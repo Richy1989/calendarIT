@@ -1,12 +1,14 @@
 using CalendarIT.Application.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace calendarITCore.Controllers;
 
 /// <summary>Registration, login, refresh-token rotation, and logout endpoints.</summary>
 [ApiController]
 [Route("api/auth")]
+[EnableRateLimiting("auth")] // unauthenticated and password-hashing: the one place worth capping
 public sealed class AuthController(IAuthService authService) : ControllerBase
 {
     [HttpPost("register")]

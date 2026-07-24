@@ -1,10 +1,8 @@
-using System.Globalization;
 using CalendarIT.Application.Calendars;
 using CalendarIT.Domain;
 using CalendarIT.Infrastructure.Mail;
 using CalendarIT.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Calendar = CalendarIT.Domain.Calendar;
 
 namespace CalendarIT.Infrastructure.Calendars;
 
@@ -42,7 +40,7 @@ public sealed class EventService(
             foreach (var m in masters)
             {
                 var end = m.EndUtc ?? m.StartUtc.AddHours(1);
-                var exDates = ParseExDates(m.ExDates);
+                var exDates = ExDates.Parse(m.ExDates);
                 var reminders = MapReminders(m.Reminders);
                 var attendees = MapAttendees(m.Attendees);
                 foreach (var occ in RecurrenceExpander.Expand(m.StartUtc, end, m.TimeZoneId, m.RRule!, exDates, fromUtc.Value, toUtc.Value))
@@ -102,7 +100,7 @@ public sealed class EventService(
     private static DateTime RepresentativeOccurrenceUtc(CalendarEvent e, DateTime now)
     {
         var end = e.EndUtc ?? e.StartUtc.AddHours(1);
-        var exDates = RecurrenceExpander.ParseExDates(e.ExDates);
+        var exDates = ExDates.Parse(e.ExDates);
 
         var upcoming = RecurrenceExpander
             .Expand(e.StartUtc, end, e.TimeZoneId, e.RRule!, exDates, now, now.AddYears(2))
@@ -273,9 +271,9 @@ public sealed class EventService(
         // Exclude a single occurrence of a series (EXDATE) rather than deleting everything.
         if (occurrence is not null && entity.RRule is not null)
         {
-            var exDates = ParseExDates(entity.ExDates);
-            exDates.Add(TruncateToSeconds(occurrence.Value.UtcDateTime));
-            entity.ExDates = FormatExDates(exDates);
+            var exDates = ExDates.Parse(entity.ExDates);
+            exDates.Add(ExDates.TruncateToSeconds(occurrence.Value.UtcDateTime));
+            entity.ExDates = ExDates.Format(exDates);
             entity.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
             await db.SaveChangesAsync(cancellationToken);
             // Propagate the excluded occurrence to local guests' copies.
@@ -295,15 +293,28 @@ public sealed class EventService(
 
     private static void Apply(CalendarEvent entity, SaveEventRequest request, DateTime now)
     {
+        var rrule = string.IsNullOrWhiteSpace(request.Recurrence) ? null : request.Recurrence.Trim();
+        // Exclusions are stored as absolute instants, so they only stop lining up with the
+        // series when the rule or its anchor moves — a rename or a new location must leave
+        // them alone, or deleting one occurrence and later editing the series brings it back.
+        var recurrenceMoved = rrule != entity.RRule
+            || request.Start.UtcDateTime != entity.StartUtc
+            || request.AllDay != entity.IsAllDay;
+
         entity.Title = request.Title.Trim();
         entity.Description = request.Description;
         entity.Location = request.Location;
         entity.StartUtc = request.Start.UtcDateTime;
         entity.EndUtc = request.End?.UtcDateTime;
         entity.IsAllDay = request.AllDay;
-        entity.TimeZoneId = string.IsNullOrWhiteSpace(request.TimeZone) ? null : request.TimeZone;
-        entity.RRule = string.IsNullOrWhiteSpace(request.Recurrence) ? null : request.Recurrence.Trim();
-        entity.ExDates = null; // editing the series resets any per-occurrence exclusions
+        // A zone id we can't resolve is dropped rather than stored: it would otherwise throw
+        // out of every later expansion, i.e. one bad save breaks the whole calendar view.
+        entity.TimeZoneId = TimeZones.Normalize(request.TimeZone);
+        entity.RRule = rrule;
+        if (recurrenceMoved)
+        {
+            entity.ExDates = null; // the old exclusions no longer refer to real occurrences
+        }
         entity.UpdatedAt = now;
     }
 
@@ -370,29 +381,6 @@ public sealed class EventService(
             .ToList();
     }
 
-    private static HashSet<DateTime> ParseExDates(string? raw)
-    {
-        var set = new HashSet<DateTime>();
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return set;
-        }
-        foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (DateTime.TryParse(line, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var dt))
-            {
-                set.Add(TruncateToSeconds(DateTime.SpecifyKind(dt, DateTimeKind.Utc)));
-            }
-        }
-        return set;
-    }
-
-    private static string FormatExDates(IEnumerable<DateTime> exDates) =>
-        string.Join('\n', exDates.Select(d => d.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture)));
-
-    private static DateTime TruncateToSeconds(DateTime dt) =>
-        new(dt.Ticks - (dt.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc);
-
     /// <summary>Null clears the category; a category the user owns is assigned; anything
     /// else keeps <paramref name="fallback"/> (the current assignment on update).</summary>
     private async Task<Guid?> ResolveCategoryIdAsync(Guid userId, Guid? requested, Guid? fallback, CancellationToken cancellationToken)
@@ -419,31 +407,6 @@ public sealed class EventService(
                 return id;
             }
         }
-        return (await GetOrCreateDefaultCalendarAsync(userId, cancellationToken)).Id;
-    }
-
-    private async Task<Calendar> GetOrCreateDefaultCalendarAsync(Guid userId, CancellationToken cancellationToken)
-    {
-        var calendar = await db.Calendars
-            .Where(c => c.OwnerUserId == userId)
-            .OrderBy(c => c.CreatedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (calendar is not null)
-        {
-            return calendar;
-        }
-
-        var now = timeProvider.GetUtcNow().UtcDateTime;
-        calendar = new Calendar
-        {
-            Id = Guid.NewGuid(),
-            OwnerUserId = userId,
-            Name = "Personal",
-            CreatedAt = now,
-            UpdatedAt = now,
-        };
-        db.Calendars.Add(calendar);
-        await db.SaveChangesAsync(cancellationToken);
-        return calendar;
+        return (await DefaultCalendar.GetOrCreateAsync(db, timeProvider, userId, cancellationToken)).Id;
     }
 }

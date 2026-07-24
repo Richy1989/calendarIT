@@ -54,12 +54,28 @@ public sealed class AuthService(
     public async Task<AuthResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
     {
         var user = await userManager.FindByEmailAsync(request.Email);
-        if (user is null || !await userManager.CheckPasswordAsync(user, request.Password))
+        if (user is null)
         {
-            // Uniform message so timing/response can't distinguish the two cases meaningfully.
+            // Uniform message so the response can't distinguish the two cases.
             return AuthResult.Failure("Invalid email or password.");
         }
 
+        // Identity's lockout only engages through SignInManager, which this API doesn't use —
+        // so the counter is driven here. Without it, password guessing against this endpoint
+        // (and against CalDAV Basic, which shares the store) is unlimited.
+        if (await userManager.IsLockedOutAsync(user))
+        {
+            logger.LogWarning("Login attempt for locked-out user {UserId}", user.Id);
+            return AuthResult.Failure("Invalid email or password.");
+        }
+
+        if (!await userManager.CheckPasswordAsync(user, request.Password))
+        {
+            await userManager.AccessFailedAsync(user);
+            return AuthResult.Failure("Invalid email or password.");
+        }
+
+        await userManager.ResetAccessFailedCountAsync(user);
         var tokens = await IssueTokensAsync(user, cancellationToken);
         return AuthResult.Success(tokens);
     }

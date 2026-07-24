@@ -52,9 +52,30 @@ public sealed class CalDavBasicAuthHandler(
         var password = decoded[(sep + 1)..];
 
         var user = await userManager.FindByEmailAsync(email) ?? await userManager.FindByNameAsync(email);
-        if (user is null || !await userManager.CheckPasswordAsync(user, password))
+        if (user is null)
         {
             return AuthenticateResult.Fail("Invalid credentials.");
+        }
+
+        // Same lockout counter as the web login — /dav is reachable from the internet by design
+        // (that is the point of phone sync), so it can't be the one unthrottled way in. The
+        // threshold is deliberately generous: a client left holding an old password after a
+        // change will retry on its own schedule, and shouldn't lock the owner out of the web UI
+        // for long.
+        if (await userManager.IsLockedOutAsync(user))
+        {
+            return AuthenticateResult.Fail("Invalid credentials.");
+        }
+
+        if (!await userManager.CheckPasswordAsync(user, password))
+        {
+            await userManager.AccessFailedAsync(user);
+            return AuthenticateResult.Fail("Invalid credentials.");
+        }
+
+        if (await userManager.GetAccessFailedCountAsync(user) > 0)
+        {
+            await userManager.ResetAccessFailedCountAsync(user);
         }
 
         var identity = new ClaimsIdentity(

@@ -13,25 +13,8 @@ public static class RecurrenceExpander
 {
     public readonly record struct Occurrence(DateTime StartUtc, DateTime EndUtc);
 
-    /// <summary>Parses newline-separated ISO UTC EXDATEs into a set (truncated to seconds).</summary>
-    public static IReadOnlySet<DateTime> ParseExDates(string? raw)
-    {
-        var set = new HashSet<DateTime>();
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return set;
-        }
-        foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (DateTime.TryParse(line, CultureInfo.InvariantCulture,
-                    DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var dt))
-            {
-                var utc = DateTime.SpecifyKind(dt, DateTimeKind.Utc);
-                set.Add(new DateTime(utc.Ticks - (utc.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc));
-            }
-        }
-        return set;
-    }
+    /// <inheritdoc cref="ExDates.Parse"/>
+    public static IReadOnlySet<DateTime> ParseExDates(string? raw) => ExDates.Parse(raw);
 
     public static IEnumerable<Occurrence> Expand(
         DateTime masterStartUtc,
@@ -45,17 +28,21 @@ public static class RecurrenceExpander
         var duration = masterEndUtc - masterStartUtc;
 
         CalDateTime start;
-        if (!string.IsNullOrWhiteSpace(timeZoneId))
+        // An id we can't resolve falls through to the UTC branch rather than throwing: rows
+        // written before ids were normalised on save may still carry one, and a single such
+        // row must not take down every range query the user makes.
+        if (TimeZones.TryFind(timeZoneId, out var tz))
         {
-            var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
             var localStart = TimeZoneInfo.ConvertTimeFromUtc(masterStartUtc, tz); // wall-clock, Kind=Unspecified
             var localEnd = localStart + duration;
-            start = new CalDateTime(localStart, timeZoneId);
-            var evt = BuildEvent(start, new CalDateTime(localEnd, timeZoneId), rrule);
+            // Ical.Net resolves zones through tzdb, so it must get the id as stored (IANA);
+            // tz.Id would be the Windows equivalent when running on Windows.
+            start = new CalDateTime(localStart, timeZoneId!);
+            var evt = BuildEvent(start, new CalDateTime(localEnd, timeZoneId!), rrule);
             return Enumerate(evt, duration, exDatesUtc, fromUtc, toUtc);
         }
 
-        // No zone: treat stored times as UTC (floating events handled as UTC here).
+        // No zone (or one this runtime can't resolve): treat stored times as UTC.
         start = new CalDateTime(DateTime.SpecifyKind(masterStartUtc, DateTimeKind.Utc));
         var endUtc = new CalDateTime(DateTime.SpecifyKind(masterEndUtc, DateTimeKind.Utc));
         var utcEvt = BuildEvent(start, endUtc, rrule);

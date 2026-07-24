@@ -91,8 +91,7 @@ public sealed class MailAccountService(
         {
             using (var smtp = new SmtpClient())
             {
-                var socketOptions = entity.SmtpUseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
-                await smtp.ConnectAsync(entity.SmtpHost, entity.SmtpPort, socketOptions, cancellationToken);
+                await smtp.ConnectAsync(entity.SmtpHost, entity.SmtpPort, MailSecurity.For(entity.SmtpUseSsl), cancellationToken);
                 await smtp.AuthenticateAsync(entity.Username, password, cancellationToken);
                 await smtp.DisconnectAsync(quit: true, cancellationToken);
             }
@@ -100,8 +99,7 @@ public sealed class MailAccountService(
             if (!string.IsNullOrWhiteSpace(entity.ImapHost))
             {
                 using var imap = new ImapClient();
-                var socketOptions = entity.ImapUseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
-                await imap.ConnectAsync(entity.ImapHost, entity.ImapPort, socketOptions, cancellationToken);
+                await imap.ConnectAsync(entity.ImapHost, entity.ImapPort, MailSecurity.For(entity.ImapUseSsl), cancellationToken);
                 await imap.AuthenticateAsync(entity.Username, password, cancellationToken);
                 await imap.DisconnectAsync(quit: true, cancellationToken);
             }

@@ -53,11 +53,17 @@ RUN chmod +x /entrypoint.sh
 # The API listens on :8080 (nginx proxies to it); nginx is the public face on :80.
 # All writable data lives under /data (SQLite db + uploads). JWT_SIGNING_KEY is auto-generated
 # and persisted under /data by the entrypoint unless you provide one.
+#
+# FORWARDED_PROXY_HOPS=2 because this image has two proxies in front of the API: your reverse
+# proxy, then the nginx inside the container. Both append to X-Forwarded-For, and trusting both
+# is what makes the client IP the auth rate limit keys on a real one. Set it to 1 if nothing
+# sits in front of the container.
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     ASPNETCORE_ENVIRONMENT=Production \
     APPDATA_PATH=/data \
     DATABASE_PROVIDER=Sqlite \
-    APPLY_MIGRATIONS=true
+    APPLY_MIGRATIONS=true \
+    FORWARDED_PROXY_HOPS=2
 
 EXPOSE 80
 VOLUME ["/data"]

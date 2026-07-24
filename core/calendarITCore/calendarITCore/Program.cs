@@ -6,6 +6,7 @@ using CalendarIT.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Serilog;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,9 +17,29 @@ builder.AddSerilogLogging();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    // Proxy runs outside our network boundary; trust it explicitly in deployment config.
+    // The proxy runs outside our network boundary, so its address can't be pinned here.
     options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
+    // ...but only the configured number of hops is honoured. Unlimited forwarding let any
+    // client invent its own X-Forwarded-For, which would both falsify the logged IP and hand
+    // out a free bypass of the per-IP auth rate limit below. Default 1 = the reverse proxy
+    // directly in front (nginx in the shipped image); raise it when you chain another one.
+    options.ForwardLimit = builder.Configuration.GetValue("FORWARDED_PROXY_HOPS", 1);
+});
+
+// Password guessing is throttled per account by Identity lockout; this caps the request rate
+// itself, so an attacker can't burn server CPU on password hashing (each attempt is a KDF) or
+// spray registrations. Only the auth endpoints opt in, via [EnableRateLimiting("auth")].
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = builder.Configuration.GetValue("AUTH_RATE_LIMIT_PER_MINUTE", 20),
+            Window = TimeSpan.FromMinutes(1),
+        }));
 });
 
 builder.Services.AddControllers();
@@ -61,6 +82,8 @@ if (app.Environment.IsDevelopment())
 }
 
 // NOTE: no UseHttpsRedirection — TLS is terminated by the reverse proxy; app serves HTTP.
+
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();

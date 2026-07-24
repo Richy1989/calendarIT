@@ -38,6 +38,10 @@ services:
       JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env}
       JWT_ISSUER: ${JWT_ISSUER:-calendarit}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-calendarit}
+      # Your reverse proxy talks to this container directly, so one hop is trusted when
+      # resolving the client IP the auth rate limit keys on.
+      FORWARDED_PROXY_HOPS: ${FORWARDED_PROXY_HOPS:-1}
+      AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-20}
       # No SMTP settings: email (invitations + reminders) is sent through each user's own
       # mail account, connected in-app under Settings → Email.
     volumes:

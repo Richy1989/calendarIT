@@ -2,7 +2,6 @@ using CalendarIT.Domain;
 using CalendarIT.Infrastructure.Calendars;
 using CalendarIT.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Calendar = CalendarIT.Domain.Calendar;
 
 namespace CalendarIT.Infrastructure.Mail;
 
@@ -51,7 +50,7 @@ public sealed class IncomingInvitationService(AppDbContext db, TimeProvider time
         var evt = existing;
         if (evt is null)
         {
-            var calendar = await GetOrCreateDefaultCalendarAsync(recipientUserId, cancellationToken);
+            var calendar = await DefaultCalendar.GetOrCreateAsync(db, timeProvider, recipientUserId, cancellationToken);
             evt = new CalendarEvent
             {
                 Id = Guid.NewGuid(),
@@ -80,22 +79,5 @@ public sealed class IncomingInvitationService(AppDbContext db, TimeProvider time
 
         await db.SaveChangesAsync(cancellationToken);
         return true;
-    }
-
-    private async Task<Calendar> GetOrCreateDefaultCalendarAsync(Guid userId, CancellationToken cancellationToken)
-    {
-        var calendar = await db.Calendars
-            .Where(c => c.OwnerUserId == userId)
-            .OrderBy(c => c.CreatedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (calendar is not null)
-        {
-            return calendar;
-        }
-
-        var now = timeProvider.GetUtcNow().UtcDateTime;
-        calendar = new Calendar { Id = Guid.NewGuid(), OwnerUserId = userId, Name = "Personal", CreatedAt = now, UpdatedAt = now };
-        db.Calendars.Add(calendar);
-        return calendar;
     }
 }

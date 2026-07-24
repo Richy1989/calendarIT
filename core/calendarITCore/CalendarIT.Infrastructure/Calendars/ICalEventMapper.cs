@@ -34,11 +34,11 @@ public static class ICalEventMapper
             ve.Start = new CalDateTime(DateOnly.FromDateTime(e.StartUtc));
             ve.End = new CalDateTime(DateOnly.FromDateTime((e.EndUtc ?? e.StartUtc).AddDays(1)));
         }
-        else if (!string.IsNullOrWhiteSpace(e.TimeZoneId))
+        else if (TimeZones.TryFind(e.TimeZoneId, out var tz))
         {
-            var tz = TimeZoneInfo.FindSystemTimeZoneById(e.TimeZoneId);
-            ve.Start = new CalDateTime(TimeZoneInfo.ConvertTimeFromUtc(e.StartUtc, tz), e.TimeZoneId);
-            ve.End = new CalDateTime(TimeZoneInfo.ConvertTimeFromUtc(end, tz), e.TimeZoneId);
+            // The id goes out as stored (IANA) — tz.Id would be the Windows name on Windows.
+            ve.Start = new CalDateTime(TimeZoneInfo.ConvertTimeFromUtc(e.StartUtc, tz), e.TimeZoneId!);
+            ve.End = new CalDateTime(TimeZoneInfo.ConvertTimeFromUtc(end, tz), e.TimeZoneId!);
         }
         else
         {
@@ -94,8 +94,8 @@ public static class ICalEventMapper
     public static void Apply(ICalEvent ve, DomainEvent e, DateTime now, IReadOnlyList<Category>? categories = null)
     {
         var isAllDay = !ve.Start!.HasTime;
-        var startUtc = ve.Start.AsUtc;
-        DateTime? endUtc = ve.End?.AsUtc;
+        var startUtc = AsUtcLenient(ve.Start);
+        DateTime? endUtc = ve.End is null ? null : AsUtcLenient(ve.End);
 
         // iCalendar's DTEND is exclusive, but we store all-day ends as the inclusive last day
         // (the convention events created in the UI use). Without this, a one-day imported
@@ -139,9 +139,30 @@ public static class ICalEventMapper
         e.StartUtc = startUtc;
         e.EndUtc = endUtc;
         e.IsAllDay = isAllDay;
-        e.TimeZoneId = ve.Start.TzId;
+        // Only an id this runtime can resolve is stored; an invented TZID becomes floating
+        // rather than a row that throws on every later read.
+        e.TimeZoneId = TimeZones.Normalize(ve.Start.TzId);
         e.RRule = rrule;
         e.UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// A VEVENT date as UTC, tolerating a TZID neither Ical.Net's tzdb nor the runtime knows.
+    /// RFC 5545 lets a sender put any string in TZID (and some do, e.g. Exchange's own zone
+    /// names), but <c>CalDateTime.AsUtc</c> throws on one — which would reject the whole
+    /// message. The wall-clock value is then read as UTC, matching how a floating time is
+    /// treated everywhere else here.
+    /// </summary>
+    private static DateTime AsUtcLenient(CalDateTime value)
+    {
+        try
+        {
+            return value.AsUtc;
+        }
+        catch (Exception ex) when (ex is ArgumentException or TimeZoneNotFoundException)
+        {
+            return DateTime.SpecifyKind(value.Value, DateTimeKind.Utc);
+        }
     }
 
     /// <summary>The VEVENT's COLOR as hex, or null when absent/unresolvable.</summary>

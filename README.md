@@ -110,8 +110,22 @@ Everything is set through environment variables (12-factor):
 | `APPDATA_PATH`                            | Writable data dir (SQLite file, etc.) — `/appdata`|
 | `JWT_SIGNING_KEY`                         | **Required.** ≥ 32 chars                         |
 | `JWT_ISSUER` / `JWT_AUDIENCE`             | Token issuer / audience                          |
+| `AUTH_RATE_LIMIT_PER_MINUTE`              | Auth requests allowed per client IP per minute. Default `20` |
+| `FORWARDED_PROXY_HOPS`                    | How many `X-Forwarded-For` hops to trust. Default `1` — see below |
 | `Serilog__MinimumLevel__Default`          | Log level (console-only, to stdout). Default `Information` |
 | `VAPID_*`                                 | Web Push reminders (planned)                     |
+
+> **Set `FORWARDED_PROXY_HOPS` to match your setup.** The app trusts exactly this many
+> proxies when reading the client's IP, which is what the auth rate limit and your logs key
+> on. Count the proxies in front of the API: **1** when your reverse proxy talks to the app
+> directly (the `docker-compose` setup), **2** for the single-container image, where your
+> proxy sits in front of the container's own nginx. Too low and every client looks like one
+> address; too high and clients can forge their own.
+
+> **Repeated bad passwords lock an account** for 15 minutes after 10 failures — this covers
+> the web login and CalDAV alike, since both check the same credentials. Worth knowing if you
+> change your password: a phone still syncing with the old one will keep retrying and can lock
+> you out, so update it in your CalDAV client too.
 
 > **Email needs no environment variables.** Invitations and reminders are sent through each
 > user's own mail account, connected in-app under **Settings → Email** (SMTP + IMAP, password

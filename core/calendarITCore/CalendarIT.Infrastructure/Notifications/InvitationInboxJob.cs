@@ -6,6 +6,7 @@ using MailKit.Net.Imap;
 using MailKit.Search;
 using MailKit.Security;
 using Microsoft.EntityFrameworkCore;
+using MimeKit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Quartz;
@@ -75,9 +76,8 @@ public sealed class InvitationInboxJob(
         }
 
         using var client = new ImapClient();
-        var socketOptions = account.ImapUseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
         // ImapHost is non-null here — candidates are filtered on ImapHost != null in Execute.
-        await client.ConnectAsync(account.ImapHost!, account.ImapPort, socketOptions, cancellationToken);
+        await client.ConnectAsync(account.ImapHost!, account.ImapPort, MailSecurity.For(account.ImapUseSsl), cancellationToken);
         await client.AuthenticateAsync(account.Username, password, cancellationToken);
 
         var inbox = client.Inbox;
@@ -104,28 +104,18 @@ public sealed class InvitationInboxJob(
         var highest = sameStore && account.ImapLastUid is { } start ? (uint)start : 0u;
         foreach (var uid in uids)
         {
-            var message = await inbox.GetMessageAsync(uid, cancellationToken);
-
-            // A message is either a guest's RSVP (REPLY) or an invitation aimed at us
-            // (REQUEST/CANCEL); route it to whichever parser recognises it.
-            var reply = ImipReplyParser.TryParse(message);
-            if (reply is not null)
+            // One unprocessable message must not stall the mailbox. Without this, the throw
+            // escaped to Execute's per-account catch, the highwater never advanced, and that
+            // same message was re-fetched and re-thrown on every scan — with everything behind
+            // it in the batch never processed. It is skipped (logged) and the mark moves on.
+            try
             {
-                if (await replies.ApplyReplyAsync(account.UserId, reply, cancellationToken))
-                {
-                    logger.LogInformation(
-                        "Applied {Status} from {Email} to event {Uid} for user {UserId}",
-                        reply.Status, reply.AttendeeEmail, reply.Uid, account.UserId);
-                }
+                await ProcessMessageAsync(account, await inbox.GetMessageAsync(uid, cancellationToken),
+                    replies, invitations, cancellationToken);
             }
-            else if (ImipRequestParser.TryParse(message) is { } request)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                if (await invitations.ApplyRequestAsync(account.UserId, request, cancellationToken))
-                {
-                    logger.LogInformation(
-                        "Applied incoming {Method} for event {Uid} from {Organizer} to user {UserId}",
-                        request.Method, request.Uid, request.OrganizerEmail, account.UserId);
-                }
+                logger.LogWarning(ex, "Skipping unprocessable message UID {Uid} for user {UserId}", uid.Id, account.UserId);
             }
 
             highest = Math.Max(highest, uid.Id);
@@ -133,12 +123,39 @@ public sealed class InvitationInboxJob(
 
         await client.DisconnectAsync(quit: true, cancellationToken);
 
-        // Advance the highwater mark only after the batch was read end to end (a mid-batch
-        // failure leaves it untouched so those UIDs are retried next scan).
+        // Advance the highwater mark only after the batch was read end to end (a connection
+        // failure mid-batch leaves it untouched so those UIDs are retried next scan).
         account.ImapUidValidity = inbox.UidValidity;
         if (highest > 0)
         {
             account.ImapLastUid = highest;
+        }
+    }
+
+    /// <summary>Routes one message: a guest's RSVP (REPLY), or an invitation aimed at us
+    /// (REQUEST/CANCEL) — whichever parser recognises it. Unrecognised messages are ignored.</summary>
+    private async Task ProcessMessageAsync(
+        MailAccount account, MimeMessage message, IInvitationReplyService replies,
+        IIncomingInvitationService invitations, CancellationToken cancellationToken)
+    {
+        var reply = ImipReplyParser.TryParse(message);
+        if (reply is not null)
+        {
+            if (await replies.ApplyReplyAsync(account.UserId, reply, cancellationToken))
+            {
+                logger.LogInformation(
+                    "Applied {Status} from {Email} to event {Uid} for user {UserId}",
+                    reply.Status, reply.AttendeeEmail, reply.Uid, account.UserId);
+            }
+        }
+        else if (ImipRequestParser.TryParse(message) is { } request)
+        {
+            if (await invitations.ApplyRequestAsync(account.UserId, request, cancellationToken))
+            {
+                logger.LogInformation(
+                    "Applied incoming {Method} for event {Uid} from {Organizer} to user {UserId}",
+                    request.Method, request.Uid, request.OrganizerEmail, account.UserId);
+            }
         }
     }
 }

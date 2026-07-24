@@ -137,24 +137,7 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
             }
         }
 
-        return await GetOrCreateDefaultCalendarAsync(userId, cancellationToken);
+        return await DefaultCalendar.GetOrCreateAsync(db, timeProvider, userId, cancellationToken);
     }
 
-    private async Task<Calendar> GetOrCreateDefaultCalendarAsync(Guid userId, CancellationToken cancellationToken)
-    {
-        var calendar = await db.Calendars
-            .Where(c => c.OwnerUserId == userId)
-            .OrderBy(c => c.CreatedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (calendar is not null)
-        {
-            return calendar;
-        }
-
-        var now = timeProvider.GetUtcNow().UtcDateTime;
-        calendar = new Calendar { Id = Guid.NewGuid(), OwnerUserId = userId, Name = "Personal", CreatedAt = now, UpdatedAt = now };
-        db.Calendars.Add(calendar);
-        await db.SaveChangesAsync(cancellationToken);
-        return calendar;
-    }
 }

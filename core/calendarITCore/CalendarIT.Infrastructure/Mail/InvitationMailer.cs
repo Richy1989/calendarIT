@@ -88,8 +88,7 @@ public sealed class InvitationMailer(
         try
         {
             using var client = new SmtpClient();
-            var socketOptions = account.SmtpUseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
-            await client.ConnectAsync(account.SmtpHost, account.SmtpPort, socketOptions, cancellationToken);
+            await client.ConnectAsync(account.SmtpHost, account.SmtpPort, MailSecurity.For(account.SmtpUseSsl), cancellationToken);
             await client.AuthenticateAsync(account.Username, password, cancellationToken);
             foreach (var message in messages)
             {
