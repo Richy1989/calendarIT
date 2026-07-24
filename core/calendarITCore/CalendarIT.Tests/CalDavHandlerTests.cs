@@ -269,6 +269,61 @@ public sealed class CalDavHandlerTests : IDisposable
         Assert.Contains("SUMMARY:From the phone", data.Value);
     }
 
+    /// <summary>A calendar-query asking for one window, the way a client polls.</summary>
+    private static string TimeRangeQuery(string start, string end) =>
+        "<?xml version=\"1.0\"?><c:calendar-query xmlns:c=\"urn:ietf:params:xml:ns:caldav\" xmlns:d=\"DAV:\">" +
+        "<d:prop><d:getetag/><c:calendar-data/></d:prop>" +
+        "<c:filter><c:comp-filter name=\"VCALENDAR\"><c:comp-filter name=\"VEVENT\">" +
+        $"<c:time-range start=\"{start}\" end=\"{end}\"/>" +
+        "</c:comp-filter></c:comp-filter></c:filter></c:calendar-query>";
+
+    private async Task<int> QueryCountAsync(Guid calId, string body)
+    {
+        var ctx = Context(body);
+        var xml = await ExecuteAsync(await _handler.Report(calId, ctx), ctx);
+        return XDocument.Parse(xml).Descendants(C + "calendar-data").Count();
+    }
+
+    [Fact]
+    public async Task Report_CalendarQuery_HonoursTheTimeRange()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        var ctx = Context(PutIcs); // the event is on 2026-09-01
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        // A window containing it, and two that don't.
+        Assert.Equal(1, await QueryCountAsync(calId, TimeRangeQuery("20260901T000000Z", "20261001T000000Z")));
+        Assert.Equal(0, await QueryCountAsync(calId, TimeRangeQuery("20261001T000000Z", "20261101T000000Z")));
+        Assert.Equal(0, await QueryCountAsync(calId, TimeRangeQuery("20260101T000000Z", "20260201T000000Z")));
+    }
+
+    [Fact]
+    public async Task Report_CalendarQuery_KeepsSeriesThatStartedBeforeTheWindow()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        var recurring = PutIcs
+            .Replace("UID:phone-1@test", "UID:series-1@test")
+            .Replace("DTEND:20260901T110000Z", "DTEND:20260901T110000Z\r\nRRULE:FREQ=WEEKLY");
+        var ctx = Context(recurring);
+        await ExecuteAsync(await _handler.PutEvent(calId, "series-1@test.ics", ctx), ctx);
+
+        // The stored start is before this window, but the RRULE keeps producing occurrences —
+        // SQL can't see that, so the series must survive the filter and reach the client.
+        Assert.Equal(1, await QueryCountAsync(calId, TimeRangeQuery("20261001T000000Z", "20261101T000000Z")));
+    }
+
+    [Fact]
+    public async Task Report_CalendarQuery_WithoutAFilter_ReturnsEverything()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        var ctx = Context(PutIcs);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        var noFilter = "<?xml version=\"1.0\"?><c:calendar-query xmlns:c=\"urn:ietf:params:xml:ns:caldav\" xmlns:d=\"DAV:\">" +
+                       "<d:prop><d:getetag/><c:calendar-data/></d:prop></c:calendar-query>";
+        Assert.Equal(1, await QueryCountAsync(calId, noFilter));
+    }
+
     [Fact]
     public async Task Report_Multiget_ReturnsRequestedAndFlagsMissing()
     {

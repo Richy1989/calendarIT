@@ -112,7 +112,11 @@ public sealed class MailAccountService(
         }
     }
 
-    /// <summary>The tracked entity plus its clear-text password — for internal senders only.</summary>
+    /// <summary>
+    /// A detached copy of the account plus its clear-text password — for internal senders only.
+    /// Deliberately untracked: callers only read connection settings from it, and returning a
+    /// tracked entity would invite edits that quietly never persist.
+    /// </summary>
     internal async Task<(MailAccount Account, string Password)?> GetWithPasswordAsync(
         Guid userId, CancellationToken cancellationToken = default)
     {
@@ -150,5 +154,8 @@ public sealed class MailAccountService(
         new(a.Address, a.FromAddress, a.SmtpHost, a.SmtpPort, a.SmtpUseSsl,
             a.ImapHost, a.ImapPort, a.ImapUseSsl, a.Username,
             a.ScanIntervalMinutes,
+            // Deliberately a real decrypt, not just "is there ciphertext": if the protection keys
+            // were lost the stored password is useless, and the UI has to prompt for it again
+            // rather than claim one is configured. Worth an unprotect per settings load.
             HasPassword: UnprotectPassword(a) is not null);
 }

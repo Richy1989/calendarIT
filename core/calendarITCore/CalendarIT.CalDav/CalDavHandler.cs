@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using System.Xml.Linq;
 using CalendarIT.Infrastructure.Calendars;
@@ -192,16 +193,51 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
 
         if (root == C + "calendar-query")
         {
-            // Time-range filters are not applied server-side: the whole calendar is returned
-            // and the client (which expands recurrences anyway) narrows it down.
-            events = await db.Events.AsNoTracking().Include(e => e.Category)
-                .Where(e => e.CalendarId == cal.Id)
-                .ToListAsync(ctx.RequestAborted);
+            // Honour the client's time-range (RFC 4791 §9.9). Clients ask for a window — the next
+            // few months, typically — and returning the entire calendar on every poll instead
+            // meant the response grew with the account's whole history rather than the window.
+            var (rangeStart, rangeEnd) = ReadTimeRange(body);
+
+            var query = db.Events.AsNoTracking().Include(e => e.Category)
+                .Where(e => e.CalendarId == cal.Id);
+            if (rangeEnd is { } end)
+            {
+                // Nothing that begins after the window can appear in it, series included.
+                query = query.Where(e => e.StartUtc < end);
+            }
+            if (rangeStart is { } start)
+            {
+                // A series has to be kept regardless: its RRULE — which SQL can't evaluate — may
+                // put occurrences inside the window long after the stored start.
+                query = query.Where(e => e.RRule != null || (e.EndUtc ?? e.StartUtc) >= start);
+            }
+
+            events = await query.ToListAsync(ctx.RequestAborted);
             return MultiStatus([.. events.Select(e => EventDataResponse(cal.Id, e))]);
         }
 
         return Results.StatusCode(StatusCodes.Status403Forbidden); // unsupported report
     }
+
+    /// <summary>
+    /// The <c>&lt;C:time-range&gt;</c> a calendar-query asks for, wherever it sits in the filter
+    /// tree. Both bounds are optional (RFC 4791 allows either alone), and anything unparseable is
+    /// treated as absent — a filter we don't understand must widen the result, never narrow it.
+    /// </summary>
+    private static (DateTime? Start, DateTime? End) ReadTimeRange(XDocument body)
+    {
+        var range = body.Descendants(C + "time-range").FirstOrDefault();
+        return range is null
+            ? (null, null)
+            : (ParseICalUtc(range.Attribute("start")?.Value), ParseICalUtc(range.Attribute("end")?.Value));
+    }
+
+    /// <summary>Parses an iCalendar UTC stamp ("20260901T000000Z"), or null.</summary>
+    private static DateTime? ParseICalUtc(string? value) =>
+        DateTime.TryParseExact(value, "yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed)
+            ? DateTime.SpecifyKind(parsed, DateTimeKind.Utc)
+            : null;
 
     // ---------------------------------------------------------------- resources
 

@@ -1,7 +1,11 @@
 # CalendarIT — Architecture
 
-> Status: **Planning** (no code yet)
-> Last updated: 2026-07-21
+> Status: **Built and running** — everything in the v1 scope below ships except Web Push.
+> Last updated: 2026-07-24
+>
+> This document is the *design rationale*: why the pieces are shaped the way they are. For
+> what currently works, the **Status section in [README.md](./README.md)** is authoritative
+> and kept current; this file explains the decisions behind it.
 
 A modern, browser-based calendar application with a .NET backend, user accounts,
 standard iCalendar file support, and CalDAV sync so mobile clients (via **DAVx⁵**)
@@ -335,17 +339,32 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
 
 ## 9. Key Risks & Open Questions
 
-1. **CalDAV library choice (highest risk).** Needs a spike to pick and validate against
-   real DAVx⁵ sync. Determines a lot of the CalDAV project shape.
-2. **CalDAV auth for DAVx⁵.** JWT won't work for DAVx⁵ → design **app passwords** /
-   Basic-over-TLS as a distinct credential path.
+1. ~~CalDAV library choice (highest risk)~~ — **resolved:** no library. Nothing in the .NET
+   ecosystem was a good fit for a server this small, so `CalendarIT.CalDav` implements the
+   subset RFC 4791 clients actually use (discovery, ETag/CTag, calendar-query/multiget,
+   GET/PUT/DELETE) directly over the shared event core. Still no RFC 6578 sync-tokens —
+   clients fall back to CTag polling, which is fine at personal-calendar scale.
+2. ~~CalDAV auth for DAVx⁵~~ — **resolved, but not as planned:** HTTP Basic validated against
+   the *same* Identity credentials as the web login, rather than a separate app-password
+   store. One password, one place to change it. Two consequences that had to be handled:
+   the login is now reachable from the internet on `/dav`, so it shares the account lockout
+   counter; and Basic means a password check per request, so successful verifications are
+   cached briefly (`CalDavCredentialCache`) instead of running PBKDF2 on every poll.
+   Revisit app passwords if per-device revocation is ever wanted.
 3. **Recurrence correctness** across DST and edit modes (this / this-and-future / all) —
    requires a strong test suite; align our model with iCal semantics via Ical.Net.
+   Single-occurrence override edits and this-and-following are still not built.
 4. **iCal round-trip fidelity** (import → store → export → CalDAV) — one canonical
    serialization path to avoid divergence.
 5. ~~Refresh-token strategy~~ — **resolved:** access + rotating refresh token, server-side
    refresh-token tracking (see §4.4). SPA token storage detail decided in Phase 1/2.
-6. **Web Push** browser support & VAPID key lifecycle/rotation.
+6. **Web Push** browser support & VAPID key lifecycle/rotation. The only unbuilt v1 feature.
+7. **Anything arriving from outside is hostile input** — learned the hard way in the
+   2026-07-24 review. An `.ics` may carry a TZID no tzdb knows, an RRULE that repeats by the
+   second, or an ORGANIZER line naming someone who didn't send it. Every ingest path (import,
+   CalDAV PUT, the IMAP scan) must degrade rather than throw: an unresolvable zone becomes
+   floating (`TimeZones`), expansion is capped, and the claimed sender is checked against the
+   message headers (`ImipMime.IsFromClaimedSender`) before anything touches a calendar.
 
 ---
 
@@ -409,7 +428,25 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
    - ⬜ *5b (next):* **Web Push** — VAPID keys, `PushSubscription`, service worker, browser
      subscribe flow, and the WebPush dispatch branch (currently logs "delivery in 5b").
 6. **CalDAV** — library spike, protocol endpoints, app-password auth, DAVx⁵ validation.
+   - ✅ *Done:* hand-rolled `CalendarIT.CalDav` (see §9.1) — discovery, ETags/CTag,
+     calendar-query (time-range honoured server-side) / calendar-multiget, GET/PUT/DELETE.
+     Auth is Basic against the web login's own credentials, not app passwords (§9.2).
+   - ⬜ *Deferred:* RFC 6578 sync-collection; reminders don't map to VALARM.
 7. **Hardening & deploy** — sample compose, docs, env-var config, migrations on startup.
+   - ✅ *Done:* single-container image (`deploy/Dockerfile`: nginx serving the SPA + reverse
+     proxying the API, SQLite under `/data`), `docker-compose.yml` with Postgres, Unraid
+     templates, `deploy/dev.*` and `seed.*` scripts, and a `v*`-tag release workflow pushing
+     to Docker Hub. Image build + run verified 2026-07-24.
+   - ✅ *Done:* security pass (2026-07-24) — account lockout across web + CalDAV, per-IP auth
+     rate limiting, bounded `X-Forwarded-For` trust, required STARTTLS for mail, iMIP sender
+     verification, CSP and friends from nginx. See §9.7.
+
+**Beyond the original plan.** Several things now shipping were never in this roadmap:
+multiple calendars, categories as the colour model, instant search, the agenda list view,
+profile avatars, a 12/24-hour clock preference, a bespoke date-time picker, and the whole
+invitation story (outbound iMIP, inbound REQUEST/REPLY over IMAP, same-instance delivery,
+and RSVP). The README's Status section tracks these; they are described here only where they
+changed a design decision.
 
 ---
 

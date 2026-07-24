@@ -33,8 +33,11 @@ public sealed class EventService(
         // Recurring series: fetch masters, expand within the window (needs a bounded range).
         if (fromUtc is not null && toUtc is not null)
         {
+            // A series starting after the window can't have an occurrence inside it, so it never
+            // needs expanding. (The other direction can't be filtered here: whether an old series
+            // still runs is encoded in its RRULE, which SQL can't read.)
             var masters = await db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees).Include(e => e.Category)
-                .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule != null)
+                .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule != null && e.StartUtc < toUtc)
                 .ToListAsync(cancellationToken);
 
             foreach (var m in masters)
