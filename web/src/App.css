@@ -763,6 +763,23 @@
   color: var(--text-faint);
 }
 
+/* Inline validation under a single field — quieter than the .error banner, which is for a
+   failed request rather than something you can fix by typing. */
+.field-error {
+  margin: 0.1rem 0 0;
+  font-size: 0.75rem;
+  color: #ff9d9d;
+}
+
+input[aria-invalid='true'] {
+  border-color: rgba(255, 107, 107, 0.55);
+}
+
+input[aria-invalid='true']:focus-visible {
+  border-color: rgba(255, 107, 107, 0.8);
+  box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.18);
+}
+
 /* --- Date/time field (custom picker trigger) -----------------------------
    Two side-by-side triggers share a 468px modal, so the label has to stay on ONE line:
    the date is abbreviated (no year unless it differs) and is the only part allowed to

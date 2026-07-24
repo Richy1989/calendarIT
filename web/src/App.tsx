@@ -131,6 +131,10 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => voi
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  // Held back until the field is left (or submit is attempted) so the mismatch warning doesn't
+  // sit there accusing you of a typo while you're still typing the second password.
+  const [confirmBlurred, setConfirmBlurred] = useState(false)
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -148,6 +152,17 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => voi
   })
 
   const isLogin = mode === 'login'
+  const mismatch = !isLogin && confirm.length > 0 && confirm !== password
+  const showMismatch = mismatch && confirmBlurred
+
+  // Switching tabs starts a clean form: a half-typed confirmation (and any stale error) has
+  // nothing to do with the mode you just moved to.
+  const switchTo = (next: Mode) => {
+    setMode(next)
+    setConfirm('')
+    setConfirmBlurred(false)
+    mutation.reset()
+  }
 
   return (
     <div className="auth">
@@ -155,6 +170,10 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => voi
         className="auth-card"
         onSubmit={(e) => {
           e.preventDefault()
+          if (mismatch) {
+            setConfirmBlurred(true) // surface the reason nothing happened
+            return
+          }
           mutation.mutate()
         }}
       >
@@ -165,10 +184,10 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => voi
         </div>
 
         <div className="segmented" role="tablist">
-          <button type="button" role="tab" aria-selected={isLogin} className={isLogin ? 'active' : ''} onClick={() => setMode('login')}>
+          <button type="button" role="tab" aria-selected={isLogin} className={isLogin ? 'active' : ''} onClick={() => switchTo('login')}>
             Log in
           </button>
-          <button type="button" role="tab" aria-selected={!isLogin} className={!isLogin ? 'active' : ''} onClick={() => setMode('register')}>
+          <button type="button" role="tab" aria-selected={!isLogin} className={!isLogin ? 'active' : ''} onClick={() => switchTo('register')}>
             Register
           </button>
         </div>
@@ -199,6 +218,31 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => voi
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
+
+          {/* Typed twice when registering: a typo in a password you can't see would otherwise
+              lock you out of the account you just made. Login has nothing to confirm. */}
+          {!isLogin && (
+            <div className="field">
+              <label htmlFor="password-confirm">Confirm password</label>
+              <input
+                id="password-confirm"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Repeat your password"
+                value={confirm}
+                required
+                aria-invalid={showMismatch}
+                aria-describedby={showMismatch ? 'password-confirm-error' : undefined}
+                onChange={(e) => setConfirm(e.target.value)}
+                onBlur={() => setConfirmBlurred(true)}
+              />
+              {showMismatch && (
+                <p id="password-confirm-error" className="field-error" role="alert">
+                  The passwords don't match.
+                </p>
+              )}
+            </div>
+          )}
 
           {mutation.isError && <p className="error">{(mutation.error as Error).message}</p>}
 
