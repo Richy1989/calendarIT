@@ -763,6 +763,244 @@
   color: var(--text-faint);
 }
 
+/* --- Date/time field (custom picker trigger) ----------------------------- */
+.dtf-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 0.72rem 0.85rem;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-family: var(--font-body);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.dtf-trigger:hover {
+  border-color: var(--hairline-strong);
+}
+
+.dtf-trigger.is-open,
+.dtf-trigger:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.dtf-icon {
+  color: var(--text-faint);
+  flex: none;
+}
+
+.dtf-date {
+  flex: 1;
+}
+
+.dtf-time {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--accent);
+  letter-spacing: 0.01em;
+}
+
+.dtf-chevron {
+  color: var(--text-faint);
+  flex: none;
+}
+
+/* The floating panel: calendar on top, optional time row below. */
+.dtf-pop {
+  width: 268px;
+  padding: 0.7rem;
+  background: linear-gradient(180deg, rgba(23, 29, 43, 0.99), rgba(16, 20, 30, 0.99));
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+  z-index: 60;
+}
+
+.dtf-time-row {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  justify-content: center;
+}
+
+/* --- Month calendar ------------------------------------------------------ */
+.mcal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.mcal-title {
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mcal-nav {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 1rem;
+  line-height: 1;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.mcal-nav:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.mcal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.mcal-weekdays {
+  margin-bottom: 3px;
+}
+
+.mcal-weekday {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 0.15rem 0;
+}
+
+.mcal-day {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.mcal-day:hover {
+  background: var(--surface-3);
+}
+
+.mcal-day.is-muted {
+  color: var(--text-faint);
+}
+
+.mcal-day.is-today {
+  border-color: var(--violet);
+}
+
+.mcal-day.is-selected {
+  background: var(--grad);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* --- Time picker --------------------------------------------------------- */
+.tp {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.tp-spin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.tp-step {
+  width: 34px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  font-size: 0.6rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+
+.tp-step:hover {
+  color: var(--accent);
+}
+
+.tp-num {
+  width: 44px;
+  padding: 0.3rem 0;
+  text-align: center;
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+}
+
+.tp-num:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.tp-colon {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  color: var(--text-dim);
+  padding-bottom: 1px;
+}
+
+.tp-meridiem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 0.4rem;
+}
+
+.tp-mer {
+  padding: 0.18rem 0.5rem;
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.tp-mer.is-on {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--surface-3);
+}
+
 /* Reminders */
 .reminders {
   display: flex;
@@ -1693,7 +1931,9 @@
 .ctx-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 45;
+  /* Above the modal overlay (50): popovers portal to <body>, and a date-time picker opened
+     inside the event modal must layer over it, not behind. */
+  z-index: 70;
 }
 
 .ctx-menu {

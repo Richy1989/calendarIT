@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getMailAccount } from './api/mailAccount'
 import { listCategories } from './api/categories'
+import DateTimeField from './components/DateTimeField'
 
 export type EventDraft = {
   id?: string
@@ -157,8 +158,6 @@ export default function EventModal({
     onSave({ id: draft.id, calendarId, title: title.trim(), start, end, allDay, categoryId, location, description, recurrence, reminders, attendees })
   }
 
-  const inputType = allDay ? 'date' : 'datetime-local'
-
   return (
     <div className="modal-overlay" onMouseDown={onClose}>
       <form className="modal" onMouseDown={(e) => e.stopPropagation()} onSubmit={submit}>
@@ -216,11 +215,11 @@ export default function EventModal({
         <div className="field-row">
           <div className="field">
             <label htmlFor="ev-start">Starts</label>
-            <input id="ev-start" type={inputType} value={start} required onChange={(e) => setStart(e.target.value)} />
+            <DateTimeField id="ev-start" ariaLabel="Start date and time" value={start} allDay={allDay} onChange={setStart} />
           </div>
           <div className="field">
             <label htmlFor="ev-end">Ends</label>
-            <input id="ev-end" type={inputType} value={end} required onChange={(e) => setEnd(e.target.value)} />
+            <DateTimeField id="ev-end" ariaLabel="End date and time" value={end} allDay={allDay} onChange={setEnd} />
           </div>
         </div>
 

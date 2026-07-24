@@ -21,28 +21,12 @@ import { listCalendars } from './api/calendars'
 import { listCategories } from './api/categories'
 import { saveDefaultView } from './api/profile'
 import { useHour12 } from './clock'
+import { Popover } from './components/Popover'
+import { addDays, dayKey, toLocalInput } from './lib/dates'
 import { getSavedView, saveView, UNCATEGORIZED } from './prefs'
 
 // Uncategorized events render in this neutral default (categories carry the real colors).
 const DEFAULT_COLOR = '#708090' // slategray
-
-const pad2 = (n: number) => String(n).padStart(2, '0')
-
-function toLocalInput(date: Date): string {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`
-}
-
-function dayKey(date: Date): string {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
-}
-
-// Shifts a 'YYYY-MM-DD' day string by n days. Used to translate between FullCalendar's
-// exclusive all-day end and the draft/API convention of an inclusive last day.
-function addDays(day: string, n: number): string {
-  const d = new Date(`${day}T00:00:00`)
-  d.setDate(d.getDate() + n)
-  return dayKey(d)
-}
 
 function hexToRgba(hex: string, alpha: number): string {
   const h = hex.replace('#', '')
@@ -351,33 +335,7 @@ export default function CalendarView({
     setCatPop((p) => (p ? null : { x: rect.left, y: rect.bottom + 6 }))
   }
 
-  useEffect(() => {
-    if (!calPop) return
-    const close = () => setCalPop(null)
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setCalPop(null)
-    window.addEventListener('scroll', close, true)
-    window.addEventListener('resize', close)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('scroll', close, true)
-      window.removeEventListener('resize', close)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [calPop])
-
-  useEffect(() => {
-    if (!catPop) return
-    const close = () => setCatPop(null)
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setCatPop(null)
-    window.addEventListener('scroll', close, true)
-    window.addEventListener('resize', close)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('scroll', close, true)
-      window.removeEventListener('resize', close)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [catPop])
+  // calPop/catPop dismissal (Esc / scroll / resize / outside-click) is handled by <Popover>.
 
   // Clicking the toolbar title ("August 2026") opens a small popover to jump years.
   // FullCalendar owns the toolbar DOM, so the listener is delegated from the document.
@@ -393,19 +351,7 @@ export default function CalendarView({
     return () => document.removeEventListener('click', onClick)
   }, [])
 
-  useEffect(() => {
-    if (!yearPop) return
-    const close = () => setYearPop(null)
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setYearPop(null)
-    window.addEventListener('scroll', close, true)
-    window.addEventListener('resize', close)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('scroll', close, true)
-      window.removeEventListener('resize', close)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [yearPop])
+  // yearPop dismissal is handled by <Popover>.
 
   // Jump to the same date/view in another year.
   const pickYear = (year: number) => {
@@ -727,19 +673,7 @@ export default function CalendarView({
       )}
 
       {calPop && (
-        <div
-          className="ctx-backdrop"
-          onMouseDown={() => setCalPop(null)}
-          onContextMenu={(e) => {
-            e.preventDefault()
-            setCalPop(null)
-          }}
-        >
-          <div
-            className="cal-switcher-menu"
-            style={{ position: 'fixed', left: calPop.x, top: calPop.y }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
+        <Popover anchor={calPop} onClose={() => setCalPop(null)} className="cal-switcher-menu">
             {calendars.length > 1 && (
               <>
                 <button type="button" className="cal-switcher-item" onClick={toggleAllCals}>
@@ -776,24 +710,11 @@ export default function CalendarView({
             >
               Manage calendars…
             </button>
-          </div>
-        </div>
+        </Popover>
       )}
 
       {catPop && (
-        <div
-          className="ctx-backdrop"
-          onMouseDown={() => setCatPop(null)}
-          onContextMenu={(e) => {
-            e.preventDefault()
-            setCatPop(null)
-          }}
-        >
-          <div
-            className="cal-switcher-menu"
-            style={{ position: 'fixed', left: catPop.x, top: catPop.y }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
+        <Popover anchor={catPop} onClose={() => setCatPop(null)} className="cal-switcher-menu">
             {categories.length > 0 && (
               <>
                 <button type="button" className="cal-switcher-item" onClick={toggleAllCats}>
@@ -838,24 +759,11 @@ export default function CalendarView({
             >
               Manage categories…
             </button>
-          </div>
-        </div>
+        </Popover>
       )}
 
       {yearPop && (
-        <div
-          className="ctx-backdrop"
-          onMouseDown={() => setYearPop(null)}
-          onContextMenu={(e) => {
-            e.preventDefault()
-            setYearPop(null)
-          }}
-        >
-          <div
-            className="year-pop"
-            style={{ left: yearPop.x, top: yearPop.y }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
+        <Popover anchor={yearPop} onClose={() => setYearPop(null)} className="year-pop">
             <div className="year-pop-nav">
               <button type="button" aria-label="Earlier years" onClick={() => setYearPop({ ...yearPop, base: yearPop.base - 12 })}>
                 ‹
@@ -879,8 +787,7 @@ export default function CalendarView({
                 </button>
               ))}
             </div>
-          </div>
-        </div>
+        </Popover>
       )}
 
       {draft && (

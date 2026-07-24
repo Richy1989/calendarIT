@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { searchEvents, type EventSearchResult } from './api/events'
 import { useHour12 } from './clock'
+import { formatTime } from './lib/dates'
 
 function formatWhen(iso: string, allDay: boolean, hour12: boolean): string {
   const d = new Date(iso)
   const date = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
   if (allDay) return `${date} · All day`
-  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12 })
-  return `${date} · ${time}`
+  return `${date} · ${formatTime(d, hour12)}`
 }
 
 const DEFAULT_COLOR = '#7B68EE'

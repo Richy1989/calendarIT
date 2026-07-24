@@ -6,6 +6,7 @@ import { getVisibleCalendars, getVisibleCategories, saveVisibleCalendars, saveVi
 import { getTokens, setTokens, type AuthTokens } from './auth/authStorage'
 import CalendarView from './CalendarView'
 import { ClockProvider, useHour12 } from './clock'
+import { formatTime } from './lib/dates'
 import SearchBar from './SearchBar'
 import ProfileMenu from './ProfileMenu'
 import SettingsPage from './SettingsPage'
@@ -116,7 +117,7 @@ function LiveDateTime() {
   }, [])
 
   const date = now.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
-  const time = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12 })
+  const time = formatTime(now, hour12, true)
 
   return (
     <span className="eyebrow">

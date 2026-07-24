@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { listEvents, type EventDto } from './api/events'
 import { useHour12 } from './clock'
+import { dayKey, formatDateMedium, formatTime, startOfToday } from './lib/dates'
 import { UNCATEGORIZED } from './prefs'
 
 /**
@@ -15,26 +16,11 @@ const MAX_WINDOWS = 20 // 20 × 3 months = 5 years of scrolling
 
 const DEFAULT_COLOR = '#708090' // slategray — uncategorized
 
-function startOfToday(): Date {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d
-}
-
 function windowStart(index: number): Date {
   const d = startOfToday()
   d.setMonth(d.getMonth() + index * WINDOW_MONTHS)
   return d
 }
-
-const pad2 = (n: number) => String(n).padStart(2, '0')
-const dayKeyOf = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
-
-const fmtTime = (d: Date, hour12: boolean) =>
-  d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12 })
-
-const fmtDay = (d: Date) =>
-  d.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
 
 export default function AgendaView({
   visibleCalendarIds,
@@ -63,7 +49,7 @@ export default function AgendaView({
 }) {
   const hour12 = useHour12()
   // Windows are keyed off today so the list stays correct across midnight.
-  const todayKey = dayKeyOf(startOfToday())
+  const todayKey = dayKey(startOfToday())
   const { data, hasNextPage, isFetchingNextPage, fetchNextPage } = useInfiniteQuery({
     queryKey: ['events', 'agenda', todayKey],
     queryFn: ({ pageParam }) =>
@@ -107,20 +93,20 @@ export default function AgendaView({
   const days: { key: string; label: string; items: EventDto[] }[] = []
   for (const dto of events) {
     const start = new Date(dto.start)
-    const key = dto.allDay ? dto.start.slice(0, 10) : dayKeyOf(start)
+    const key = dto.allDay ? dto.start.slice(0, 10) : dayKey(start)
     const last = days[days.length - 1]
     if (last?.key === key) {
       last.items.push(dto)
     } else {
-      const label = dto.allDay ? fmtDay(new Date(`${key}T00:00:00`)) : fmtDay(start)
+      const label = dto.allDay ? formatDateMedium(new Date(`${key}T00:00:00`)) : formatDateMedium(start)
       days.push({ key, label, items: [dto] })
     }
   }
 
   const timeLabel = (dto: EventDto) => {
     if (dto.allDay) return 'all-day'
-    const start = fmtTime(new Date(dto.start), hour12)
-    return dto.end ? `${start} – ${fmtTime(new Date(dto.end), hour12)}` : start
+    const start = formatTime(new Date(dto.start), hour12)
+    return dto.end ? `${start} – ${formatTime(new Date(dto.end), hour12)}` : start
   }
 
   return (
