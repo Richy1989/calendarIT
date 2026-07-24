@@ -763,20 +763,24 @@
   color: var(--text-faint);
 }
 
-/* --- Date/time field (custom picker trigger) ----------------------------- */
+/* --- Date/time field (custom picker trigger) -----------------------------
+   Two side-by-side triggers share a 468px modal, so the label has to stay on ONE line:
+   the date is abbreviated (no year unless it differs) and is the only part allowed to
+   shrink, the time is flex:none so it can never wrap or be clipped. */
 .dtf-trigger {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.45rem;
   width: 100%;
   background: var(--bg-2);
   border: 1px solid var(--hairline);
   border-radius: 10px;
-  padding: 0.72rem 0.85rem;
+  padding: 0.72rem 0.78rem;
   color: var(--text);
   font-size: 0.95rem;
   font-family: var(--font-body);
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -795,22 +799,29 @@
 .dtf-icon {
   color: var(--text-faint);
   flex: none;
+  transition: color 0.15s;
 }
 
+.dtf-trigger:hover .dtf-icon,
+.dtf-trigger.is-open .dtf-icon {
+  color: var(--accent);
+}
+
+/* Takes the slack and pushes the time to the right edge; truncates rather than wrapping. */
 .dtf-date {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dtf-time {
+  flex: none;
   font-family: var(--font-mono);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
   color: var(--accent);
   letter-spacing: 0.01em;
-}
-
-.dtf-chevron {
-  color: var(--text-faint);
-  flex: none;
 }
 
 /* The floating panel: calendar on top, optional time row below. */
@@ -1691,7 +1702,8 @@
 
 .modal {
   position: relative;
-  width: min(440px, 100%);
+  /* Wide enough for a "Starts"/"Ends" pair to each show date + time on one line. */
+  width: min(468px, 100%);
   display: flex;
   flex-direction: column;
   gap: 1.05rem;
@@ -1805,6 +1817,17 @@
 .field-row .field {
   flex: 1;
   min-width: 0;
+}
+
+/* Below this the two columns get too narrow to hold a date + time, so stack them. */
+@media (max-width: 430px) {
+  .field-row {
+    flex-wrap: wrap;
+  }
+
+  .field-row .field {
+    flex-basis: 100%;
+  }
 }
 
 .toggle {

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useHour12 } from '../clock'
-import { formatDateMedium, formatTime, parseLocalValue, toLocalValue } from '../lib/dates'
+import { formatDateCompact, formatTime, parseLocalValue, toLocalValue } from '../lib/dates'
 import { anchorBelow, Popover, type Anchor } from './Popover'
 import MonthCalendar from './MonthCalendar'
 import TimePicker from './TimePicker'
@@ -54,9 +54,9 @@ export default function DateTimeField({
         onClick={toggle}
       >
         <CalendarGlyph />
-        <span className="dtf-date">{formatDateMedium(date)}</span>
+        {/* Date shrinks (ellipsis) before the time does — the time must never wrap or clip. */}
+        <span className="dtf-date">{formatDateCompact(date)}</span>
         {!allDay && <span className="dtf-time">{formatTime(date, hour12)}</span>}
-        <ChevronGlyph />
       </button>
 
       {anchor && (
@@ -84,10 +84,3 @@ function CalendarGlyph() {
   )
 }
 
-function ChevronGlyph() {
-  return (
-    <svg {...glyph} className="dtf-chevron" aria-hidden="true">
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  )
-}

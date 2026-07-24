@@ -48,6 +48,20 @@ export function formatDateMedium(d: Date): string {
 }
 
 /**
+ * The same date trimmed for tight spots like the picker trigger — "Wed, Jul 22". The year
+ * only shows when it isn't the current one, which is what keeps date + time on one line.
+ */
+export function formatDateCompact(d: Date): string {
+  const thisYear = d.getFullYear() === new Date().getFullYear()
+  return d.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(thisYear ? {} : { year: 'numeric' }),
+  })
+}
+
+/**
  * Parses the event modal's date strings into a local Date. All-day values are
  * 'YYYY-MM-DD'; timed values are 'YYYY-MM-DDTHH:mm'. Anything unparseable falls back to
  * today (all-day) or the next hour (timed), so the picker always opens on something sane.
