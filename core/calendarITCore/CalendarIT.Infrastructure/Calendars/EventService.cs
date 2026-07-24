@@ -71,13 +71,37 @@ public sealed class EventService(
         // Case-insensitive substring on title/location. ToLower().Contains() translates to
         // `lower(col) LIKE '%q%'` on both SQLite and Npgsql, so this stays provider-agnostic.
         var needle = q.ToLowerInvariant();
-        var matches = await db.Events.AsNoTracking().Include(e => e.Category)
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var matching = db.Events.AsNoTracking().Include(e => e.Category)
             .Where(e => e.Calendar!.OwnerUserId == userId
                 && (e.Title.ToLower().Contains(needle)
-                    || (e.Location != null && e.Location.ToLower().Contains(needle))))
+                    || (e.Location != null && e.Location.ToLower().Contains(needle))));
+
+        // The result is "the nearest few hits either side of now", so the database can do the
+        // narrowing: the soonest `limit` ahead and the latest `limit` behind is a superset of any
+        // `limit` we could return. Reading every match instead — which a one-letter query makes
+        // the whole calendar — and sorting it here was the expensive part, made worse by search
+        // running on every keystroke.
+        var upcoming = await matching
+            .Where(e => e.RRule == null && e.StartUtc >= now)
+            .OrderBy(e => e.StartUtc)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+        var past = await matching
+            .Where(e => e.RRule == null && e.StartUtc < now)
+            .OrderByDescending(e => e.StartUtc)
+            .Take(limit)
             .ToListAsync(cancellationToken);
 
-        var now = timeProvider.GetUtcNow().UtcDateTime;
+        // Series can't be ordered in SQL — their stored start is the first occurrence, which says
+        // nothing about when the next one falls — so they're expanded here. There are far fewer
+        // series than events, and the cap stops a pathological calendar from making search crawl.
+        var recurring = await matching
+            .Where(e => e.RRule != null)
+            .Take(MaxRecurringSearchCandidates)
+            .ToListAsync(cancellationToken);
+
+        var matches = upcoming.Concat(past).Concat(recurring);
         var results = matches.Select(e =>
         {
             var start = e.RRule is null ? e.StartUtc : RepresentativeOccurrenceUtc(e, now);
@@ -95,6 +119,14 @@ public sealed class EventService(
             .ToList();
     }
 
+    /// <summary>How many series a single search will expand. Bounds the work when a short query
+    /// matches a large calendar.</summary>
+    private const int MaxRecurringSearchCandidates = 200;
+
+    /// <summary>Ceiling on occurrences walked per series. An RRULE arrives from outside (import,
+    /// CalDAV, an emailed invitation) and may repeat by the second, so the walk needs an end.</summary>
+    private const int MaxOccurrenceScan = 5_000;
+
     // For a recurring master, the date we surface in search: the next occurrence within the
     // next 2 years, else the most recent occurrence in the past 5 years, else the series start.
     private static DateTime RepresentativeOccurrenceUtc(CalendarEvent e, DateTime now)
@@ -102,6 +134,7 @@ public sealed class EventService(
         var end = e.EndUtc ?? e.StartUtc.AddHours(1);
         var exDates = ExDates.Parse(e.ExDates);
 
+        // Cheap: expansion is lazy, so this stops at the first hit.
         var upcoming = RecurrenceExpander
             .Expand(e.StartUtc, end, e.TimeZoneId, e.RRule!, exDates, now, now.AddYears(2))
             .FirstOrDefault();
@@ -110,8 +143,10 @@ public sealed class EventService(
             return upcoming.StartUtc;
         }
 
+        // Finding the *last* one has to walk them all, hence the cap.
         var past = RecurrenceExpander
             .Expand(e.StartUtc, end, e.TimeZoneId, e.RRule!, exDates, now.AddYears(-5), now)
+            .Take(MaxOccurrenceScan)
             .LastOrDefault();
         return past.StartUtc != default ? past.StartUtc : e.StartUtc;
     }

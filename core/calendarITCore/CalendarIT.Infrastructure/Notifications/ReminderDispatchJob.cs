@@ -26,57 +26,94 @@ public sealed class ReminderDispatchJob(
 
     public async Task Execute(IJobExecutionContext context)
     {
-        var cancellationToken = context.CancellationToken;
+        await using var scope = scopeFactory.CreateAsyncScope();
+        await RunAsync(
+            scope.ServiceProvider.GetRequiredService<AppDbContext>(),
+            scope.ServiceProvider.GetRequiredService<IUserMailSender>(),
+            context.CancellationToken);
+    }
+
+    /// <summary>
+    /// One dispatch pass, against an already-resolved scope. Separate from <see cref="Execute"/>
+    /// so the window arithmetic and the dedup can be tested without standing up Quartz.
+    /// </summary>
+    public async Task RunAsync(AppDbContext db, IUserMailSender mail, CancellationToken cancellationToken = default)
+    {
         var now = Truncate(timeProvider.GetUtcNow().UtcDateTime);
         var windowStart = now - Lookback;
 
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var mail = scope.ServiceProvider.GetRequiredService<IUserMailSender>();
+        // Only reminders that could possibly be due are read. A one-off event fires at
+        // Start - offset, so for its trigger to land in (windowStart, now] its start must lie in
+        // (windowStart, now + longest offset] — a bounded range the database can filter on,
+        // instead of reading every reminder ever created once a minute. Recurring masters have
+        // to come along regardless: their occurrences aren't in the row.
+        var longestOffset = await db.Reminders
+            .Select(r => (int?)r.MinutesBefore)
+            .MaxAsync(cancellationToken) ?? 0;
+        var horizon = now.AddMinutes(longestOffset);
 
         var reminders = await db.Reminders
             .Include(r => r.Event!).ThenInclude(e => e.Calendar)
+            .Where(r => r.Event!.RRule != null
+                || (r.Event!.StartUtc > windowStart && r.Event!.StartUtc <= horizon))
             .ToListAsync(cancellationToken);
         if (reminders.Count == 0)
         {
             return;
         }
 
-        // Resolve owner emails once.
-        var ownerIds = reminders.Select(r => r.Event!.Calendar!.OwnerUserId).Distinct().ToList();
+        // Which (reminder, occurrence) pairs actually come due this tick.
+        var due = new List<(Reminder Reminder, DateTime OccurrenceStartUtc)>();
+        foreach (var reminder in reminders)
+        {
+            var offset = TimeSpan.FromMinutes(reminder.MinutesBefore);
+            // trigger in (windowStart, now]  ⇔  occurrence start in (windowStart+offset, now+offset]
+            foreach (var occStart in OccurrencesInWindow(reminder.Event!, windowStart + offset, now + offset))
+            {
+                due.Add((reminder, occStart));
+            }
+        }
+        if (due.Count == 0)
+        {
+            return;
+        }
+
+        // One query settles what was already sent, rather than a round trip per occurrence.
+        var dueIds = due.Select(d => d.Reminder.Id).Distinct().ToList();
+        var dueStarts = due.Select(d => d.OccurrenceStartUtc).Distinct().ToList();
+        var sent = (await db.NotificationLogs
+                .Where(n => dueIds.Contains(n.ReminderId) && dueStarts.Contains(n.OccurrenceStartUtc))
+                .Select(n => new { n.ReminderId, n.OccurrenceStartUtc })
+                .ToListAsync(cancellationToken))
+            .Select(n => (n.ReminderId, n.OccurrenceStartUtc))
+            .ToHashSet();
+
+        var ownerIds = due.Select(d => d.Reminder.Event!.Calendar!.OwnerUserId).Distinct().ToList();
         var emailByOwner = await db.Users
             .Where(u => ownerIds.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => u.Email, cancellationToken);
 
-        foreach (var reminder in reminders)
+        foreach (var (reminder, occStart) in due)
         {
-            var ev = reminder.Event!;
-            var offset = TimeSpan.FromMinutes(reminder.MinutesBefore);
-            // trigger in (windowStart, now]  ⇔  occurrence start in (windowStart+offset, now+offset]
-            var occFrom = windowStart + offset;
-            var occTo = now + offset;
-
-            foreach (var occStart in OccurrencesInWindow(ev, occFrom, occTo))
+            if (!sent.Add((reminder.Id, occStart)))
             {
-                var already = await db.NotificationLogs
-                    .AnyAsync(n => n.ReminderId == reminder.Id && n.OccurrenceStartUtc == occStart, cancellationToken);
-                if (already)
-                {
-                    continue;
-                }
-
-                var ownerUserId = ev.Calendar!.OwnerUserId;
-                await DispatchAsync(reminder, ev, occStart, ownerUserId, emailByOwner.GetValueOrDefault(ownerUserId), mail, cancellationToken);
-
-                db.NotificationLogs.Add(new NotificationLog
-                {
-                    Id = Guid.NewGuid(),
-                    ReminderId = reminder.Id,
-                    OccurrenceStartUtc = occStart,
-                    SentAtUtc = now,
-                });
-                await db.SaveChangesAsync(cancellationToken);
+                continue; // already delivered — or a duplicate within this same batch
             }
+
+            var ev = reminder.Event!;
+            var ownerUserId = ev.Calendar!.OwnerUserId;
+            await DispatchAsync(reminder, ev, occStart, ownerUserId, emailByOwner.GetValueOrDefault(ownerUserId), mail, cancellationToken);
+
+            // Recorded one at a time, right after sending: a failure later in the batch must not
+            // roll back the record of what already went out, or those reminders send twice.
+            db.NotificationLogs.Add(new NotificationLog
+            {
+                Id = Guid.NewGuid(),
+                ReminderId = reminder.Id,
+                OccurrenceStartUtc = occStart,
+                SentAtUtc = now,
+            });
+            await db.SaveChangesAsync(cancellationToken);
         }
     }
 
