@@ -20,7 +20,11 @@
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Description>CalendarIT — a lightweight, self-hosted calendar (React web UI + ASP.NET Core REST API), preconfigured to sit behind Traefik. The container carries Traefik labels that route Host(`calendarit.home.lab`) to nginx on container port 80 — no published host port required as long as Traefik reaches this container over a shared Docker network (set Network to the same custom network your Traefik container uses, e.g. proxynet, and point calendarit.home.lab at your Traefik IP in your local DNS). Recurring events (RRULE) with correct time zones and DST, per-event colours, email reminders, and iCalendar (.ics) import/export. This single-container build runs the React UI behind nginx and the API together in one image, storing data in a built-in SQLite database (or point it at your own Postgres). Mount /data to your appdata share so your events and uploaded avatars survive container updates. A JWT signing key is auto-generated and persisted under /data on first run; set your own JWT Signing Key to override.</Description>
+  <Description>CalendarIT — a lightweight, self-hosted calendar (React web UI + ASP.NET Core REST API), preconfigured to sit behind Traefik. The container carries Traefik labels that route Host(`calendarit.home.lab`) to nginx on container port 80 — no published host port required as long as Traefik reaches this container over a shared Docker network (set Network to the same custom network your Traefik container uses, e.g. proxynet, and point calendarit.home.lab at your Traefik IP in your local DNS). Recurring events (RRULE) with correct time zones and DST, colour-coded categories, email reminders and invitations, and iCalendar (.ics) import/export. This single-container build runs the React UI behind nginx and the API together in one image, storing data in a built-in SQLite database (or point it at your own Postgres). Mount /data to your appdata share so your events and uploaded avatars survive container updates. A JWT signing key is auto-generated and persisted under /data on first run; set your own JWT Signing Key to override.
+
+There are no SMTP settings here: email is sent through each user's own mail account, connected inside the app under Settings — Email. Users without one simply get their reminders written to the container log instead.
+
+Once you have created your account, set Disable Registration to true so nobody else can sign up on your server.</Description>
   <Networking>
     <Mode>bridge</Mode>
     <Publish/>
@@ -54,33 +58,23 @@
       <Mode/>
     </Variable>
     <Variable>
-      <Value></Value>
-      <Name>SMTP_HOST</Name>
-      <Mode/>
-    </Variable>
-    <Variable>
-      <Value>587</Value>
-      <Name>SMTP_PORT</Name>
-      <Mode/>
-    </Variable>
-    <Variable>
-      <Value></Value>
-      <Name>SMTP_USER</Name>
-      <Mode/>
-    </Variable>
-    <Variable>
-      <Value></Value>
-      <Name>SMTP_PASSWORD</Name>
-      <Mode/>
-    </Variable>
-    <Variable>
-      <Value></Value>
-      <Name>SMTP_FROM</Name>
-      <Mode/>
-    </Variable>
-    <Variable>
       <Value>false</Value>
-      <Name>SMTP_USE_SSL</Name>
+      <Name>DISABLE_REGISTRATION</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>PUBLIC_BASE_URL</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>2</Value>
+      <Name>FORWARDED_PROXY_HOPS</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>20</Value>
+      <Name>AUTH_RATE_LIMIT_PER_MINUTE</Name>
       <Mode/>
     </Variable>
     <Variable>
@@ -120,11 +114,9 @@
   <Config Name="Environment" Target="ASPNETCORE_ENVIRONMENT" Default="Production" Description="Production (default) or Development. Development also exposes the OpenAPI document at /openapi/v1.json." Type="Variable" Display="advanced" Required="false" Mask="false">Production</Config>
   <Config Name="Database Provider" Target="DATABASE_PROVIDER" Default="Sqlite" Description="Sqlite (built-in, default — recommended for most self-hosters) or Postgres. If set to Postgres, also fill in the Postgres Connection string." Type="Variable" Display="advanced" Required="false" Mask="false">Sqlite</Config>
   <Config Name="Postgres Connection" Target="POSTGRES_CONNECTION" Default="" Description="Optional. Full Npgsql connection string, required only when Database Provider is Postgres. Example: Host=192.168.1.10;Port=5432;Database=calendarit;Username=calendarit;Password=secret. Ignored while Database Provider is Sqlite." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
-  <Config Name="SMTP Host" Target="SMTP_HOST" Default="" Description="Optional. SMTP server for email reminders. LEAVE EMPTY to run without email — reminders then land in the container log instead. Setting this enables email delivery (then also set SMTP From)." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
-  <Config Name="SMTP Port" Target="SMTP_PORT" Default="587" Description="SMTP port — 587 for STARTTLS (default), 465 for implicit TLS (also set Use SSL to true). Ignored while SMTP Host is empty." Type="Variable" Display="advanced" Required="false" Mask="false">587</Config>
-  <Config Name="SMTP Username" Target="SMTP_USER" Default="" Description="Optional SMTP login username. Leave empty for an unauthenticated relay. Ignored while SMTP Host is empty." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
-  <Config Name="SMTP Password" Target="SMTP_PASSWORD" Default="" Description="Optional SMTP login password, paired with SMTP Username. Ignored while SMTP Host is empty." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
-  <Config Name="SMTP From" Target="SMTP_FROM" Default="" Description="From address for outgoing email, e.g. calendarit@example.com. Required once SMTP Host is set; ignored while SMTP Host is empty." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
-  <Config Name="SMTP Use SSL" Target="SMTP_USE_SSL" Default="false" Description="false = STARTTLS on port 587 (default); true = implicit TLS on port 465. Ignored while SMTP Host is empty." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="Disable Registration" Target="DISABLE_REGISTRATION" Default="false" Description="Set to true once everyone who needs an account has one. Your server is reachable by anyone who knows its address — that is what makes phone sync work — so leaving sign-up open means strangers can create accounts on it. Existing accounts keep working and the Register tab disappears from the sign-in screen." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="Public Base URL" Target="PUBLIC_BASE_URL" Default="" Description="Optional. The address users actually type, e.g. https://calendar.example.com — used to build password-reset links. LEAVE EMPTY unless those links come out pointing at the wrong host; normally the address is taken from the request, which Traefik passes through." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Trusted Proxy Hops" Target="FORWARDED_PROXY_HOPS" Default="2" Description="How many proxies sit in front of the app, used to work out each visitor&apos;s real IP address (which the login rate limit and the logs rely on). 2 is right for this template: Traefik, then the nginx inside the container. Add one for every further proxy in the chain — counting too few makes every visitor look like one address, too many lets visitors fake theirs." Type="Variable" Display="advanced" Required="false" Mask="false">2</Config>
+  <Config Name="Auth Rate Limit" Target="AUTH_RATE_LIMIT_PER_MINUTE" Default="20" Description="How many sign-in, registration, and token-refresh requests one IP address may make per minute before being turned away. The default suits a household; raise it only if legitimate users share one address and hit the limit." Type="Variable" Display="advanced" Required="false" Mask="false">20</Config>
   <Config Name="Log Level" Target="Serilog__MinimumLevel__Default" Default="Information" Description="Minimum log level written to the container log: Verbose, Debug, Information (default), Warning, Error, or Fatal." Type="Variable" Display="advanced" Required="false" Mask="false">Information</Config>
 </Container>
