@@ -63,21 +63,6 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
   </tr>
 </table>
 
-## Tech
-
-| Layer     | Choice                                                           |
-| --------- | --------------------------------------------------------------- |
-| Frontend  | React + TypeScript + Vite, FullCalendar, TanStack Query          |
-| API types | Generated from the backend's OpenAPI spec (`openapi-typescript`) |
-| Backend   | ASP.NET Core (.NET 10) Web API, REST + OpenAPI                    |
-| Auth      | ASP.NET Core Identity + JWT (access + rotating refresh)          |
-| Data      | EF Core — **PostgreSQL** (primary), **SQLite** (fallback)        |
-| Jobs      | Quartz.NET (reminders, housekeeping)                             |
-| Logging   | Serilog behind `ILogger<T>` — themed console to stdout           |
-| Packaging | Docker; runs behind your own reverse proxy (TLS terminated there)|
-
-See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the full design and rationale.
-
 ## Quick start
 
 ### With Docker (closest to production)
