@@ -50,7 +50,8 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
   subscribe and sync two-way.
 - 📄 **iCal import / export** — pick which calendars to export; import into any
   calendar or a new one.
-- 🔐 **Accounts** — email + password, JWT sessions with rotating refresh tokens.
+- 🔐 **Accounts** — email + password, JWT sessions with rotating refresh tokens, password change
+  and self-service reset by email, and a switch to close sign-up.
 
 <table>
   <tr>
@@ -110,6 +111,8 @@ Everything is set through environment variables (12-factor):
 | `APPDATA_PATH`                            | Writable data dir (SQLite file, etc.) — `/appdata`|
 | `JWT_SIGNING_KEY`                         | **Required.** ≥ 32 chars                         |
 | `JWT_ISSUER` / `JWT_AUDIENCE`             | Token issuer / audience                          |
+| `DISABLE_REGISTRATION`                    | `true` closes public sign-up. Existing accounts are unaffected |
+| `PUBLIC_BASE_URL`                         | Origin used in password-reset links. Only needed if your proxy hides the original host |
 | `AUTH_RATE_LIMIT_PER_MINUTE`              | Auth requests allowed per client IP per minute. Default `20` |
 | `FORWARDED_PROXY_HOPS`                    | How many `X-Forwarded-For` hops to trust. Default `1` — see below |
 | `Serilog__MinimumLevel__Default`          | Log level (console-only, to stdout). Default `Information` |
@@ -125,7 +128,29 @@ Everything is set through environment variables (12-factor):
 > **Repeated bad passwords lock an account** for 15 minutes after 10 failures — this covers
 > the web login and CalDAV alike, since both check the same credentials. Worth knowing if you
 > change your password: a phone still syncing with the old one will keep retrying and can lock
-> you out, so update it in your CalDAV client too.
+> you out, so update it in your CalDAV client too. (Completing a password reset lifts a lockout.)
+
+> **Close sign-up once everyone has an account.** Set `DISABLE_REGISTRATION=true` — your instance
+> is reachable by anyone who knows the address, because that is what makes phone sync work.
+> Existing accounts keep working and the Register tab disappears from the sign-in screen.
+
+### Forgot your password?
+
+The sign-in screen has a **Forgot your password?** link that emails a single-use link, valid for
+two hours. Because CalendarIT has no mail relay of its own, that email is sent through **your own
+connected mail account** (Settings → Email) — set a **Reminder From address** there if you'd rather
+it came from `noreply@` than your personal address.
+
+If the account has no working mail account, the link can't be emailed, so the server **writes it to
+its log** instead:
+
+```bash
+docker logs <container> | grep password-reset
+```
+
+That keeps a self-hosted instance recoverable without database surgery. It also means anyone who
+can read your container logs can take over an account — which is already true of anyone who can
+read your database, so it grants no new access, but it is worth knowing.
 
 > **Email needs no environment variables.** Invitations and reminders are sent through each
 > user's own mail account, connected in-app under **Settings → Email** (SMTP + IMAP, password

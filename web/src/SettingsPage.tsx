@@ -5,6 +5,7 @@ import { exportIcs, importIcs } from './api/events'
 import { createCalendar, deleteCalendar, listCalendars, renameCalendar, type CalendarDto } from './api/calendars'
 import { createCategory, deleteCategory, listCategories, updateCategory, type CategoryDto } from './api/categories'
 import { deleteMailAccount, getMailAccount, saveMailAccount, testMailAccount } from './api/mailAccount'
+import { changePassword } from './api/password'
 import { useClock } from './clock'
 import Logo from './Logo'
 
@@ -70,16 +71,111 @@ export default function SettingsPage({
           ) : section === 'email' ? (
             <EmailSection />
           ) : (
-            <div className="settings-card settings-placeholder">
-              <h2>Security</h2>
-              <p className="settings-sub">Coming soon.</p>
-            </div>
+            <SecuritySection onLogout={onLogout} />
           )}
         </div>
       </div>
 
       <footer className="settings-foot">CalendarIT · self-hosted</footer>
     </div>
+  )
+}
+
+/**
+ * Password change. Succeeding here signs every session out — including this one — so the form
+ * hands straight over to the login screen rather than leaving the app in a state where the next
+ * request will 401.
+ */
+function SecuritySection({ onLogout }: { onLogout: () => void }) {
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [confirmBlurred, setConfirmBlurred] = useState(false)
+
+  const mismatch = confirm.length > 0 && confirm !== next
+  const showMismatch = mismatch && confirmBlurred
+
+  const mutation = useMutation({ mutationFn: () => changePassword(current, next) })
+
+  return (
+    <form
+      className="settings-card"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (mismatch) {
+          setConfirmBlurred(true)
+          return
+        }
+        mutation.mutate()
+      }}
+    >
+      <h2>Password</h2>
+      <p className="settings-sub">
+        Changing your password signs out every device, including this one, and any calendar app
+        syncing over CalDAV will need the new password too.
+      </p>
+
+      {mutation.isSuccess ? (
+        <div className="settings-row">
+          <p className="settings-note">Password changed. Sign in again to continue.</p>
+          <button type="button" className="btn-primary" onClick={onLogout}>
+            Go to sign in
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="field">
+            <label htmlFor="current-password">Current password</label>
+            <input
+              id="current-password"
+              type="password"
+              autoComplete="current-password"
+              value={current}
+              required
+              onChange={(e) => setCurrent(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-password">New password</label>
+            <input
+              id="new-password"
+              type="password"
+              autoComplete="new-password"
+              placeholder="At least 8 characters"
+              value={next}
+              required
+              minLength={8}
+              onChange={(e) => setNext(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-password-confirm">Confirm new password</label>
+            <input
+              id="new-password-confirm"
+              type="password"
+              autoComplete="new-password"
+              value={confirm}
+              required
+              aria-invalid={showMismatch}
+              aria-describedby={showMismatch ? 'new-password-error' : undefined}
+              onChange={(e) => setConfirm(e.target.value)}
+              onBlur={() => setConfirmBlurred(true)}
+            />
+            {showMismatch && (
+              <p id="new-password-error" className="field-error" role="alert">
+                The passwords don't match.
+              </p>
+            )}
+          </div>
+
+          {mutation.isError && <p className="error">{(mutation.error as Error).message}</p>}
+
+          <button className="btn-primary" type="submit" disabled={mutation.isPending}>
+            {mutation.isPending ? 'Changing…' : 'Change password'}
+          </button>
+        </>
+      )}
+    </form>
   )
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { api } from './api/client'
 import { getProfile } from './api/profile'
+import { getAuthConfig, requestPasswordReset, resetPassword } from './api/password'
 import { getVisibleCalendars, getVisibleCategories, saveVisibleCalendars, saveVisibleCategories } from './prefs'
 import { getTokens, setTokens, type AuthTokens } from './auth/authStorage'
 import CalendarView from './CalendarView'
@@ -14,6 +15,23 @@ import Logo from './Logo'
 import './App.css'
 
 type Mode = 'login' | 'register'
+
+/**
+ * The reset link lands on /reset-password?email=…&token=…. There's no router here, so the
+ * parameters are read straight off the URL once, before anything renders.
+ */
+function readResetRequest(): { email: string; token: string } | null {
+  if (window.location.pathname !== '/reset-password') return null
+  const params = new URLSearchParams(window.location.search)
+  const email = params.get('email')
+  const token = params.get('token')
+  return email && token ? { email, token } : null
+}
+
+/** Drops the token from the address bar so it isn't left in history or copied by accident. */
+function clearResetUrl() {
+  window.history.replaceState(null, '', '/')
+}
 
 export default function App() {
   // All hooks must run unconditionally and in a stable order — keep them above any
@@ -128,6 +146,11 @@ function LiveDateTime() {
 }
 
 function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => void }) {
+  // Arriving on a reset link replaces the sign-in form until it's dealt with.
+  const [resetRequest, setResetRequest] = useState(readResetRequest)
+  const [forgot, setForgot] = useState(false)
+  const { data: authConfig } = useQuery({ queryKey: ['auth-config'], queryFn: getAuthConfig })
+  const registrationEnabled = authConfig?.registrationEnabled ?? true
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -151,9 +174,26 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => voi
     onSuccess: (data) => onAuthenticated(data),
   })
 
-  const isLogin = mode === 'login'
+  // An instance with sign-up closed shouldn't offer a tab that can only fail.
+  const isLogin = mode === 'login' || !registrationEnabled
   const mismatch = !isLogin && confirm.length > 0 && confirm !== password
   const showMismatch = mismatch && confirmBlurred
+
+  if (resetRequest) {
+    return (
+      <ResetPasswordForm
+        request={resetRequest}
+        onDone={() => {
+          clearResetUrl()
+          setResetRequest(null)
+        }}
+      />
+    )
+  }
+
+  if (forgot) {
+    return <ForgotPasswordForm onBack={() => setForgot(false)} />
+  }
 
   // Switching tabs starts a clean form: a half-typed confirmation (and any stale error) has
   // nothing to do with the mode you just moved to.
@@ -183,14 +223,16 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => voi
           <h1 className="auth-title">{isLogin ? 'Welcome back' : 'Create your account'}</h1>
         </div>
 
-        <div className="segmented" role="tablist">
-          <button type="button" role="tab" aria-selected={isLogin} className={isLogin ? 'active' : ''} onClick={() => switchTo('login')}>
-            Log in
-          </button>
-          <button type="button" role="tab" aria-selected={!isLogin} className={!isLogin ? 'active' : ''} onClick={() => switchTo('register')}>
-            Register
-          </button>
-        </div>
+        {registrationEnabled && (
+          <div className="segmented" role="tablist">
+            <button type="button" role="tab" aria-selected={isLogin} className={isLogin ? 'active' : ''} onClick={() => switchTo('login')}>
+              Log in
+            </button>
+            <button type="button" role="tab" aria-selected={!isLogin} className={!isLogin ? 'active' : ''} onClick={() => switchTo('register')}>
+              Register
+            </button>
+          </div>
+        )}
 
         <div className="form">
           <div className="field">
@@ -249,9 +291,186 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => voi
           <button className="btn-primary" type="submit" disabled={mutation.isPending}>
             {mutation.isPending ? (isLogin ? 'Signing in…' : 'Creating account…') : isLogin ? 'Sign in' : 'Create account'}
           </button>
+
+          {isLogin && (
+            <button type="button" className="link-button" onClick={() => setForgot(true)}>
+              Forgot your password?
+            </button>
+          )}
         </div>
 
         <p className="auth-foot">Your calendar data stays on your own server.</p>
+      </form>
+    </div>
+  )
+}
+
+/** Asks for a reset link. Always reports success — whether that address has an account here
+ *  is not something an unauthenticated screen should reveal. */
+function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState('')
+  const mutation = useMutation({ mutationFn: () => requestPasswordReset(email) })
+
+  return (
+    <div className="auth">
+      <form
+        className="auth-card"
+        onSubmit={(e) => {
+          e.preventDefault()
+          mutation.mutate()
+        }}
+      >
+        <div className="auth-head">
+          <Logo />
+          <span className="eyebrow">Account recovery</span>
+          <h1 className="auth-title">Reset your password</h1>
+        </div>
+
+        {mutation.isSuccess ? (
+          <div className="form">
+            <p className="auth-note">
+              If an account exists for <strong>{email}</strong>, a reset link is on its way. The link
+              works once and expires in two hours.
+            </p>
+            <p className="field-hint">
+              No email arriving? Reset mail is sent through the mail account connected in Settings →
+              Email. Without one, the server writes the link to its log instead — check
+              <code> docker logs</code>.
+            </p>
+            <button type="button" className="btn-primary" onClick={onBack}>
+              Back to sign in
+            </button>
+          </div>
+        ) : (
+          <div className="form">
+            <div className="field">
+              <label htmlFor="forgot-email">Email</label>
+              {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+              <input
+                id="forgot-email"
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                value={email}
+                required
+                autoFocus
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+
+            {mutation.isError && <p className="error">{(mutation.error as Error).message}</p>}
+
+            <button className="btn-primary" type="submit" disabled={mutation.isPending}>
+              {mutation.isPending ? 'Sending…' : 'Send reset link'}
+            </button>
+            <button type="button" className="link-button" onClick={onBack}>
+              Back to sign in
+            </button>
+          </div>
+        )}
+      </form>
+    </div>
+  )
+}
+
+/** Sets a new password from an emailed link. */
+function ResetPasswordForm({
+  request,
+  onDone,
+}: {
+  request: { email: string; token: string }
+  onDone: () => void
+}) {
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [confirmBlurred, setConfirmBlurred] = useState(false)
+  const mismatch = confirm.length > 0 && confirm !== password
+  const showMismatch = mismatch && confirmBlurred
+
+  const mutation = useMutation({
+    mutationFn: () => resetPassword(request.email, request.token, password),
+  })
+
+  return (
+    <div className="auth">
+      <form
+        className="auth-card"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (mismatch) {
+            setConfirmBlurred(true)
+            return
+          }
+          mutation.mutate()
+        }}
+      >
+        <div className="auth-head">
+          <Logo />
+          <span className="eyebrow">Account recovery</span>
+          <h1 className="auth-title">Choose a new password</h1>
+        </div>
+
+        {mutation.isSuccess ? (
+          <div className="form">
+            <p className="auth-note">
+              Your password has been changed, and every existing session was signed out. Sign in with
+              the new one.
+            </p>
+            <button type="button" className="btn-primary" onClick={onDone}>
+              Go to sign in
+            </button>
+          </div>
+        ) : (
+          <div className="form">
+            <p className="auth-note">
+              Setting a new password for <strong>{request.email}</strong>.
+            </p>
+            <div className="field">
+              <label htmlFor="reset-password">New password</label>
+              {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+              <input
+                id="reset-password"
+                type="password"
+                autoComplete="new-password"
+                placeholder="At least 8 characters"
+                value={password}
+                required
+                minLength={8}
+                autoFocus
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="reset-confirm">Confirm password</label>
+              <input
+                id="reset-confirm"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Repeat your password"
+                value={confirm}
+                required
+                aria-invalid={showMismatch}
+                aria-describedby={showMismatch ? 'reset-confirm-error' : undefined}
+                onChange={(e) => setConfirm(e.target.value)}
+                onBlur={() => setConfirmBlurred(true)}
+              />
+              {showMismatch && (
+                <p id="reset-confirm-error" className="field-error" role="alert">
+                  The passwords don't match.
+                </p>
+              )}
+            </div>
+
+            {mutation.isError && <p className="error">{(mutation.error as Error).message}</p>}
+
+            <button className="btn-primary" type="submit" disabled={mutation.isPending}>
+              {mutation.isPending ? 'Saving…' : 'Set new password'}
+            </button>
+            <button type="button" className="link-button" onClick={onDone}>
+              Cancel
+            </button>
+          </div>
+        )}
       </form>
     </div>
   )

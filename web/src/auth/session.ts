@@ -47,3 +47,13 @@ export async function ensureAccessToken(): Promise<string | null> {
   }
   return refreshInFlight
 }
+
+/**
+ * Authorization header for calls made with raw `fetch` (file uploads/downloads and the
+ * endpoints with no generated client). Refreshes the access token first when it's about to
+ * expire, exactly like the openapi-fetch middleware does.
+ */
+export async function authHeaders(): Promise<Record<string, string>> {
+  const token = await ensureAccessToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}

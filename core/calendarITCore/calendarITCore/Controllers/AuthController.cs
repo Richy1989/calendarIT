@@ -1,3 +1,4 @@
+using calendarITCore.Extensions;
 using CalendarIT.Application.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,7 +10,7 @@ namespace calendarITCore.Controllers;
 [ApiController]
 [Route("api/auth")]
 [EnableRateLimiting("auth")] // unauthenticated and password-hashing: the one place worth capping
-public sealed class AuthController(IAuthService authService) : ControllerBase
+public sealed class AuthController(IAuthService authService, IConfiguration configuration) : ControllerBase
 {
     [HttpPost("register")]
     [AllowAnonymous]
@@ -48,6 +49,56 @@ public sealed class AuthController(IAuthService authService) : ControllerBase
     {
         await authService.LogoutAsync(request, cancellationToken);
         return NoContent();
+    }
+
+    /// <summary>What the sign-in screen needs before anyone is signed in (is sign-up open?).</summary>
+    [HttpGet("config")]
+    [AllowAnonymous]
+    [ProducesResponseType<AuthConfig>(StatusCodes.Status200OK)]
+    public ActionResult<AuthConfig> Config() => Ok(authService.GetConfig());
+
+    [HttpPost("change-password")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request, CancellationToken cancellationToken)
+    {
+        var result = await authService.ChangePasswordAsync(User.GetUserId(), request, cancellationToken);
+        return result.Succeeded ? NoContent() : BadRequest(new { errors = result.Errors });
+    }
+
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken cancellationToken)
+    {
+        await authService.RequestPasswordResetAsync(request, PublicOrigin(), cancellationToken);
+        // 202 regardless: whether that address has an account is not something this endpoint tells
+        // anyone. The SPA shows the same "check your email" either way.
+        return Accepted();
+    }
+
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest request, CancellationToken cancellationToken)
+    {
+        var result = await authService.ResetPasswordAsync(request, cancellationToken);
+        return result.Succeeded ? NoContent() : BadRequest(new { errors = result.Errors });
+    }
+
+    /// <summary>
+    /// The origin to build the reset link from. Taken from the request — with UseForwardedHeaders
+    /// in front, that is the address the user actually typed, so no extra configuration is needed.
+    /// PUBLIC_BASE_URL overrides it for setups where the proxy doesn't pass the original host.
+    /// </summary>
+    private string PublicOrigin()
+    {
+        var configured = configuration["PUBLIC_BASE_URL"];
+        return string.IsNullOrWhiteSpace(configured)
+            ? $"{Request.Scheme}://{Request.Host}"
+            : configured.TrimEnd('/');
     }
 
     private IActionResult ToResponse(AuthResult result) =>

@@ -30,6 +30,10 @@ public static class DependencyInjection
         var dbOptions = ReadDatabaseOptions(configuration);
         services.AddSingleton(Options.Create(dbOptions));
         services.AddSingleton(Options.Create(ReadJwtOptions(configuration)));
+        services.AddSingleton(Options.Create(new AuthOptions
+        {
+            DisableRegistration = configuration.GetValue("DISABLE_REGISTRATION", false),
+        }));
         services.AddSingleton(TimeProvider.System);
 
         services.AddDbContext<AppDbContext>(builder => ConfigureProvider(builder, dbOptions));
@@ -56,7 +60,16 @@ public static class DependencyInjection
                 options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
             })
             .AddRoles<IdentityRole<Guid>>()
-            .AddEntityFrameworkStores<AppDbContext>();
+            .AddEntityFrameworkStores<AppDbContext>()
+            // Password-reset tokens. Registered explicitly rather than via AddDefaultTokenProviders,
+            // which lives in the full ASP.NET Core Identity assembly this project doesn't reference.
+            // The token is Data-Protection-signed and bound to the user's SecurityStamp, so it dies
+            // the moment the password changes — a link can't be replayed after it has been used.
+            .AddTokenProvider<DataProtectorTokenProvider<ApplicationUser>>(TokenOptions.DefaultProvider);
+
+        // A reset link is a bearer credential sitting in an inbox; a day is longer than anyone
+        // needs to click it.
+        services.Configure<DataProtectionTokenProviderOptions>(o => o.TokenLifespan = TimeSpan.FromHours(2));
 
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<IAuthService, AuthService>();
@@ -77,6 +90,7 @@ public static class DependencyInjection
         services.AddScoped<IInvitationReplyService, InvitationReplyService>();
         services.AddScoped<IIncomingInvitationService, IncomingInvitationService>();
         services.AddScoped<IUserMailSender, UserMailSender>();
+        services.AddScoped<IPasswordResetMailer, PasswordResetMailer>();
 
         AddBackgroundJobs(services);
 

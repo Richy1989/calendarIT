@@ -1,15 +1,10 @@
 import { api } from './client'
 import type { components } from './schema'
-import { ensureAccessToken } from '../auth/session'
+import { authHeaders } from '../auth/session'
 
 export type EventDto = components['schemas']['EventDto']
 export type SaveEventRequest = components['schemas']['SaveEventRequest']
 export type ImportResult = components['schemas']['ImportResult']
-
-async function authHeaders(): Promise<Record<string, string>> {
-  const token = await ensureAccessToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
 
 /** Downloads the user's events as an .ics blob — everything, or only the given calendars. */
 export async function exportIcs(calendarIds?: string[]): Promise<Blob> {

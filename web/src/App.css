@@ -763,6 +763,43 @@
   color: var(--text-faint);
 }
 
+/* A button that reads as a link: secondary actions under a primary one ("Forgot your
+   password?", "Back to sign in") that shouldn't compete with the gradient CTA. */
+.link-button {
+  align-self: center;
+  padding: 0.35rem 0.2rem;
+  background: none;
+  border: none;
+  font-size: 0.82rem;
+  font-family: inherit;
+  color: var(--text-dim);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--hairline-strong);
+  transition: color 0.15s;
+}
+
+.link-button:hover {
+  color: var(--text);
+}
+
+.link-button:focus-visible {
+  outline: none;
+  color: var(--text);
+  border-radius: 6px;
+  box-shadow: var(--ring);
+}
+
+/* Explanatory copy inside an auth card or a settings card. */
+.auth-note,
+.settings-note {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
 /* Inline validation under a single field — quieter than the .error banner, which is for a
    failed request rather than something you can fix by typing. */
 .field-error {

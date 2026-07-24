@@ -42,6 +42,8 @@ services:
       # resolving the client IP the auth rate limit keys on.
       FORWARDED_PROXY_HOPS: ${FORWARDED_PROXY_HOPS:-1}
       AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-20}
+      DISABLE_REGISTRATION: ${DISABLE_REGISTRATION:-false}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       # No SMTP settings: email (invitations + reminders) is sent through each user's own
       # mail account, connected in-app under Settings → Email.
     volumes:
