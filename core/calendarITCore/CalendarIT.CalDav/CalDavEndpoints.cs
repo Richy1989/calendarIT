@@ -16,6 +16,9 @@ public static class CalDavEndpoints
         services.AddAuthentication()
             .AddScheme<AuthenticationSchemeOptions, CalDavBasicAuthHandler>(CalDavBasicAuthHandler.SchemeName, null);
         services.AddScoped<CalDavHandler>();
+        // Singleton: the cache (and the pepper keying it) must outlive the request that filled it.
+        services.AddMemoryCache();
+        services.AddSingleton<CalDavCredentialCache>();
         return services;
     }
 

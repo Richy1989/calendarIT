@@ -133,7 +133,8 @@ public sealed class InvitationInboxJob(
     }
 
     /// <summary>Routes one message: a guest's RSVP (REPLY), or an invitation aimed at us
-    /// (REQUEST/CANCEL) — whichever parser recognises it. Unrecognised messages are ignored.</summary>
+    /// (REQUEST/CANCEL) — whichever parser recognises it. Unrecognised messages are ignored, and
+    /// so are ones whose iCalendar body claims a sender the message didn't come from.</summary>
     private async Task ProcessMessageAsync(
         MailAccount account, MimeMessage message, IInvitationReplyService replies,
         IIncomingInvitationService invitations, CancellationToken cancellationToken)
@@ -141,6 +142,16 @@ public sealed class InvitationInboxJob(
         var reply = ImipReplyParser.TryParse(message);
         if (reply is not null)
         {
+            // The body says this guest replied; the headers have to agree, or anyone could mark
+            // anyone as having accepted.
+            if (!ImipMime.IsFromClaimedSender(message, reply.AttendeeEmail))
+            {
+                logger.LogWarning(
+                    "Ignoring REPLY for event {Uid}: body claims attendee {Email}, message is not from them",
+                    reply.Uid, reply.AttendeeEmail);
+                return;
+            }
+
             if (await replies.ApplyReplyAsync(account.UserId, reply, cancellationToken))
             {
                 logger.LogInformation(
@@ -150,6 +161,16 @@ public sealed class InvitationInboxJob(
         }
         else if (ImipRequestParser.TryParse(message) is { } request)
         {
+            // Same for invitations: an unverified REQUEST is how a stranger writes to your
+            // calendar, and an unverified CANCEL is how they delete from it.
+            if (!ImipMime.IsFromClaimedSender(message, request.OrganizerEmail))
+            {
+                logger.LogWarning(
+                    "Ignoring {Method} for event {Uid}: body claims organizer {Organizer}, message is not from them",
+                    request.Method, request.Uid, request.OrganizerEmail);
+                return;
+            }
+
             if (await invitations.ApplyRequestAsync(account.UserId, request, cancellationToken))
             {
                 logger.LogInformation(

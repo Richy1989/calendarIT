@@ -172,7 +172,9 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
   picks up invitations others email you (iMIP REQUEST) and adds them to your calendar as pending
   (dashed outline + ✉), and removes them when the organizer cancels. **You can also respond**:
   open a received invitation and Accept / Maybe / Decline — your status is saved and an iMIP REPLY
-  is emailed back to the organizer.
+  is emailed back to the organizer. Incoming messages must actually come from the organizer (or
+  guest) the invitation names, so nobody can put events on your calendar under someone else's
+  name; mismatches are logged and ignored.
 - ❌ Optimizing for small screens, does not look pretty currenty on the phone
 
 Not everything above is wired end-to-end yet — check the roadmap before relying on a

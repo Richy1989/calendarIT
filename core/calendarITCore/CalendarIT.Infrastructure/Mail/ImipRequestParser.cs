@@ -25,6 +25,10 @@ public sealed record ImipRequest(
 /// organizer, and the SEQUENCE. Pure (no I/O), so the mapping is unit-testable; anything that
 /// isn't a well-formed REQUEST/CANCEL yields null and is simply skipped by the scanner. REPLY
 /// messages (guest RSVPs) are handled separately by <see cref="ImipReplyParser"/>.
+///
+/// <para><b>This does not authenticate the sender.</b> The organizer it reports is whatever the
+/// iCalendar body claims. Before acting on the result, check it against the message headers with
+/// <see cref="ImipMime.IsFromClaimedSender"/> — see <c>InvitationInboxJob</c>.</para>
 /// </summary>
 public static class ImipRequestParser
 {

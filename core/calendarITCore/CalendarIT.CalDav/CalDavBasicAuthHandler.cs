@@ -19,7 +19,8 @@ public sealed class CalDavBasicAuthHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
     UrlEncoder encoder,
-    UserManager<ApplicationUser> userManager)
+    UserManager<ApplicationUser> userManager,
+    CalDavCredentialCache credentials)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string SchemeName = "CalDavBasic";
@@ -51,6 +52,14 @@ public sealed class CalDavBasicAuthHandler(
         var email = decoded[..sep];
         var password = decoded[(sep + 1)..];
 
+        // A client polls constantly with the same credential; re-deriving the password hash each
+        // time is the single most expensive thing this endpoint does. A recent success short-
+        // circuits the whole check — including the user lookup.
+        if (credentials.TryGet(email, password, out var cached))
+        {
+            return Success(cached!.UserId, cached.UserName);
+        }
+
         var user = await userManager.FindByEmailAsync(email) ?? await userManager.FindByNameAsync(email);
         if (user is null)
         {
@@ -78,8 +87,15 @@ public sealed class CalDavBasicAuthHandler(
             await userManager.ResetAccessFailedCountAsync(user);
         }
 
+        var userName = user.UserName ?? email;
+        credentials.Store(email, password, new CalDavCredentialCache.CachedPrincipal(user.Id, userName));
+        return Success(user.Id, userName);
+    }
+
+    private AuthenticateResult Success(Guid userId, string userName)
+    {
         var identity = new ClaimsIdentity(
-            [new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), new Claim(ClaimTypes.Name, user.UserName ?? email)],
+            [new Claim(ClaimTypes.NameIdentifier, userId.ToString()), new Claim(ClaimTypes.Name, userName)],
             SchemeName);
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName));
     }

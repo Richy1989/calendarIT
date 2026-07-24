@@ -9,6 +9,10 @@ namespace CalendarIT.Infrastructure.Mail;
 /// they Accept/Decline/Tentatively-accept an invitation. Pulls the event UID and the guest's
 /// PARTSTAT out of the text/calendar part. Pure (no I/O), so the mapping is unit-testable;
 /// anything that isn't a well-formed REPLY yields null and is simply skipped by the scanner.
+///
+/// <para><b>This does not authenticate the sender.</b> The attendee it reports is whatever the
+/// iCalendar body claims. Before acting on the result, check it against the message headers with
+/// <see cref="ImipMime.IsFromClaimedSender"/> — see <c>InvitationInboxJob</c>.</para>
 /// </summary>
 public static class ImipReplyParser
 {
