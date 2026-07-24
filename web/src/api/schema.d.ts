@@ -1439,6 +1439,10 @@ export interface components {
             recurrence: null | string;
             reminders: components["schemas"]["ReminderDto"][];
             attendees: components["schemas"]["AttendeeDto"][];
+            /** Received-invitation RSVP status ("NeedsAction"/"Accepted"/…); null for own events. */
+            invitationStatus?: null | string;
+            /** Organizer's email for a received invitation; null for own events. */
+            organizerEmail?: null | string;
         };
         EventSearchResult: {
             /** Format: uuid */
@@ -1496,6 +1500,8 @@ export interface components {
             email: null | string;
             avatarDataUrl: null | string;
             defaultView: null | string;
+            /** Time-format preference: true = 24-hour, false = 12-hour, null = use locale default. */
+            use24HourClock?: boolean | null;
         };
         RefreshTokenRequest: {
             refreshToken: string;

@@ -66,4 +66,12 @@ public sealed class ProfileController(IProfileService profile) : ControllerBase
         var ok = await profile.SetDefaultViewAsync(User.GetUserId(), request.View, cancellationToken);
         return ok ? NoContent() : BadRequest(new { error = "Unknown view." });
     }
+
+    [HttpPut("clock")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> SetClockFormat(UpdateClockRequest request, CancellationToken cancellationToken)
+    {
+        await profile.SetClockFormatAsync(User.GetUserId(), request.Use24Hour, cancellationToken);
+        return NoContent();
+    }
 }

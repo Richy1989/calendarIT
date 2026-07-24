@@ -27,6 +27,51 @@ public static class InvitationBuilder
             subject: $"Cancelled: {evt.Title}",
             intro: $"{organizer.Address} cancelled:");
 
+    /// <summary>
+    /// An iMIP REPLY: our RSVP to an invitation we received. Carries METHOD:REPLY with the same
+    /// UID/SEQUENCE, the original ORGANIZER, and a single ATTENDEE — us — with our PARTSTAT, which
+    /// is how the organizer's calendar matches the response back to the guest they invited.
+    /// </summary>
+    public static MimeMessage BuildReply(MailAccount replier, DomainEvent evt, AttendeeStatus status)
+    {
+        var (partStat, verb) = status switch
+        {
+            AttendeeStatus.Accepted => ("ACCEPTED", "Accepted"),
+            AttendeeStatus.Declined => ("DECLINED", "Declined"),
+            AttendeeStatus.Tentative => ("TENTATIVE", "Tentatively accepted"),
+            _ => ("NEEDS-ACTION", "Responded to"),
+        };
+
+        var ve = ICalEventMapper.ToICalEvent(evt);
+        ve.Sequence = evt.Sequence;
+        ve.Organizer = new Organizer($"mailto:{evt.OrganizerEmail}");
+        // A REPLY names exactly one attendee: the person replying.
+        ve.Attendees.Clear();
+        ve.Attendees.Add(new ICalAttendee($"mailto:{replier.Address}")
+        {
+            CommonName = replier.Address,
+            ParticipationStatus = partStat,
+        });
+
+        var cal = new ICalCalendar { ProductId = "-//CalendarIT//EN", Method = "REPLY" };
+        cal.Events.Add(ve);
+        var ics = new CalendarSerializer().SerializeToString(cal)!;
+
+        var calendarPart = new TextPart("calendar") { Text = ics };
+        calendarPart.ContentType.Parameters.Add("method", "REPLY");
+
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(replier.Address, replier.Address));
+        message.To.Add(MailboxAddress.Parse(evt.OrganizerEmail));
+        message.Subject = $"{verb}: {evt.Title}";
+        message.Body = new MultipartAlternative
+        {
+            new TextPart("plain") { Text = $"{replier.Address} has responded \"{partStat}\" to \"{evt.Title}\"." },
+            calendarPart,
+        };
+        return message;
+    }
+
     private static MimeMessage Build(
         MailAccount organizer, DomainEvent evt, Attendee recipient, string method, string subject, string intro)
     {

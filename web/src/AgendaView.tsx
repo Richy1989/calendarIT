@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { listEvents, type EventDto } from './api/events'
+import { useHour12 } from './clock'
 import { UNCATEGORIZED } from './prefs'
 
 /**
@@ -29,7 +30,8 @@ function windowStart(index: number): Date {
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const dayKeyOf = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 
-const fmtTime = (d: Date) => d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+const fmtTime = (d: Date, hour12: boolean) =>
+  d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12 })
 
 const fmtDay = (d: Date) =>
   d.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
@@ -59,6 +61,7 @@ export default function AgendaView({
   onEdit: (seriesId: string) => void
   onEventContext: (x: number, y: number, e: { seriesId: string; recurring: boolean; occurrenceStart: string }) => void
 }) {
+  const hour12 = useHour12()
   // Windows are keyed off today so the list stays correct across midnight.
   const todayKey = dayKeyOf(startOfToday())
   const { data, hasNextPage, isFetchingNextPage, fetchNextPage } = useInfiniteQuery({
@@ -78,6 +81,7 @@ export default function AgendaView({
       const key = `${dto.id}__${dto.start}`
       if (seen.has(key)) continue
       seen.add(key)
+      if (dto.invitationStatus === 'Declined') continue // a declined invitation drops off the list
       if (visibleCalendarIds && !visibleCalendarIds.includes(dto.calendarId)) continue
       if (visibleCategoryIds && !visibleCategoryIds.includes(dto.categoryId ?? UNCATEGORIZED)) continue
       events.push(dto)
@@ -115,8 +119,8 @@ export default function AgendaView({
 
   const timeLabel = (dto: EventDto) => {
     if (dto.allDay) return 'all-day'
-    const start = fmtTime(new Date(dto.start))
-    return dto.end ? `${start} – ${fmtTime(new Date(dto.end))}` : start
+    const start = fmtTime(new Date(dto.start), hour12)
+    return dto.end ? `${start} – ${fmtTime(new Date(dto.end), hour12)}` : start
   }
 
   return (

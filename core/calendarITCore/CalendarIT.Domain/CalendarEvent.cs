@@ -50,6 +50,16 @@ public class CalendarEvent
     /// guests' calendars know which version of the event is current.</summary>
     public int Sequence { get; set; }
 
+    /// <summary>When this event is an invitation received from someone else (an inbound iMIP
+    /// REQUEST landed in the owner's inbox), the owner's own participation status — starts at
+    /// <see cref="AttendeeStatus.NeedsAction"/>. Null for events the user created/owns; a
+    /// non-null value marks the row as a received invitation and gates inbound updates.</summary>
+    public AttendeeStatus? InvitationStatus { get; set; }
+
+    /// <summary>The organizer's email for a received invitation (iMIP ORGANIZER), for showing
+    /// "invited by …" and, later, sending an RSVP (REPLY) back. Null for the user's own events.</summary>
+    public string? OrganizerEmail { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }

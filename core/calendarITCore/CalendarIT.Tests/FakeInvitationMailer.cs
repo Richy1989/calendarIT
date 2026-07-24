@@ -10,6 +10,8 @@ public sealed class FakeInvitationMailer : IInvitationMailer
 
     public List<(string Title, string[] Recipients)> Cancels { get; } = [];
 
+    public List<(string Title, string? Organizer, AttendeeStatus Status)> Replies { get; } = [];
+
     public Task SendRequestAsync(Guid userId, CalendarEvent evt, IReadOnlyList<Attendee> recipients, CancellationToken cancellationToken = default)
     {
         if (recipients.Count > 0)
@@ -25,6 +27,12 @@ public sealed class FakeInvitationMailer : IInvitationMailer
         {
             Cancels.Add((evt.Title, recipients.Select(r => r.Email).ToArray()));
         }
+        return Task.CompletedTask;
+    }
+
+    public Task SendReplyAsync(Guid userId, CalendarEvent evt, AttendeeStatus status, CancellationToken cancellationToken = default)
+    {
+        Replies.Add((evt.Title, evt.OrganizerEmail, status));
         return Task.CompletedTask;
     }
 }

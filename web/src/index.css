@@ -260,6 +260,37 @@ button {
   filter: brightness(1.15);
 }
 
+/* A received invitation reads by its RSVP state. Pending and Maybe are still provisional, so
+   they keep a dashed outline; Accepted turns into a solid, confirmed box; Declined is filtered
+   out and never rendered. A per-state glyph before the title says which is which at a glance. */
+.calendar-shell .fc .fc-event.fc-invite-pending,
+.calendar-shell .fc .fc-event.fc-invite-tentative {
+  border-style: dashed;
+}
+
+.calendar-shell .fc .fc-event.fc-invite-accepted {
+  border-style: solid;
+  border-width: 1.5px;
+}
+
+.calendar-shell .fc .fc-event.fc-invite .fc-event-title::before {
+  margin-right: 4px;
+  opacity: 0.85;
+  font-weight: 600;
+}
+
+.calendar-shell .fc .fc-event.fc-invite-pending .fc-event-title::before {
+  content: '\2709'; /* ✉ — invitation awaiting your response */
+}
+
+.calendar-shell .fc .fc-event.fc-invite-tentative .fc-event-title::before {
+  content: '?'; /* maybe */
+}
+
+.calendar-shell .fc .fc-event.fc-invite-accepted .fc-event-title::before {
+  content: '\2713'; /* ✓ — accepted */
+}
+
 /* Agenda ("list") view: the infinite upcoming list, same instrument aesthetic.
    It reuses FullCalendar's toolbar classes for pixel-identical controls. */
 .calendar-fc-host {

@@ -80,6 +80,20 @@ export async function updateEvent(id: string, body: SaveEventRequest): Promise<E
   return data
 }
 
+/** Our RSVP to a received invitation. */
+export type RsvpStatus = 'Accepted' | 'Declined' | 'Tentative'
+
+/** Records the user's RSVP to a received invitation and mails a REPLY back to the organizer. */
+export async function respondToInvitation(id: string, status: RsvpStatus): Promise<EventDto> {
+  const res = await fetch(`/api/events/${encodeURIComponent(id)}/rsvp`, {
+    method: 'POST',
+    headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
+  if (!res.ok) throw new Error('RSVP failed')
+  return res.json()
+}
+
 /** Deletes the whole event, or — for a recurring series — just one occurrence when `occurrence` is given. */
 export async function deleteEvent(id: string, occurrence?: string): Promise<void> {
   const { error } = await api.DELETE('/api/events/{id}', {

@@ -16,10 +16,11 @@ import type {
 } from '@fullcalendar/core'
 import EventModal, { type EventDraft } from './EventModal'
 import AgendaView from './AgendaView'
-import { createEvent, deleteEvent, getEvent, listEvents, updateEvent, type EventDto, type SaveEventRequest } from './api/events'
+import { createEvent, deleteEvent, getEvent, listEvents, respondToInvitation, updateEvent, type EventDto, type RsvpStatus, type SaveEventRequest } from './api/events'
 import { listCalendars } from './api/calendars'
 import { listCategories } from './api/categories'
 import { saveDefaultView } from './api/profile'
+import { useHour12 } from './clock'
 import { getSavedView, saveView, UNCATEGORIZED } from './prefs'
 
 // Uncategorized events render in this neutral default (categories carry the real colors).
@@ -77,6 +78,8 @@ function dtoToInput(dto: EventDto): EventInput {
       location: dto.location ?? '',
       description: dto.description ?? '',
       reminders: dto.reminders,
+      invitationStatus: dto.invitationStatus ?? null,
+      organizerEmail: dto.organizerEmail ?? null,
     },
   }
 }
@@ -165,6 +168,7 @@ export default function CalendarView({
   const events = useMemo(
     () =>
       dtos
+        .filter((d) => d.invitationStatus !== 'Declined') // a declined invitation drops off the calendar
         .filter((d) => !visibleCalendarIds || visibleCalendarIds.includes(d.calendarId))
         .filter((d) => !effectiveCategoryIds || effectiveCategoryIds.includes(d.categoryId ?? UNCATEGORIZED))
         .map(dtoToInput),
@@ -231,6 +235,7 @@ export default function CalendarView({
 
   const toggleAllCats = () => onChangeVisibleCategories?.(shownCatCount === allCatIds.length ? [] : null)
 
+  const hour12 = useHour12()
   const [draft, setDraft] = useState<EventDraft | null>(null)
   const [menu, setMenu] = useState<ContextMenu | null>(null)
   // Year quick-jump popover, opened by clicking the toolbar title ("August 2026").
@@ -423,6 +428,10 @@ export default function CalendarView({
     mutationFn: (v: { id: string; occurrence?: string }) => deleteEvent(v.id, v.occurrence),
     onSuccess: invalidate,
   })
+  const rsvpMut = useMutation({
+    mutationFn: (v: { id: string; status: RsvpStatus }) => respondToInvitation(v.id, v.status),
+    onSuccess: invalidate,
+  })
 
   useEffect(() => {
     if (!menu) return
@@ -521,7 +530,14 @@ export default function CalendarView({
       recurrence: dto.recurrence ?? '',
       reminders: dto.reminders.map((r) => ({ minutesBefore: Number(r.minutesBefore), channel: r.channel })),
       attendees: dto.attendees.map((a) => ({ email: a.email, name: a.name, status: a.status })),
+      invitationStatus: dto.invitationStatus ?? null,
+      organizerEmail: dto.organizerEmail ?? null,
     })
+  }
+
+  const respond = (id: string, status: RsvpStatus) => {
+    rsvpMut.mutate({ id, status })
+    closeDraft()
   }
 
   const save = (d: EventDraft) => {
@@ -566,6 +582,20 @@ export default function CalendarView({
   }
 
   const onEventMount = (arg: EventMountArg) => {
+    // A received invitation reads by its RSVP state: pending & maybe stay provisional (dashed +
+    // ✉/?), accepted becomes a solid confirmed box (✓). Declined ones are filtered out upstream
+    // and never mount. The organizer is surfaced in the tooltip.
+    const invite = arg.event.extendedProps.invitationStatus as string | null
+    if (invite && invite !== 'Declined') {
+      arg.el.classList.add('fc-invite')
+      arg.el.classList.add(
+        invite === 'Accepted' ? 'fc-invite-accepted' : invite === 'Tentative' ? 'fc-invite-tentative' : 'fc-invite-pending',
+      )
+      const organizer = arg.event.extendedProps.organizerEmail as string | null
+      if (organizer) {
+        arg.el.title = `Invitation from ${organizer}`
+      }
+    }
     arg.el.addEventListener('contextmenu', (e) => {
       e.preventDefault()
       e.stopPropagation()
@@ -607,6 +637,9 @@ export default function CalendarView({
         }}
         height="100%"
         nowIndicator
+        // Event-pill times and the week/day time axis follow the user's 12h/24h preference.
+        eventTimeFormat={{ hour: 'numeric', minute: '2-digit', hour12 }}
+        slotLabelFormat={{ hour: 'numeric', minute: '2-digit', hour12 }}
         scrollTime={scrollTime}
         scrollTimeReset={false}
         slotEventOverlap={false}
@@ -856,6 +889,7 @@ export default function CalendarView({
           calendars={calendars}
           onSave={save}
           onDelete={draft.id ? (id) => remove(id) : undefined}
+          onRespond={draft.id && draft.invitationStatus ? (status) => respond(draft.id!, status) : undefined}
           onClose={closeDraft}
         />
       )}

@@ -22,7 +22,12 @@ public sealed record EventDto(
     bool Recurring,
     string? Recurrence,
     IReadOnlyList<ReminderDto> Reminders,
-    IReadOnlyList<AttendeeDto> Attendees);
+    IReadOnlyList<AttendeeDto> Attendees,
+    /// <summary>When this event is an invitation the user received (not one they created), the
+    /// user's own RSVP status ("NeedsAction"/"Accepted"/…). Null for the user's own events.</summary>
+    string? InvitationStatus = null,
+    /// <summary>The organizer's email for a received invitation; null for the user's own events.</summary>
+    string? OrganizerEmail = null);
 
 /// <summary>A reminder: fire <paramref name="MinutesBefore"/> minutes before start, via <paramref name="Channel"/>.</summary>
 public sealed record ReminderDto(int MinutesBefore, string Channel);
@@ -84,6 +89,14 @@ public sealed class SaveEventRequest
 
     /// <summary>Guests to invite; replaces the existing set on update. Null keeps it unchanged.</summary>
     public IReadOnlyList<AttendeeInput>? Attendees { get; init; }
+}
+
+/// <summary>RSVP to a received invitation: the user's new participation status.</summary>
+public sealed class RsvpRequest
+{
+    /// <summary>"Accepted", "Declined", or "Tentative".</summary>
+    [Required, MaxLength(16)]
+    public string Status { get; init; } = string.Empty;
 }
 
 /// <summary>One guest in a save request.</summary>

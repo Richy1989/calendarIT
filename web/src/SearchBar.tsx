@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { searchEvents, type EventSearchResult } from './api/events'
+import { useHour12 } from './clock'
 
-function formatWhen(iso: string, allDay: boolean): string {
+function formatWhen(iso: string, allDay: boolean, hour12: boolean): string {
   const d = new Date(iso)
   const date = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
   if (allDay) return `${date} · All day`
-  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12 })
   return `${date} · ${time}`
 }
 
@@ -18,6 +19,7 @@ const DEFAULT_COLOR = '#7B68EE'
  * calendar to that day). Keyboard: ↑/↓ to move, Enter to pick, Esc to close.
  */
 export default function SearchBar({ onPick }: { onPick: (isoDate: string) => void }) {
+  const hour12 = useHour12()
   const [q, setQ] = useState('')
   const [debounced, setDebounced] = useState('')
   const [open, setOpen] = useState(false)
@@ -155,7 +157,7 @@ export default function SearchBar({ onPick }: { onPick: (isoDate: string) => voi
               <span className="search-hit-text">
                 <span className="search-hit-title">{r.title}</span>
                 <span className="search-hit-when">
-                  {formatWhen(r.start, r.allDay)}
+                  {formatWhen(r.start, r.allDay, hour12)}
                   {r.location ? ` · ${r.location}` : ''}
                   {r.recurring ? ' · repeats' : ''}
                 </span>

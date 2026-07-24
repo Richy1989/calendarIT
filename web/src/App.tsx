@@ -5,6 +5,7 @@ import { getProfile } from './api/profile'
 import { getVisibleCalendars, getVisibleCategories, saveVisibleCalendars, saveVisibleCategories } from './prefs'
 import { getTokens, setTokens, type AuthTokens } from './auth/authStorage'
 import CalendarView from './CalendarView'
+import { ClockProvider, useHour12 } from './clock'
 import SearchBar from './SearchBar'
 import ProfileMenu from './ProfileMenu'
 import SettingsPage from './SettingsPage'
@@ -46,15 +47,18 @@ export default function App() {
 
   if (settingsSection) {
     return (
-      <SettingsPage
-        initialSection={settingsSection}
-        onBack={() => setSettingsSection(null)}
-        onLogout={() => persist(null)}
-      />
+      <ClockProvider serverUse24Hour={profile?.use24HourClock ?? null}>
+        <SettingsPage
+          initialSection={settingsSection}
+          onBack={() => setSettingsSection(null)}
+          onLogout={() => persist(null)}
+        />
+      </ClockProvider>
     )
   }
 
   return (
+    <ClockProvider serverUse24Hour={profile?.use24HourClock ?? null}>
     <div className="app">
       <header className="app-header">
         <div className="brand">
@@ -97,12 +101,14 @@ export default function App() {
         </section>
       </main>
     </div>
+    </ClockProvider>
   )
 }
 
 // Live weekday + date + ticking clock, on the right of the header. Kept in its own
 // component so the per-second tick re-renders only this span, not the calendar below it.
 function LiveDateTime() {
+  const hour12 = useHour12()
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000)
@@ -110,7 +116,7 @@ function LiveDateTime() {
   }, [])
 
   const date = now.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
-  const time = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const time = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12 })
 
   return (
     <span className="eyebrow">

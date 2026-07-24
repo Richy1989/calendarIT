@@ -111,11 +111,19 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.Property<string>("ExDates")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("InvitationStatus")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsAllDay")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Location")
                         .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OrganizerEmail")
+                        .HasMaxLength(320)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("RRule")
@@ -365,6 +373,9 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("TwoFactorEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("Use24HourClock")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("UserName")

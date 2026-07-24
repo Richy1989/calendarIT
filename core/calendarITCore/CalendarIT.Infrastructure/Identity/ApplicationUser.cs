@@ -20,4 +20,10 @@ public sealed class ApplicationUser : IdentityUser<Guid>
     /// on next login. Null = never set; the client falls back to the month default.
     /// </summary>
     public string? DefaultCalendarView { get; set; }
+
+    /// <summary>
+    /// Whether times are shown in 24-hour ("13:00") rather than 12-hour ("1:00 PM") format.
+    /// Null = never set; the client falls back to the browser locale's convention.
+    /// </summary>
+    public bool? Use24HourClock { get; set; }
 }

@@ -68,6 +68,7 @@ public static class DependencyInjection
         services.AddScoped<IMailAccountService>(sp => sp.GetRequiredService<MailAccountService>());
         services.AddScoped<IInvitationMailer, InvitationMailer>();
         services.AddScoped<IInvitationReplyService, InvitationReplyService>();
+        services.AddScoped<IIncomingInvitationService, IncomingInvitationService>();
         services.AddScoped<IUserMailSender, UserMailSender>();
 
         AddBackgroundJobs(services);

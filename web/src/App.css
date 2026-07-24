@@ -1489,6 +1489,62 @@
   line-height: 1.55;
 }
 
+/* RSVP banner shown at the top of a received invitation. */
+.invite-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 0.85rem;
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--r-md);
+  background: var(--grad-soft);
+}
+
+.invite-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.invite-from {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.invite-current {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.invite-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.invite-btn {
+  padding: 0.32rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.invite-btn:hover {
+  border-color: var(--accent);
+}
+
+.invite-btn.is-current {
+  border-color: var(--accent);
+  background: var(--surface-3);
+  box-shadow: var(--ring);
+}
+
 .modal-close {
   background: transparent;
   border: none;

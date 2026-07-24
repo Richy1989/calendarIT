@@ -154,7 +154,11 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
   in their calendar; updates and cancellations are mailed too. **Guest replies now sync back**:
   with IMAP configured, your inbox is scanned on a configurable interval (default 5 min) and
   each Accept/Decline/Tentative updates the guest's status on the event (read-only, idempotent —
-  messages are never modified). Still to come: receiving *incoming* invitations from others.
+  messages are never modified). **Receiving invitations now works too**: the same inbox scan
+  picks up invitations others email you (iMIP REQUEST) and adds them to your calendar as pending
+  (dashed outline + ✉), and removes them when the organizer cancels. **You can also respond**:
+  open a received invitation and Accept / Maybe / Decline — your status is saved and an iMIP REPLY
+  is emailed back to the organizer.
 - ❌ Optimizing for small screens, does not look pretty currenty on the phone
 
 Not everything above is wired end-to-end yet — check the roadmap before relying on a

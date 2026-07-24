@@ -18,7 +18,7 @@ public sealed class ProfileService(AppDbContext db) : IProfileService
         var user = await db.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => new { u.Email, u.AvatarData, u.AvatarContentType, u.DefaultCalendarView })
+            .Select(u => new { u.Email, u.AvatarData, u.AvatarContentType, u.DefaultCalendarView, u.Use24HourClock })
             .SingleOrDefaultAsync(cancellationToken);
         if (user is null)
         {
@@ -29,7 +29,18 @@ public sealed class ProfileService(AppDbContext db) : IProfileService
             ? $"data:{user.AvatarContentType};base64,{Convert.ToBase64String(bytes)}"
             : null;
 
-        return new ProfileDto(user.Email, dataUrl, user.DefaultCalendarView);
+        return new ProfileDto(user.Email, dataUrl, user.DefaultCalendarView, user.Use24HourClock);
+    }
+
+    public async Task SetClockFormatAsync(Guid userId, bool use24Hour, CancellationToken cancellationToken = default)
+    {
+        var user = await db.Users.SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null)
+        {
+            return;
+        }
+        user.Use24HourClock = use24Hour;
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<bool> SetDefaultViewAsync(Guid userId, string view, CancellationToken cancellationToken = default)

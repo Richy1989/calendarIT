@@ -89,6 +89,15 @@ public sealed class EventsController(IEventService events, ICalendarIoService ca
         return updated is null ? NotFound() : Ok(updated);
     }
 
+    [HttpPost("{id:guid}/rsvp")]
+    [ProducesResponseType<EventDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Rsvp(Guid id, RsvpRequest request, CancellationToken cancellationToken)
+    {
+        var updated = await events.RespondToInvitationAsync(User.GetUserId(), id, request.Status, cancellationToken);
+        return updated is null ? NotFound() : Ok(updated);
+    }
+
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

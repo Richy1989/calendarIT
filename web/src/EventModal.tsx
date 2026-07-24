@@ -22,6 +22,11 @@ export type EventDraft = {
   reminders: { minutesBefore: number; channel: string }[]
   /** Guests to invite by email. Status is read-only (set by their replies). */
   attendees: { email: string; name?: string | null; status?: string }[]
+  /** Set when this event is an invitation the user received: their RSVP status
+   *  ("NeedsAction"/"Accepted"/…). Null/undefined for the user's own events. */
+  invitationStatus?: string | null
+  /** The organizer of a received invitation, shown in the RSVP banner. */
+  organizerEmail?: string | null
 }
 
 const REMINDER_PRESETS: { label: string; value: number }[] = [
@@ -45,6 +50,14 @@ const REPEATS: { label: string; value: string }[] = [
   { label: 'Yearly', value: 'FREQ=YEARLY' },
 ]
 
+/** Friendly labels for RSVP / invitation statuses. */
+const RSVP_LABEL: Record<string, string> = {
+  Accepted: 'Accept',
+  Tentative: 'Maybe',
+  Declined: 'Decline',
+  NeedsAction: 'Pending',
+}
+
 const cssVar = (hex: string) => ({ ['--sw']: hex }) as React.CSSProperties
 
 /** Uncategorized events render in this neutral default. */
@@ -55,6 +68,7 @@ export default function EventModal({
   calendars = [],
   onSave,
   onDelete,
+  onRespond,
   onClose,
 }: {
   draft: EventDraft
@@ -62,6 +76,8 @@ export default function EventModal({
   calendars?: { id: string; name: string }[]
   onSave: (draft: EventDraft) => void
   onDelete?: (id: string) => void
+  /** Present only for a received invitation: records the user's RSVP. */
+  onRespond?: (status: 'Accepted' | 'Declined' | 'Tentative') => void
   onClose: () => void
 }) {
   const [title, setTitle] = useState(draft.title)
@@ -147,11 +163,38 @@ export default function EventModal({
     <div className="modal-overlay" onMouseDown={onClose}>
       <form className="modal" onMouseDown={(e) => e.stopPropagation()} onSubmit={submit}>
         <div className="modal-head">
-          <span className="eyebrow">{isEdit ? 'Edit appointment' : 'New appointment'}</span>
+          <span className="eyebrow">{onRespond ? 'Invitation' : isEdit ? 'Edit appointment' : 'New appointment'}</span>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>
+
+        {onRespond && (
+          <div className="invite-banner">
+            <div className="invite-banner-text">
+              <span className="invite-from">
+                Invitation{draft.organizerEmail ? <> from <strong>{draft.organizerEmail}</strong></> : null}
+              </span>
+              <span className="invite-current">
+                {draft.invitationStatus === 'NeedsAction'
+                  ? 'Awaiting your response'
+                  : `You responded: ${draft.invitationStatus}`}
+              </span>
+            </div>
+            <div className="invite-actions">
+              {(['Accepted', 'Tentative', 'Declined'] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`invite-btn${draft.invitationStatus === s ? ' is-current' : ''}`}
+                  onClick={() => onRespond(s)}
+                >
+                  {RSVP_LABEL[s]}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="field">
           <label htmlFor="ev-title">Title</label>

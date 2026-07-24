@@ -51,7 +51,8 @@ public sealed class EventService(
                         m.Id, m.CalendarId, m.Title, m.Description, m.Location, m.CategoryId, DisplayColor(m),
                         new DateTimeOffset(occ.StartUtc, TimeSpan.Zero),
                         new DateTimeOffset(occ.EndUtc, TimeSpan.Zero),
-                        m.IsAllDay, Recurring: true, Recurrence: m.RRule, Reminders: reminders, Attendees: attendees));
+                        m.IsAllDay, Recurring: true, Recurrence: m.RRule, Reminders: reminders, Attendees: attendees,
+                        InvitationStatus: m.InvitationStatus?.ToString(), OrganizerEmail: m.OrganizerEmail));
                 }
             }
         }
@@ -226,6 +227,39 @@ public sealed class EventService(
         return ToDto(entity);
     }
 
+    public async Task<EventDto?> RespondToInvitationAsync(
+        Guid userId, Guid eventId, string status, CancellationToken cancellationToken = default)
+    {
+        // Only a real RSVP is meaningful here; "NeedsAction" (or anything unrecognised) is rejected.
+        if (!Enum.TryParse<AttendeeStatus>(status, ignoreCase: true, out var parsed)
+            || parsed == AttendeeStatus.NeedsAction)
+        {
+            return null;
+        }
+
+        var entity = await db.Events
+            .Include(e => e.Reminders).Include(e => e.Attendees).Include(e => e.Category)
+            .Where(e => e.Id == eventId && e.Calendar!.OwnerUserId == userId)
+            .SingleOrDefaultAsync(cancellationToken);
+        // Only a received invitation (non-null status) can be responded to — never the user's own event.
+        if (entity is null || entity.InvitationStatus is null)
+        {
+            return null;
+        }
+
+        if (entity.InvitationStatus != parsed)
+        {
+            entity.InvitationStatus = parsed;
+            entity.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        // Tell the organizer, even if the status was already set (they may have missed the first
+        // reply). A missing mail account / send failure is logged, not fatal — the local RSVP stands.
+        await mailer.SendReplyAsync(userId, entity, parsed, cancellationToken);
+        return ToDto(entity);
+    }
+
     public async Task<bool> DeleteAsync(Guid userId, Guid eventId, DateTimeOffset? occurrence, CancellationToken cancellationToken = default)
     {
         var entity = await db.Events.Include(e => e.Attendees)
@@ -282,7 +316,8 @@ public sealed class EventService(
             new DateTimeOffset(DateTime.SpecifyKind(e.StartUtc, DateTimeKind.Utc)),
             e.EndUtc is null ? null : new DateTimeOffset(DateTime.SpecifyKind(e.EndUtc.Value, DateTimeKind.Utc)),
             e.IsAllDay, Recurring: e.RRule is not null, Recurrence: e.RRule,
-            Reminders: MapReminders(e.Reminders), Attendees: MapAttendees(e.Attendees));
+            Reminders: MapReminders(e.Reminders), Attendees: MapAttendees(e.Attendees),
+            InvitationStatus: e.InvitationStatus?.ToString(), OrganizerEmail: e.OrganizerEmail);
 
     private static IReadOnlyList<AttendeeDto> MapAttendees(IEnumerable<Attendee> attendees) =>
         attendees

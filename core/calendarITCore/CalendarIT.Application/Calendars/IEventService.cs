@@ -27,6 +27,15 @@ public interface IEventService
     Task<EventDto?> UpdateAsync(Guid userId, Guid eventId, SaveEventRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Records the user's RSVP to an invitation they received (an event with a non-null
+    /// invitation status), updating its status and emailing an iMIP REPLY back to the organizer.
+    /// Returns the updated event, or null if it doesn't exist, isn't the user's, or isn't a
+    /// received invitation.
+    /// </summary>
+    Task<EventDto?> RespondToInvitationAsync(
+        Guid userId, Guid eventId, string status, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes an event. If <paramref name="occurrence"/> is given and the event is a
     /// recurring series, that single occurrence is excluded (EXDATE) instead of deleting
     /// the whole series. Returns false if nothing matched for this user.

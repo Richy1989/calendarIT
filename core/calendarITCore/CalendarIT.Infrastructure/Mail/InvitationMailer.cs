@@ -14,6 +14,9 @@ public interface IInvitationMailer
 
     /// <summary>iMIP CANCEL to each attendee in <paramref name="recipients"/>.</summary>
     Task SendCancelAsync(Guid userId, CalendarEvent evt, IReadOnlyList<Attendee> recipients, CancellationToken cancellationToken = default);
+
+    /// <summary>iMIP REPLY (our RSVP) back to the organizer of an invitation we received.</summary>
+    Task SendReplyAsync(Guid userId, CalendarEvent evt, AttendeeStatus status, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -30,6 +33,25 @@ public sealed class InvitationMailer(
 
     public Task SendCancelAsync(Guid userId, CalendarEvent evt, IReadOnlyList<Attendee> recipients, CancellationToken cancellationToken = default) =>
         SendAsync(userId, evt, recipients, InvitationBuilder.BuildCancel, "CANCEL", cancellationToken);
+
+    public async Task SendReplyAsync(Guid userId, CalendarEvent evt, AttendeeStatus status, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(evt.OrganizerEmail))
+        {
+            return; // nothing to reply to (a malformed invite with no organizer)
+        }
+
+        var account = await accounts.GetWithPasswordAsync(userId, cancellationToken);
+        if (account is null)
+        {
+            logger.LogInformation(
+                "No mail account configured for user {UserId} — REPLY for '{Title}' not sent to {Organizer}",
+                userId, evt.Title, evt.OrganizerEmail);
+            return;
+        }
+        var (mailAccount, password) = account.Value;
+        await SendAllAsync(mailAccount, password, [InvitationBuilder.BuildReply(mailAccount, evt, status)], "REPLY", evt.Title, cancellationToken);
+    }
 
     private async Task SendAsync(
         Guid userId,
@@ -53,24 +75,32 @@ public sealed class InvitationMailer(
             return;
         }
         var (mailAccount, password) = account.Value;
+        var messages = recipients.Select(r => build(mailAccount, evt, r)).ToList();
+        await SendAllAsync(mailAccount, password, messages, method, evt.Title, cancellationToken);
+    }
 
+    /// <summary>Opens one SMTP session on the user's account and sends every message. A failed
+    /// send is logged and swallowed — the event/RSVP is already stored, so it can be re-sent.</summary>
+    private async Task SendAllAsync(
+        MailAccount account, string password, IReadOnlyList<MimeMessage> messages,
+        string method, string title, CancellationToken cancellationToken)
+    {
         try
         {
             using var client = new SmtpClient();
-            var socketOptions = mailAccount.SmtpUseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
-            await client.ConnectAsync(mailAccount.SmtpHost, mailAccount.SmtpPort, socketOptions, cancellationToken);
-            await client.AuthenticateAsync(mailAccount.Username, password, cancellationToken);
-            foreach (var recipient in recipients)
+            var socketOptions = account.SmtpUseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
+            await client.ConnectAsync(account.SmtpHost, account.SmtpPort, socketOptions, cancellationToken);
+            await client.AuthenticateAsync(account.Username, password, cancellationToken);
+            foreach (var message in messages)
             {
-                await client.SendAsync(build(mailAccount, evt, recipient), cancellationToken);
+                await client.SendAsync(message, cancellationToken);
             }
             await client.DisconnectAsync(quit: true, cancellationToken);
-            logger.LogInformation("Sent iMIP {Method} for '{Title}' to {Count} guest(s)", method, evt.Title, recipients.Count);
+            logger.LogInformation("Sent iMIP {Method} for '{Title}' ({Count} message(s))", method, title, messages.Count);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The event itself is already saved; the invite can be re-sent by saving again.
-            logger.LogWarning(ex, "Sending iMIP {Method} for '{Title}' failed", method, evt.Title);
+            logger.LogWarning(ex, "Sending iMIP {Method} for '{Title}' failed", method, title);
         }
     }
 }

@@ -5,6 +5,7 @@ import { exportIcs, importIcs } from './api/events'
 import { createCalendar, deleteCalendar, listCalendars, renameCalendar, type CalendarDto } from './api/calendars'
 import { createCategory, deleteCategory, listCategories, updateCategory, type CategoryDto } from './api/categories'
 import { deleteMailAccount, getMailAccount, saveMailAccount, testMailAccount } from './api/mailAccount'
+import { useClock } from './clock'
 import Logo from './Logo'
 
 type Section = 'general' | 'calendars' | 'categories' | 'sync' | 'security' | 'email'
@@ -84,6 +85,7 @@ export default function SettingsPage({
 
 function GeneralSection() {
   const queryClient = useQueryClient()
+  const { hour12, setHour12 } = useClock()
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: getProfile })
   const [file, setFile] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -236,6 +238,15 @@ function GeneralSection() {
           <span className="settings-row-value">{profile?.email}</span>
         </div>
       </div>
+    </div>
+
+    <div className="settings-card">
+      <h2>Display</h2>
+      <p className="settings-sub">How times are shown across the app — the calendar, agenda, search, and header clock.</p>
+      <label className="toggle">
+        <input type="checkbox" checked={!hour12} onChange={(e) => setHour12(!e.target.checked)} />
+        <span>24-hour time (13:00 instead of 1:00 PM)</span>
+      </label>
     </div>
 
     <div className="settings-card">
