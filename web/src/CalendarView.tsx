@@ -586,6 +586,8 @@ export default function CalendarView({
         // Event-pill times and the week/day time axis follow the user's 12h/24h preference.
         eventTimeFormat={{ hour: 'numeric', minute: '2-digit', hour12 }}
         slotLabelFormat={{ hour: 'numeric', minute: '2-digit', hour12 }}
+        // An en dash between the two ends of a range — the same separator the list view uses.
+        defaultRangeSeparator=" – "
         scrollTime={scrollTime}
         scrollTimeReset={false}
         slotEventOverlap={false}

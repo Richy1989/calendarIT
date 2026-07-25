@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { listEvents, type EventDto } from './api/events'
 import { useHour12 } from './clock'
-import { dayKey, formatDateMedium, formatTime, startOfToday } from './lib/dates'
+import { dayKey, formatDateMedium, formatTimeRange, startOfToday } from './lib/dates'
 import { UNCATEGORIZED } from './prefs'
 
 /**
@@ -105,8 +105,7 @@ export default function AgendaView({
 
   const timeLabel = (dto: EventDto) => {
     if (dto.allDay) return 'all-day'
-    const start = formatTime(new Date(dto.start), hour12)
-    return dto.end ? `${start} – ${formatTime(new Date(dto.end), hour12)}` : start
+    return formatTimeRange(new Date(dto.start), dto.end ? new Date(dto.end) : null, hour12)
   }
 
   return (

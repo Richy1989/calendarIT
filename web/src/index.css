@@ -161,6 +161,28 @@ button {
   font-size: 0.78rem;
   color: var(--text-dim);
   text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The hour rail is the instrument's scale, so it reads as one: quiet labels, and the
+   three anchors of a day (morning / midday / evening) held a step brighter than the
+   hairlines between them. FullCalendar tags every slat with its own ISO time. */
+.calendar-shell .fc .fc-timegrid-slot-label-cushion {
+  padding-inline: 0.5rem;
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
+}
+
+.calendar-shell .fc .fc-timegrid-slot[data-time='06:00:00'],
+.calendar-shell .fc .fc-timegrid-slot[data-time='12:00:00'],
+.calendar-shell .fc .fc-timegrid-slot[data-time='18:00:00'] {
+  border-top-color: var(--hairline-strong);
+}
+
+.calendar-shell .fc .fc-timegrid-slot[data-time='06:00:00'] .fc-timegrid-slot-label-cushion,
+.calendar-shell .fc .fc-timegrid-slot[data-time='12:00:00'] .fc-timegrid-slot-label-cushion,
+.calendar-shell .fc .fc-timegrid-slot[data-time='18:00:00'] .fc-timegrid-slot-label-cushion {
+  color: var(--text-dim);
 }
 
 .calendar-shell .fc .fc-day-today .fc-daygrid-day-number {
@@ -205,7 +227,8 @@ button {
   border-color: var(--hairline-strong);
 }
 
-.calendar-shell .fc .fc-button:focus,
+/* Keyboard focus only — a plain :focus here left the ring stuck on a button after a
+   mouse click (most visibly on "Today"). */
 .calendar-shell .fc .fc-button:focus-visible {
   box-shadow: var(--ring);
 }
@@ -254,6 +277,30 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* FullCalendar appends a literal " - " after the time on short events, which reads as a
+   typo next to a time range ("9:15 - 9:30 -  Team standup"). The 4px gap above already
+   separates them. */
+.calendar-shell .fc .fc-timegrid-event-short .fc-event-time::after {
+  content: none;
+}
+
+/* Event times keep the body face; tabular figures just stop the digits from shifting
+   width, so a column of times still lines up. */
+.calendar-shell .fc .fc-event-time {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Month cells are narrow, so the time holds its width and the title gives way. */
+.calendar-shell .fc .fc-daygrid-event .fc-event-time {
+  flex: none;
+}
+
+.calendar-shell .fc .fc-daygrid-event .fc-event-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .calendar-shell .fc .fc-event:hover {
@@ -354,12 +401,21 @@ button {
   background: var(--surface-2);
 }
 
+/* Wide enough for the longest range the formatter can produce ("11:00 – 11:30 PM"), and
+   never allowed to wrap — at 7.5rem the meridiem was breaking onto a second line and
+   making every row a different height. Tabular figures keep the column true. */
 .calendar-shell .agenda-time {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   color: var(--text-dim);
   flex: none;
-  width: 7.5rem;
+  width: 9.75rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  /* A numeric column, so it sets against the marker: single- and double-digit hours end
+     on the same edge instead of leaving the gutter ragged. */
+  text-align: right;
+  padding-right: 0.35rem;
 }
 
 .calendar-shell .agenda-dot {
@@ -420,24 +476,37 @@ button {
    Base rule keeps every calendar scroller slim + themed (never the chunky
    native bar); the day-header and all-day scrollers carry no overflow, so their
    bars are pure noise and get hidden. */
-.calendar-shell .fc .fc-scroller {
+.calendar-shell .fc .fc-scroller,
+.calendar-shell .agenda-body {
   scrollbar-width: thin; /* Firefox */
   scrollbar-color: var(--hairline-strong) transparent;
 }
-.calendar-shell .fc .fc-scroller::-webkit-scrollbar {
+.calendar-shell .fc .fc-scroller::-webkit-scrollbar,
+.calendar-shell .agenda-body::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
-.calendar-shell .fc .fc-scroller::-webkit-scrollbar-track {
+/* Styling the bar at all leaves Windows' native stepper arrows in place — on a dark
+   themed surface they read as a rendering fault. */
+.calendar-shell .fc .fc-scroller::-webkit-scrollbar-button,
+.calendar-shell .agenda-body::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.calendar-shell .fc .fc-scroller::-webkit-scrollbar-track,
+.calendar-shell .agenda-body::-webkit-scrollbar-track {
   background: transparent;
 }
-.calendar-shell .fc .fc-scroller::-webkit-scrollbar-thumb {
+.calendar-shell .fc .fc-scroller::-webkit-scrollbar-thumb,
+.calendar-shell .agenda-body::-webkit-scrollbar-thumb {
   background: var(--hairline-strong);
   border-radius: 999px;
   border: 3px solid transparent; /* inset the thumb so it reads as a slim pill */
   background-clip: padding-box;
 }
-.calendar-shell .fc .fc-scroller::-webkit-scrollbar-thumb:hover {
+.calendar-shell .fc .fc-scroller::-webkit-scrollbar-thumb:hover,
+.calendar-shell .agenda-body::-webkit-scrollbar-thumb:hover {
   background: var(--text-faint);
   background-clip: padding-box;
 }

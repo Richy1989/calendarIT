@@ -42,6 +42,29 @@ export function formatTime(d: Date, hour12: boolean, withSeconds = false): strin
   })
 }
 
+/**
+ * A time range for list rows: "18:00 – 19:30", or "6:00 – 7:30 PM" on a 12h clock. The
+ * meridiem is stated once when both ends share it — repeating it ("6:00 PM – 7:30 PM")
+ * is what pushed the agenda's time column past its width and wrapped it.
+ */
+export function formatTimeRange(start: Date, end: Date | null, hour12: boolean): string {
+  const from = formatTime(start, hour12)
+  if (!end) return from
+  const to = formatTime(end, hour12)
+  if (!hour12) return `${from} – ${to}`
+  const dayPeriod = (d: Date) =>
+    new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })
+      .formatToParts(d)
+      .find((p) => p.type === 'dayPeriod')?.value
+  const a = dayPeriod(start)
+  // Locales place the marker on either side, so drop it by value rather than by slicing.
+  if (a && a === dayPeriod(end)) {
+    const trimmed = from.replace(a, '').trim()
+    if (trimmed) return `${trimmed} – ${to}`
+  }
+  return `${from} – ${to}`
+}
+
 /** A compact, human date like "Mon, Sep 1 2026". */
 export function formatDateMedium(d: Date): string {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
