@@ -307,6 +307,50 @@ button {
   filter: brightness(1.15);
 }
 
+/* Resize handles (week/day). FullCalendar's stock grab strip is 8px tall and completely
+   invisible — only the cursor hints that the border does anything. Widen the target a
+   little and fade a small bar in on hover, so an appointment reads as grabbable at both
+   ends without cluttering the grid at rest. */
+.calendar-shell .fc {
+  --fc-event-resizer-thickness: 10px;
+}
+
+/* …except on short appointments. A quarter-hour box is barely 12px tall, so two wide
+   handles would cover the whole thing and swallow the click that opens the editor. These
+   keep the stock 8px, half of which hangs outside the box, leaving the middle clickable. */
+.calendar-shell .fc .fc-timegrid-event-short {
+  --fc-event-resizer-thickness: 8px;
+}
+
+.calendar-shell .fc .fc-timegrid-event .fc-event-resizer::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  /* Centred on the border itself, so the edge appears to thicken where you can grab it. */
+  transform: translate(-50%, -50%);
+  width: 26px;
+  max-width: 55%;
+  height: 3px;
+  border-radius: 999px;
+  /* The event's own text color: legible over any category color, unlike the border, whose
+     per-event value is set inline and can't be read from a child. */
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none; /* the strip around it keeps the full hit area */
+}
+
+.calendar-shell .fc .fc-timegrid-event:hover .fc-event-resizer::after {
+  opacity: 0.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-shell .fc .fc-timegrid-event .fc-event-resizer::after {
+    transition: none;
+  }
+}
+
 /* A received invitation reads by its RSVP state. Pending and Maybe are still provisional, so
    they keep a dashed outline; Accepted turns into a solid, confirmed box; Declined is filtered
    out and never rendered. A per-state glyph before the title says which is which at a glance. */

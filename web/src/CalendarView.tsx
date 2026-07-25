@@ -500,7 +500,9 @@ export default function CalendarView({
     closeDraft()
   }
 
-  // Only fires for single events (recurring occurrences are not drag-editable).
+  // Fires after a drag or an edge-resize, for single events only (recurring occurrences are
+  // not drag-editable). Sends just the fields a grid edit can touch: the API leaves attendees
+  // and the owning calendar alone when they're absent, so guests survive a resize untouched.
   const applyChange = (info: EventChangeArg) => {
     const ev = info.event
     const body: SaveEventRequest = {
@@ -519,7 +521,12 @@ export default function CalendarView({
         channel: r.channel,
       })) ?? null,
     }
-    updateMut.mutate({ id: ev.extendedProps.seriesId as string, body })
+    updateMut.mutate(
+      { id: ev.extendedProps.seriesId as string, body },
+      // The grid already moved the box optimistically. If the save fails, put it back —
+      // otherwise the calendar keeps showing times that were never stored.
+      { onError: () => info.revert() },
+    )
   }
 
   const onDateCellMount = (arg: DayCellMountArg) => {
@@ -597,6 +604,12 @@ export default function CalendarView({
         scrollTimeReset={false}
         slotEventOverlap={false}
         editable
+        // `editable` already allows dragging the *end* of an appointment; this adds the other
+        // handle, so either border sets its time — the way every desktop calendar behaves.
+        eventResizableFromStart
+        // Resizing and dragging land on quarter hours. The visible lines stay half-hourly
+        // (slotDuration), so this buys precision without making the grid busier.
+        snapDuration="00:15:00"
         selectable
         selectMirror
         selectMinDistance={8} // plain clicks keep their click/double-click behavior; only a real drag selects
