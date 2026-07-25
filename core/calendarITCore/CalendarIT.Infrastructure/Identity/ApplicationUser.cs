@@ -26,4 +26,12 @@ public sealed class ApplicationUser : IdentityUser<Guid>
     /// Null = never set; the client falls back to the browser locale's convention.
     /// </summary>
     public bool? Use24HourClock { get; set; }
+
+    /// <summary>
+    /// The day calendar grids start on: "sunday" or "monday". Null = never set; the client falls
+    /// back to the browser locale's convention, the same way the clock preference does.
+    /// Stored as a name rather than a number so the column reads for itself, and so allowing a
+    /// third day later is a validation change instead of a migration.
+    /// </summary>
+    public string? WeekStart { get; set; }
 }

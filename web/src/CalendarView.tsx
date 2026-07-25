@@ -21,6 +21,7 @@ import { listCalendars } from './api/calendars'
 import { listCategories } from './api/categories'
 import { saveDefaultView } from './api/profile'
 import { useHour12 } from './clock'
+import { useFirstDay } from './weekStart'
 import { Popover } from './components/Popover'
 import { addDays, dayKey, toLocalInput } from './lib/dates'
 import { getSavedView, saveView, UNCATEGORIZED } from './prefs'
@@ -220,6 +221,7 @@ export default function CalendarView({
   const toggleAllCats = () => onChangeVisibleCategories?.(shownCatCount === allCatIds.length ? [] : null)
 
   const hour12 = useHour12()
+  const firstDay = useFirstDay()
   const [draft, setDraft] = useState<EventDraft | null>(null)
   const [menu, setMenu] = useState<ContextMenu | null>(null)
   // Year quick-jump popover, opened by clicking the toolbar title ("August 2026").
@@ -583,6 +585,9 @@ export default function CalendarView({
         }}
         height="100%"
         nowIndicator
+        // Which column month/week grids open on. Without this FullCalendar uses its own default
+        // (Sunday), which disagreed with the Monday-first date picker.
+        firstDay={firstDay}
         // Event-pill times and the week/day time axis follow the user's 12h/24h preference.
         eventTimeFormat={{ hour: 'numeric', minute: '2-digit', hour12 }}
         slotLabelFormat={{ hour: 'numeric', minute: '2-digit', hour12 }}

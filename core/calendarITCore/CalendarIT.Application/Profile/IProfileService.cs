@@ -17,4 +17,12 @@ public interface IProfileService
 
     /// <summary>Remembers the user's time-format preference (true = 24-hour, false = 12-hour).</summary>
     Task SetClockFormatAsync(Guid userId, bool use24Hour, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Remembers the day calendar grids start on. <paramref name="weekStart"/> is "sunday",
+    /// "monday" (either casing), or null to go back to following the browser locale. Returns
+    /// false — writing nothing — for any other value, so a bad request can't quietly clear a
+    /// choice the user already made.
+    /// </summary>
+    Task<bool> SetWeekStartAsync(Guid userId, string? weekStart, CancellationToken cancellationToken = default);
 }

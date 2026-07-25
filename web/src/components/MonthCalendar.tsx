@@ -1,13 +1,18 @@
 import { useState } from 'react'
 import { dayKey, sameDay, startOfToday } from '../lib/dates'
+import { useFirstDay, type FirstDay } from '../weekStart'
 
-const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'] // Monday-first
+// Sunday-first, so a day's own getDay() indexes straight into it; the header is rotated to
+// whichever day the user starts their week on.
+const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 
-/** First day (local midnight) of the Monday-based 6-week grid covering `month`. */
-function gridStart(month: Date): Date {
+const weekdayLabels = (firstDay: FirstDay) => [...WEEKDAYS.slice(firstDay), ...WEEKDAYS.slice(0, firstDay)]
+
+/** First day (local midnight) of the 6-week grid covering `month`, starting on `firstDay`. */
+function gridStart(month: Date, firstDay: FirstDay): Date {
   const first = new Date(month.getFullYear(), month.getMonth(), 1)
-  const weekday = (first.getDay() + 6) % 7 // 0 = Monday … 6 = Sunday
-  first.setDate(first.getDate() - weekday)
+  const offset = (first.getDay() - firstDay + 7) % 7 // days back to the start of that week
+  first.setDate(first.getDate() - offset)
   first.setHours(0, 0, 0, 0)
   return first
 }
@@ -26,7 +31,8 @@ export default function MonthCalendar({
 }) {
   const [month, setMonth] = useState(() => new Date(selected.getFullYear(), selected.getMonth(), 1))
   const today = startOfToday()
-  const start = gridStart(month)
+  const firstDay = useFirstDay()
+  const start = gridStart(month, firstDay)
   const days = Array.from({ length: 42 }, (_, i) => {
     const d = new Date(start)
     d.setDate(start.getDate() + i)
@@ -49,7 +55,7 @@ export default function MonthCalendar({
       </div>
 
       <div className="mcal-grid mcal-weekdays" aria-hidden="true">
-        {WEEKDAYS.map((w) => (
+        {weekdayLabels(firstDay).map((w) => (
           <span key={w} className="mcal-weekday">
             {w}
           </span>

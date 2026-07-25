@@ -37,6 +37,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.Entity<ApplicationUser>(entity =>
         {
             entity.Property(u => u.AvatarContentType).HasMaxLength(100);
+            entity.Property(u => u.WeekStart).HasMaxLength(16);
         });
 
         builder.Entity<RefreshToken>(entity =>

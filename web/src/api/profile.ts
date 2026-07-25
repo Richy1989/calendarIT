@@ -43,6 +43,20 @@ export async function saveDefaultView(view: string): Promise<void> {
   if (!res.ok) throw new Error('Failed to save view')
 }
 
+/** Remembers which day the week starts on server-side; null means "follow the browser locale". */
+export async function saveWeekStart(weekStart: 'sunday' | 'monday' | null): Promise<void> {
+  const token = await ensureAccessToken()
+  const res = await fetch('/api/profile/week-start', {
+    method: 'PUT',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ weekStart }),
+  })
+  if (!res.ok) throw new Error('Failed to save week start')
+}
+
 /** Remembers the user's time-format preference server-side (persists across devices). */
 export async function saveClockFormat(use24Hour: boolean): Promise<void> {
   const token = await ensureAccessToken()

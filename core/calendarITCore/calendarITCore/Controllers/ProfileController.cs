@@ -74,4 +74,13 @@ public sealed class ProfileController(IProfileService profile) : ControllerBase
         await profile.SetClockFormatAsync(User.GetUserId(), request.Use24Hour, cancellationToken);
         return NoContent();
     }
+
+    [HttpPut("week-start")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SetWeekStart(UpdateWeekStartRequest request, CancellationToken cancellationToken)
+    {
+        var ok = await profile.SetWeekStartAsync(User.GetUserId(), request.WeekStart, cancellationToken);
+        return ok ? NoContent() : BadRequest(new { error = "Unknown week start." });
+    }
 }

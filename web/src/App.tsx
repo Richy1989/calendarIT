@@ -7,6 +7,7 @@ import { getVisibleCalendars, getVisibleCategories, saveVisibleCalendars, saveVi
 import { getTokens, setTokens, type AuthTokens } from './auth/authStorage'
 import CalendarView from './CalendarView'
 import { ClockProvider, useHour12 } from './clock'
+import { WeekStartProvider } from './weekStart'
 import { formatTime } from './lib/dates'
 import SearchBar from './SearchBar'
 import ProfileMenu from './ProfileMenu'
@@ -67,17 +68,22 @@ export default function App() {
   if (settingsSection) {
     return (
       <ClockProvider serverUse24Hour={profile?.use24HourClock ?? null}>
-        <SettingsPage
-          initialSection={settingsSection}
-          onBack={() => setSettingsSection(null)}
-          onLogout={() => persist(null)}
-        />
+        {/* No `?? null` here: undefined means "profile still loading", which the provider has to
+            tell apart from a stored null ("follow my locale") so it doesn't clear the cache. */}
+        <WeekStartProvider serverWeekStart={profile?.weekStart}>
+          <SettingsPage
+            initialSection={settingsSection}
+            onBack={() => setSettingsSection(null)}
+            onLogout={() => persist(null)}
+          />
+        </WeekStartProvider>
       </ClockProvider>
     )
   }
 
   return (
     <ClockProvider serverUse24Hour={profile?.use24HourClock ?? null}>
+    <WeekStartProvider serverWeekStart={profile?.weekStart}>
     <div className="app">
       <header className="app-header">
         <div className="brand">
@@ -120,6 +126,7 @@ export default function App() {
         </section>
       </main>
     </div>
+    </WeekStartProvider>
     </ClockProvider>
   )
 }

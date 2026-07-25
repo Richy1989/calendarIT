@@ -7,6 +7,7 @@ import { createCategory, deleteCategory, listCategories, updateCategory, type Ca
 import { deleteMailAccount, getMailAccount, saveMailAccount, testMailAccount } from './api/mailAccount'
 import { changePassword } from './api/password'
 import { useClock } from './clock'
+import { useWeekStart, type WeekStartPref } from './weekStart'
 import Logo from './Logo'
 
 type Section = 'general' | 'calendars' | 'categories' | 'sync' | 'security' | 'email'
@@ -179,9 +180,17 @@ function SecuritySection({ onLogout }: { onLogout: () => void }) {
   )
 }
 
+/** The three states of the week-start setting; null follows the browser locale. */
+const WEEK_START_OPTIONS: readonly { label: string; value: WeekStartPref }[] = [
+  { label: 'Automatic', value: null },
+  { label: 'Sunday', value: 'sunday' },
+  { label: 'Monday', value: 'monday' },
+]
+
 function GeneralSection() {
   const queryClient = useQueryClient()
   const { hour12, setHour12 } = useClock()
+  const { pref: weekStart, firstDay, setPref: setWeekStart } = useWeekStart()
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: getProfile })
   const [file, setFile] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -338,11 +347,32 @@ function GeneralSection() {
 
     <div className="settings-card">
       <h2>Display</h2>
-      <p className="settings-sub">How times are shown across the app — the calendar, agenda, search, and header clock.</p>
+      <p className="settings-sub">How dates and times are shown across the app — the calendar, agenda, search, and header clock.</p>
       <label className="toggle">
         <input type="checkbox" checked={!hour12} onChange={(e) => setHour12(!e.target.checked)} />
         <span>24-hour time (13:00 instead of 1:00 PM)</span>
       </label>
+
+      <p className="settings-sub settings-sub-spaced">Week starts on</p>
+      <div className="segmented" role="radiogroup" aria-label="Week starts on">
+        {WEEK_START_OPTIONS.map((opt) => (
+          <button
+            key={opt.label}
+            type="button"
+            role="radio"
+            aria-checked={weekStart === opt.value}
+            className={weekStart === opt.value ? 'active' : ''}
+            onClick={() => setWeekStart(opt.value)}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      <p className="settings-hint">
+        {weekStart === null
+          ? `Following your browser — currently ${firstDay === 0 ? 'Sunday' : 'Monday'}.`
+          : 'Applies to the calendar grid and the date picker.'}
+      </p>
     </div>
 
     <div className="settings-card">

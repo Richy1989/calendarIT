@@ -387,6 +387,19 @@
   margin: 0 0 1.7rem;
 }
 
+/* A sub-heading for a second setting inside one card: needs air above it, less below,
+   since the control it labels follows immediately. */
+.settings-sub-spaced {
+  margin: 1.7rem 0 0.6rem;
+}
+
+/* Trailing explanation under a control — quieter than .settings-sub, which introduces a card. */
+.settings-hint {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin: 0.6rem 0 0;
+}
+
 .avatar-with-badge {
   position: relative;
   flex: none;
