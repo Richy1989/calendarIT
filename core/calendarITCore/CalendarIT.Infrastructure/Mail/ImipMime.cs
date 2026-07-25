@@ -40,8 +40,16 @@ public static class ImipMime
     /// headers is what a desktop client does, and it's the cheapest defence available here
     /// (short of verifying DKIM, which the transport layer should be doing anyway).
     ///
-    /// Sender and Reply-To count too: a delegate or a calendar system legitimately sends "on
-    /// behalf of" an organizer, and that arrives as From = the sender, not the organizer.
+    /// <para>Only From counts. It is the one header the receiving mail server has already had an
+    /// opinion about — DMARC aligns on From, so forging it has to survive the provider first.
+    /// Reply-To, Sender and Resent-From are checked by nothing: an attacker sends from their own
+    /// domain, passes SPF and DMARC honestly, and names whoever they like in those headers. When
+    /// this accepted them, the check was satisfiable by anyone who could send mail at all.</para>
+    ///
+    /// <para>This costs less than it looks. In a genuine delegated send, RFC 5322 puts the author
+    /// — the organizer — in From, and the delegate in Sender, so "on behalf of" still matches.
+    /// What no longer matches is a system that names the organizer <em>only</em> in Sender or
+    /// Reply-To; those invitations are ignored rather than trusted, and the reason is logged.</para>
     /// </summary>
     public static bool IsFromClaimedSender(MimeMessage message, string? claimedEmail)
     {
@@ -51,9 +59,6 @@ public static class ImipMime
         }
 
         return message.From.Mailboxes
-            .Concat(message.ResentFrom.Mailboxes)
-            .Concat(message.ReplyTo.Mailboxes)
-            .Concat(message.Sender is null ? [] : new[] { message.Sender })
             .Any(m => string.Equals(m.Address, claimedEmail, StringComparison.OrdinalIgnoreCase));
     }
 

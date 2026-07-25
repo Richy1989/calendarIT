@@ -125,6 +125,63 @@ public sealed class InternalInvitationDeliveryTests : IDisposable
         Assert.Empty(await InviteeEvents());
     }
 
+    // ---------------------------------------------------------------- forged UIDs
+
+    // Copies are matched by UID, and a UID is not ours to trust: an .ics import keeps whatever
+    // UID the file carries, and a CalDAV PUT takes it from the request body. So any user can mint
+    // an event whose UID collides with one on someone else's calendar, invite them, and — without
+    // a provenance check — have delivery overwrite or delete an event they never shared.
+
+    /// <summary>Plants an event on <paramref name="ownerId"/>'s calendar with a chosen UID, the
+    /// way a user can through .ics import.</summary>
+    private async Task<CalendarEvent> ImportWithUid(Guid ownerId, string uid, string title)
+    {
+        var io = new CalendarIoService(_db, TimeProvider.System);
+        await io.ImportAsync(ownerId, $"""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//attacker//EN
+            BEGIN:VEVENT
+            UID:{uid}
+            SUMMARY:{title}
+            DTSTART:20261005T080000Z
+            DTEND:20261005T090000Z
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        return await _db.Events.AsNoTracking()
+            .SingleAsync(e => e.Uid == uid && e.Calendar!.OwnerUserId == ownerId);
+    }
+
+    [Fact]
+    public async Task Invite_WithAUidTheGuestAlreadyOwns_LeavesTheirEventAlone()
+    {
+        const string uid = "collision@example.com";
+        var theirs = await ImportWithUid(_inviteeId, uid, "Salary review");
+        var forged = await ImportWithUid(_organizerId, uid, "Forged");
+
+        await _events.UpdateAsync(_organizerId, forged.Id, Request("Spoofed", "bob@example.com"));
+
+        var untouched = Assert.Single(await InviteeEvents());
+        Assert.Equal(theirs.Id, untouched.Id);
+        Assert.Equal("Salary review", untouched.Title);
+        Assert.Equal(new DateTime(2026, 10, 5, 8, 0, 0, DateTimeKind.Utc), untouched.StartUtc);
+    }
+
+    [Fact]
+    public async Task Delete_WithAUidTheGuestAlreadyOwns_DoesNotRemoveTheirEvent()
+    {
+        const string uid = "collision@example.com";
+        await ImportWithUid(_inviteeId, uid, "Salary review");
+        var forged = await ImportWithUid(_organizerId, uid, "Forged");
+        await _events.UpdateAsync(_organizerId, forged.Id, Request("Spoofed", "bob@example.com"));
+
+        await _events.DeleteAsync(_organizerId, forged.Id, occurrence: null);
+
+        var survivor = Assert.Single(await InviteeEvents());
+        Assert.Equal("Salary review", survivor.Title);
+    }
+
     private async Task<string> UidOf(Guid eventId) =>
         (await _db.Events.AsNoTracking().SingleAsync(e => e.Id == eventId)).Uid;
 }

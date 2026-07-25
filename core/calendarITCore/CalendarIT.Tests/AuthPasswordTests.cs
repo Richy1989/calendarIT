@@ -190,6 +190,17 @@ public sealed class AuthPasswordTests : IDisposable
     }
 
     [Fact]
+    public async Task ForgotPassword_WithNoConfiguredOrigin_SendsNothing()
+    {
+        await RegisterAsync();
+
+        await NewService().RequestPasswordResetAsync(new ForgotPasswordRequest { Email = Email }, linkBase: null);
+
+        // Better a reset that doesn't arrive than one pointing wherever the request said.
+        Assert.Empty(_mailer.Sent);
+    }
+
+    [Fact]
     public async Task ResetPassword_WithTheEmailedToken_Works()
     {
         await RegisterAsync();

@@ -259,6 +259,31 @@ categories at startup (one per distinct color, named after its nearest CSS3 colo
 - **Recurrence horizon / cleanup** — housekeeping, expired token cleanup, etc.
 - Quartz persists to the primary DB so jobs survive restarts.
 
+### 4.7 Two invariants worth stating outright
+
+Both of these were found by review rather than by a bug report, and both are the kind of thing
+that reads as harmless until you write down who controls the input.
+
+**A password-reset link's origin comes from configuration, never from the request.**
+`/api/auth/forgot-password` is anonymous, and `Host` is a header — so building the link from
+the request meant anyone could ask us to mail a victim a genuine, working reset token pointing
+at a host of the attacker's choosing. Being behind a proxy changes nothing: nginx forwards
+whatever arrived. `PUBLIC_BASE_URL` is therefore the only source, and when it is unset no link
+is sent at all (the server logs why). The endpoint still answers `202` either way, so a
+misconfigured instance doesn't turn into an account-enumeration oracle.
+
+**A UID identifies an event; it does not authorize writing to one.**
+Same-instance invitation delivery (`InternalInvitationDelivery`) mirrors an event onto a local
+guest's calendar and finds that copy again by shared `Uid`. But UIDs are caller-supplied — an
+.ics import keeps the file's UID, and a CalDAV `PUT` takes it from the body — so any user could
+mint an event whose UID collides with a row on someone else's calendar, invite them, and have
+delivery overwrite or delete an event that was never shared with them.
+`CalendarEvent.SourceOrganizerUserId` is stamped on a copy when we create it, and only a copy
+carrying the current organizer's id may be updated or withdrawn. Anything else — the guest's own
+event, or a copy from a different organizer — is left alone and no copy is delivered. The
+emailed path (`IncomingInvitationService`) had this guard from the start; the internal one
+didn't, which is what made the gap easy to miss.
+
 ---
 
 ## 5. Frontend Architecture
@@ -286,7 +311,8 @@ categories at startup (one per distinct color, named after its nearest CSS3 colo
   - (no SMTP vars — email is sent via each user's own account, configured in-app; see §4.x)
   - `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`
   - `JWT_SIGNING_KEY`, `JWT_ISSUER`, `JWT_AUDIENCE`
-  - `PUBLIC_BASE_URL` (for links, CalDAV principal URLs, push)
+  - `PUBLIC_BASE_URL` (for links, CalDAV principal URLs, push). Required for password-reset
+    links, which are never built from the request host — see §4.7
   - Log levels via the `Serilog` config section (`Serilog__MinimumLevel__Default`,
     `Serilog__MinimumLevel__Override__<Namespace>`); console-only sink to stdout
 - Persistent data lives under the **`/appdata`** volume so the container is disposable.

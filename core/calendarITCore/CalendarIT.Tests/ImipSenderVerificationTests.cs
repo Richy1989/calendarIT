@@ -56,14 +56,31 @@ public sealed class ImipSenderVerificationTests
     }
 
     [Fact]
-    public void AcceptsSendOnBehalfOf()
+    public void AcceptsADelegateSendingForTheOrganizer()
     {
-        // A delegate or calendar system sending for the organizer: From is the sender, and the
-        // organizer shows up as Sender or Reply-To. Rejecting these would break real invitations.
+        // RFC 5322 "on behalf of": From stays the author (the organizer), Sender names whoever
+        // actually transmitted it. The organizer is still in From, so this keeps working.
         Assert.True(ImipMime.IsFromClaimedSender(
-            MessageFrom("assistant@example.com", sender: "organizer@example.com"), "organizer@example.com"));
-        Assert.True(ImipMime.IsFromClaimedSender(
-            MessageFrom("calendar-robot@example.com", replyTo: "organizer@example.com"), "organizer@example.com"));
+            MessageFrom("organizer@example.com", sender: "assistant@example.com"), "organizer@example.com"));
+    }
+
+    [Fact]
+    public void RejectsAnOrganizerClaimedOnlyByReplyTo()
+    {
+        // Reply-To is the one header that makes forgery free. From is what DMARC aligns, so
+        // spoofing it at least has to survive the receiving server; Reply-To is never checked by
+        // anything and can name anyone on a message sent from the attacker's own domain.
+        Assert.False(ImipMime.IsFromClaimedSender(
+            MessageFrom("attacker@evil.example", replyTo: "boss@example.com"), "boss@example.com"));
+    }
+
+    [Fact]
+    public void RejectsAnOrganizerClaimedOnlyBySender()
+    {
+        // Same problem, and it buys nothing: in a real delegated send the organizer is the From,
+        // and Sender is the delegate — so trusting Sender only ever accepts the backwards case.
+        Assert.False(ImipMime.IsFromClaimedSender(
+            MessageFrom("attacker@evil.example", sender: "boss@example.com"), "boss@example.com"));
     }
 
     [Fact]

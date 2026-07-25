@@ -14,6 +14,14 @@ namespace CalendarIT.Infrastructure.Calendars;
 /// The copy deliberately carries no attendees or reminders of its own, so if the invited user
 /// edits or deletes it, nothing fans out further invitations — it is just an event on their
 /// calendar. (Letting the invited user reply Accept/Decline back to the organizer is a follow-up.)
+///
+/// <para>Copies are found again by shared UID, and a UID is whatever the organizer says it is —
+/// an .ics import keeps the file's, a CalDAV PUT takes it from the body. So matching on UID alone
+/// let any user address a row on someone else's calendar. Every copy is stamped with
+/// <see cref="CalendarEvent.SourceOrganizerUserId"/> when it is created, and only a row carrying
+/// this organizer's id is ever written to or withdrawn; anything else is left untouched and no
+/// copy is delivered. Note this means copies delivered before that column existed no longer track
+/// the organizer's edits — the guest keeps the event, it just goes stale.</para>
 /// </summary>
 public interface IInternalInvitationDelivery
 {
@@ -32,7 +40,7 @@ public sealed class InternalInvitationDelivery(AppDbContext db, TimeProvider tim
         var current = await LocalUserIdsAsync(master.Attendees.Select(a => a.Email), organizerUserId, cancellationToken);
         foreach (var inviteeId in current)
         {
-            await UpsertCopyAsync(master, inviteeId, cancellationToken);
+            await UpsertCopyAsync(master, organizerUserId, inviteeId, cancellationToken);
         }
 
         // Withdraw from local guests just dropped (unless the same user is still invited under
@@ -40,7 +48,7 @@ public sealed class InternalInvitationDelivery(AppDbContext db, TimeProvider tim
         var dropped = await LocalUserIdsAsync(removed.Select(a => a.Email), organizerUserId, cancellationToken);
         foreach (var inviteeId in dropped.Where(id => !current.Contains(id)))
         {
-            await DeleteCopyAsync(master.Uid, inviteeId, cancellationToken);
+            await DeleteCopyAsync(master.Uid, organizerUserId, inviteeId, cancellationToken);
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -50,7 +58,7 @@ public sealed class InternalInvitationDelivery(AppDbContext db, TimeProvider tim
     {
         foreach (var inviteeId in await LocalUserIdsAsync(attendees.Select(a => a.Email), organizerUserId, cancellationToken))
         {
-            await DeleteCopyAsync(master.Uid, inviteeId, cancellationToken);
+            await DeleteCopyAsync(master.Uid, organizerUserId, inviteeId, cancellationToken);
         }
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -76,12 +84,23 @@ public sealed class InternalInvitationDelivery(AppDbContext db, TimeProvider tim
         return ids.Where(id => id != organizerUserId).Distinct().ToList();
     }
 
-    private async Task UpsertCopyAsync(CalendarEvent master, Guid inviteeUserId, CancellationToken cancellationToken)
+    private async Task UpsertCopyAsync(CalendarEvent master, Guid organizerUserId, Guid inviteeUserId, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
         // Match the invitee's copy by shared UID, wherever they may have filed it.
-        var copy = await db.Events
+        var existing = await db.Events
             .SingleOrDefaultAsync(e => e.Uid == master.Uid && e.Calendar!.OwnerUserId == inviteeUserId, cancellationToken);
+
+        // A row that isn't our copy is not ours to write to. The UID came from the organizer, who
+        // may have chosen it (import, CalDAV) to collide with something the guest already has —
+        // their own event, or a copy from a different organizer. Leave it, and deliver nothing:
+        // adding a second row with the same UID would just hand over the spam instead.
+        if (existing is not null && existing.SourceOrganizerUserId != organizerUserId)
+        {
+            return;
+        }
+
+        var copy = existing;
         if (copy is null)
         {
             var calendar = await DefaultCalendar.GetOrCreateAsync(db, timeProvider, inviteeUserId, cancellationToken);
@@ -91,6 +110,7 @@ public sealed class InternalInvitationDelivery(AppDbContext db, TimeProvider tim
                 CalendarId = calendar.Id,
                 Uid = master.Uid,
                 CreatedAt = now,
+                SourceOrganizerUserId = organizerUserId,
             };
             db.Events.Add(copy);
         }
@@ -108,10 +128,15 @@ public sealed class InternalInvitationDelivery(AppDbContext db, TimeProvider tim
         copy.UpdatedAt = now;
     }
 
-    private async Task DeleteCopyAsync(string uid, Guid inviteeUserId, CancellationToken cancellationToken)
+    /// <summary>Withdraws the copy this organizer delivered — and only that. A row the guest owns
+    /// themselves, or one mirrored from someone else, shares nothing but a UID and stays put.</summary>
+    private async Task DeleteCopyAsync(string uid, Guid organizerUserId, Guid inviteeUserId, CancellationToken cancellationToken)
     {
-        var copy = await db.Events
-            .SingleOrDefaultAsync(e => e.Uid == uid && e.Calendar!.OwnerUserId == inviteeUserId, cancellationToken);
+        var copy = await db.Events.SingleOrDefaultAsync(
+            e => e.Uid == uid
+                && e.Calendar!.OwnerUserId == inviteeUserId
+                && e.SourceOrganizerUserId == organizerUserId,
+            cancellationToken);
         if (copy is not null)
         {
             db.Events.Remove(copy);

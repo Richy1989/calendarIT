@@ -89,16 +89,17 @@ public sealed class AuthController(IAuthService authService, IConfiguration conf
     }
 
     /// <summary>
-    /// The origin to build the reset link from. Taken from the request — with UseForwardedHeaders
-    /// in front, that is the address the user actually typed, so no extra configuration is needed.
-    /// PUBLIC_BASE_URL overrides it for setups where the proxy doesn't pass the original host.
+    /// The origin to build the reset link from: PUBLIC_BASE_URL, or null when it isn't set.
+    ///
+    /// Deliberately never derived from the request. Host is a header, and this endpoint is
+    /// anonymous, so deriving the link from it let anyone mail a victim a genuine reset token
+    /// pointing at a host of their choosing — a one-request account takeover. Nothing about
+    /// running behind a proxy makes that header trustworthy: nginx forwards whatever arrived.
     /// </summary>
-    private string PublicOrigin()
+    private string? PublicOrigin()
     {
         var configured = configuration["PUBLIC_BASE_URL"];
-        return string.IsNullOrWhiteSpace(configured)
-            ? $"{Request.Scheme}://{Request.Host}"
-            : configured.TrimEnd('/');
+        return string.IsNullOrWhiteSpace(configured) ? null : configured.TrimEnd('/');
     }
 
     private IActionResult ToResponse(AuthResult result) =>

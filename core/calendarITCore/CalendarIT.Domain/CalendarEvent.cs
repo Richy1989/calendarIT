@@ -60,6 +60,17 @@ public class CalendarEvent
     /// "invited by …" and, later, sending an RSVP (REPLY) back. Null for the user's own events.</summary>
     public string? OrganizerEmail { get; set; }
 
+    /// <summary>
+    /// Set only on a copy this instance delivered to a local guest, naming the user whose event it
+    /// mirrors. Null on everything the owner authored, imported, or synced themselves.
+    ///
+    /// This is what makes a mirrored copy identifiable as one. Delivery finds copies by shared
+    /// <see cref="Uid"/>, and a UID is caller-supplied (an .ics import keeps the file's UID; a
+    /// CalDAV PUT takes it from the body), so UID alone let any user address a row on someone
+    /// else's calendar. Only a copy stamped with the same organizer may be updated or withdrawn.
+    /// </summary>
+    public Guid? SourceOrganizerUserId { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }

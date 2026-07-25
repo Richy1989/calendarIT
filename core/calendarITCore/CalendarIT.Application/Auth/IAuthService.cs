@@ -27,8 +27,13 @@ public interface IAuthService
     /// Deliberately reports nothing about the address: the result is identical whether it is
     /// registered, unregistered, or unreachable, so this can't be used to enumerate accounts.
     /// </summary>
-    /// <param name="linkBase">Absolute origin the link points at, e.g. "https://cal.example.com".</param>
-    Task RequestPasswordResetAsync(ForgotPasswordRequest request, string linkBase, CancellationToken cancellationToken = default);
+    /// <param name="linkBase">
+    /// Absolute origin the link points at, e.g. "https://cal.example.com" — from the operator's
+    /// configuration, never from the request. Null when none is configured, in which case no mail
+    /// is sent: a link is a bearer credential, and one pointing at an address a caller chose is
+    /// worse than no link at all.
+    /// </param>
+    Task RequestPasswordResetAsync(ForgotPasswordRequest request, string? linkBase, CancellationToken cancellationToken = default);
 
     /// <summary>Completes a reset with the emailed token, revoking every existing session.</summary>
     Task<PasswordResult> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken cancellationToken = default);

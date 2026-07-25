@@ -77,6 +77,12 @@ docker compose up --build
 The app serves plain HTTP on `:8080`. Put your reverse proxy (Caddy / Traefik / nginx /
 …) in front of it to terminate TLS — CalDAV clients effectively require HTTPS.
 
+That port is **not published to the host**: an unencrypted copy of the site sitting on your
+server's public IP would hand out passwords and CalDAV credentials in the clear to anyone who
+found it. Attach your proxy to the `calendarit-edge` network and point it at `http://app:8080`
+— `docker-compose.yml` has a worked example. If your proxy runs on the host instead of in a
+container, uncomment the `127.0.0.1:8080:8080` binding there.
+
 Running Unraid? Ready-made templates live in [`deploy/`](./deploy) —
 `calendarit.unraid.xml` (plain) and `calendarit-traefik.unraid.xml` (with Traefik
 labels preconfigured).
@@ -112,11 +118,17 @@ Everything is set through environment variables (12-factor):
 | `JWT_SIGNING_KEY`                         | **Required.** ≥ 32 chars                         |
 | `JWT_ISSUER` / `JWT_AUDIENCE`             | Token issuer / audience                          |
 | `DISABLE_REGISTRATION`                    | `true` closes public sign-up. Existing accounts are unaffected |
-| `PUBLIC_BASE_URL`                         | Origin used in password-reset links. Only needed if your proxy hides the original host |
+| `PUBLIC_BASE_URL`                         | **Required for password reset.** Origin used in reset links, e.g. `https://calendar.example.com` |
 | `AUTH_RATE_LIMIT_PER_MINUTE`              | Auth requests allowed per client IP per minute. Default `20` |
 | `FORWARDED_PROXY_HOPS`                    | How many `X-Forwarded-For` hops to trust. Default `1` — see below |
 | `Serilog__MinimumLevel__Default`          | Log level (console-only, to stdout). Default `Information` |
 | `VAPID_*`                                 | Web Push reminders (planned)                     |
+
+> **Set `PUBLIC_BASE_URL` if you want self-service password reset.** The address in a reset
+> link is deliberately never read from the request: `Host` is just a header, and the
+> forgot-password endpoint is anonymous, so taking it from there would let anyone have a
+> genuine reset link mailed to a host they control. With it unset, reset links aren't sent and
+> the server logs why — sign-in, and everything else, is unaffected.
 
 > **Set `FORWARDED_PROXY_HOPS` to match your setup.** The app trusts exactly this many
 > proxies when reading the client's IP, which is what the auth rate limit and your logs key

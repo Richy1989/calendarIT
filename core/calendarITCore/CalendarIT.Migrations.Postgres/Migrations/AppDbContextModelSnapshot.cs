@@ -138,6 +138,9 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Property<int>("Sequence")
                         .HasColumnType("integer");
 
+                    b.Property<Guid?>("SourceOrganizerUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("StartUtc")
                         .HasColumnType("timestamp with time zone");
 

@@ -164,8 +164,20 @@ public sealed class AuthService(
     }
 
     public async Task RequestPasswordResetAsync(
-        ForgotPasswordRequest request, string linkBase, CancellationToken cancellationToken = default)
+        ForgotPasswordRequest request, string? linkBase, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(linkBase))
+        {
+            // No configured origin means the only address available is the one the caller asked
+            // for, and mailing a working reset token to a host an anonymous request named is
+            // account takeover by design. Refuse, and tell the operator how to fix it.
+            logger.LogError(
+                "Password reset requested but PUBLIC_BASE_URL is not set, so there is no trustworthy " +
+                "address to send people to. No link was sent. Set PUBLIC_BASE_URL to the address users " +
+                "type, e.g. https://calendar.example.com");
+            return;
+        }
+
         var user = await userManager.FindByEmailAsync(request.Email);
         if (user?.Email is null)
         {

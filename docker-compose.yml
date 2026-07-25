@@ -3,6 +3,12 @@
 # Runs the app (API + bundled SPA) against PostgreSQL. The app serves plain HTTP on
 # port 8080; put your own reverse proxy (Caddy / Traefik / nginx / ...) in front of it
 # to terminate TLS. Copy .env.example to .env and set at least JWT_SIGNING_KEY.
+#
+# Nothing is published to the host. The app's port is plain HTTP — publishing it would put
+# an unencrypted copy of the site on your server's public IP, next to the HTTPS one your
+# proxy serves, and passwords and CalDAV credentials would cross the wire in the clear for
+# anyone who reached it. Your proxy talks to the app over the `calendarit-edge` network
+# instead; see the note at the bottom of this file.
 
 services:
   db:
@@ -12,6 +18,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-calendarit}
       POSTGRES_USER: ${POSTGRES_USER:-calendarit}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    networks:
+      - backend
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -43,14 +51,38 @@ services:
       FORWARDED_PROXY_HOPS: ${FORWARDED_PROXY_HOPS:-1}
       AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-20}
       DISABLE_REGISTRATION: ${DISABLE_REGISTRATION:-false}
+      # The address reset links point at. Never derived from the request (Host is a header
+      # anyone can set), so without this, reset emails aren't sent at all.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       # No SMTP settings: email (invitations + reminders) is sent through each user's own
       # mail account, connected in-app under Settings → Email.
+    networks:
+      # backend: reach Postgres. edge: where your reverse proxy finds us.
+      - backend
+      - edge
     volumes:
       - appdata:/appdata
-    ports:
-      # Expose to the host / reverse proxy. Change the host port as needed.
-      - "8080:8080"
+    # No `ports:` on purpose — see the header. If your proxy runs on the host itself rather
+    # than in a container, publish to loopback only, never 0.0.0.0:
+    #   ports:
+    #     - "127.0.0.1:8080:8080"
+
+# Point your reverse proxy at http://app:8080 and attach it to `calendarit-edge`. From its own
+# compose file that is:
+#
+#   services:
+#     caddy:
+#       networks: [calendarit-edge, default]
+#   networks:
+#     calendarit-edge:
+#       external: true
+#
+# Postgres stays on `backend`, which the proxy never joins, so it isn't reachable from there.
+networks:
+  backend:
+    name: calendarit-backend
+  edge:
+    name: calendarit-edge
 
 volumes:
   pgdata:
