@@ -117,14 +117,14 @@ function SecuritySection({ onLogout }: { onLogout: () => void }) {
       </p>
 
       {mutation.isSuccess ? (
-        <div className="settings-row">
+        <div className="field-stack">
           <p className="settings-note">Password changed. Sign in again to continue.</p>
           <button type="button" className="btn-primary" onClick={onLogout}>
             Go to sign in
           </button>
         </div>
       ) : (
-        <>
+        <div className="field-stack">
           <div className="field">
             <label htmlFor="current-password">Current password</label>
             <input
@@ -174,7 +174,7 @@ function SecuritySection({ onLogout }: { onLogout: () => void }) {
           <button className="btn-primary" type="submit" disabled={mutation.isPending}>
             {mutation.isPending ? 'Changing…' : 'Change password'}
           </button>
-        </>
+        </div>
       )}
     </form>
   )

@@ -227,7 +227,10 @@ export default function CalendarView({
   // Year quick-jump popover, opened by clicking the toolbar title ("August 2026").
   // `base` is the first year of the visible 12-year window; `current` the year on screen.
   const [yearPop, setYearPop] = useState<{ x: number; y: number; base: number; current: number } | null>(null)
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  // The day the grid is "on". Never empty: a fresh page starts on today, so switching to week
+  // or day view lands on today rather than on whichever date the month grid happened to be
+  // anchored to after a few pages of browsing.
+  const [selectedDate, setSelectedDate] = useState<string>(() => dayKey(new Date()))
   const lastClick = useRef<{ dateStr: string; time: number } | null>(null)
   const calendarRef = useRef<FullCalendar>(null)
   const lastView = useRef<string | null>(null)
@@ -249,7 +252,7 @@ export default function CalendarView({
         saveDefaultView(arg.view.type).catch(() => {}) // fire-and-forget: remember per-user in the DB
       }
     }
-    if (!viewChanged || !selectedDate) return
+    if (!viewChanged) return
 
     const sel = new Date(`${selectedDate}T00:00:00`)
     if (sel < arg.start || sel >= arg.end) {
@@ -619,7 +622,12 @@ export default function CalendarView({
         datesSet={handleDatesSet}
         dateClick={handleDateClick}
         select={handleSelect}
-        dayCellClassNames={(arg) => (selectedDate && dayKey(arg.date) === selectedDate ? ['is-selected'] : [])}
+        // Which day is selected only means something where there are other days to tell it
+        // apart from. Day view is that one day, so the highlight would just ring the whole
+        // grid — and in cyan, competing with the now-indicator.
+        dayCellClassNames={(arg) =>
+          arg.view.type !== 'timeGridDay' && dayKey(arg.date) === selectedDate ? ['is-selected'] : []
+        }
         eventClick={(info: EventClickArg) => openForEdit(info.event.extendedProps.seriesId)}
         eventChange={applyChange}
         dayCellDidMount={onDateCellMount}

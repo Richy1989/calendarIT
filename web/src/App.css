@@ -1876,6 +1876,21 @@ input[aria-invalid='true']:focus-visible {
   color: var(--text);
 }
 
+/* A column of fields, with the same rhythm the event editor gets from .modal and the mail
+   form from .mail-group. A settings card that is itself a form had no such container, so its
+   fields stacked flush against each other and every label sat on the input above it. */
+.field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.05rem;
+}
+
+/* Buttons and inline notes in a stack take their own width; only fields fill the column. */
+.field-stack > button,
+.field-stack > .settings-note {
+  align-self: flex-start;
+}
+
 .field-row {
   display: flex;
   gap: 0.85rem;
