@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
@@ -9,6 +9,7 @@ import type {
   DateSelectArg,
   DatesSetArg,
   DayCellMountArg,
+  EventApi,
   EventMountArg,
   EventClickArg,
   EventChangeArg,
@@ -24,6 +25,7 @@ import { useHour12 } from './clock'
 import { useFirstDay } from './weekStart'
 import { Popover } from './components/Popover'
 import { addDays, dayKey, toLocalInput } from './lib/dates'
+import { useUndoStack } from './lib/useUndoStack'
 import { getSavedView, saveView, UNCATEGORIZED } from './prefs'
 
 // Uncategorized events render in this neutral default (categories carry the real colors).
@@ -89,6 +91,27 @@ function draftToRequest(d: EventDraft): SaveEventRequest {
     timeZone: browserTz,
     reminders: d.reminders.map((r) => ({ minutesBefore: r.minutesBefore, channel: r.channel })),
     attendees: d.attendees.map((a) => ({ email: a.email, name: a.name ?? null })),
+  }
+}
+
+// A server DTO → a save request, for recreating an event when a delete is undone. The DTO's
+// start/end are already API-shaped ISO instants, so they pass straight through. (Exdates
+// aren't carried on the DTO, so undoing the delete of a *recurring series* restores it
+// without its previously-excluded occurrences — a rare, acknowledged edge.)
+function dtoToRequest(dto: EventDto): SaveEventRequest {
+  return {
+    calendarId: dto.calendarId ?? null,
+    title: dto.title,
+    description: dto.description ?? null,
+    location: dto.location ?? null,
+    categoryId: dto.categoryId ?? null,
+    start: dto.start,
+    end: dto.end ?? null,
+    allDay: dto.allDay,
+    recurrence: dto.recurrence ?? null,
+    timeZone: browserTz,
+    reminders: dto.reminders.map((r) => ({ minutesBefore: Number(r.minutesBefore), channel: r.channel })),
+    attendees: dto.attendees.map((a) => ({ email: a.email, name: a.name ?? null })),
   }
 }
 
@@ -223,6 +246,19 @@ export default function CalendarView({
   const hour12 = useHour12()
   const firstDay = useFirstDay()
   const [draft, setDraft] = useState<EventDraft | null>(null)
+
+  // Ctrl-Z / Ctrl-Shift-Z. `record` gets an inverse for each change; the toast names the
+  // step so walking the stack isn't blind. `originalEdit` snapshots an event as it was
+  // opened, so saving an edit can capture the state to restore.
+  const { record, undo, redo } = useUndoStack()
+  const originalEdit = useRef<EventDraft | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const showToast = useCallback((msg: string) => {
+    setToast(msg)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 2500)
+  }, [])
   const [menu, setMenu] = useState<ContextMenu | null>(null)
   // Year quick-jump popover, opened by clicking the toolbar title ("August 2026").
   // `base` is the first year of the visible 12-year window; `current` the year on screen.
@@ -384,6 +420,43 @@ export default function CalendarView({
     onSuccess: invalidate,
   })
 
+  const doUndo = useCallback(async () => {
+    try {
+      const label = await undo()
+      if (label) showToast(`Undid: ${label}`)
+    } catch {
+      showToast('Couldn’t undo that')
+    }
+  }, [undo, showToast])
+  const doRedo = useCallback(async () => {
+    try {
+      const label = await redo()
+      if (label) showToast(`Redid: ${label}`)
+    } catch {
+      showToast('Couldn’t redo that')
+    }
+  }, [redo, showToast])
+
+  // Ctrl-Z steps back, Ctrl-Shift-Z / Ctrl-Y forward. Ignored while the editor is open or a
+  // text field is focused, so it never hijacks the browser's own undo inside an input.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const key = e.key.toLowerCase()
+      const isUndo = key === 'z' && !e.shiftKey
+      const isRedo = (key === 'z' && e.shiftKey) || key === 'y'
+      if (!isUndo && !isRedo) return
+      if (draft) return // modal open: leave Ctrl-Z to the focused field's native text undo
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (target?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      e.preventDefault()
+      void (isUndo ? doUndo() : doRedo())
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [draft, doUndo, doRedo])
+
   useEffect(() => {
     if (!menu) return
     const close = () => setMenu(null)
@@ -468,7 +541,7 @@ export default function CalendarView({
     const allDay = dto.allDay
     const startLocal = allDay ? dto.start.slice(0, 10) : toLocalInput(new Date(dto.start))
     const endLocal = dto.end ? (allDay ? dto.end.slice(0, 10) : toLocalInput(new Date(dto.end))) : startLocal
-    setDraft({
+    const loaded: EventDraft = {
       id: dto.id,
       calendarId: dto.calendarId,
       title: dto.title,
@@ -483,7 +556,9 @@ export default function CalendarView({
       attendees: dto.attendees.map((a) => ({ email: a.email, name: a.name, status: a.status })),
       invitationStatus: dto.invitationStatus ?? null,
       organizerEmail: dto.organizerEmail ?? null,
-    })
+    }
+    originalEdit.current = loaded // snapshot: an edit's undo restores this state
+    setDraft(loaded)
   }
 
   const respond = (id: string, status: RsvpStatus) => {
@@ -493,42 +568,109 @@ export default function CalendarView({
 
   const save = (d: EventDraft) => {
     const body = draftToRequest(d)
-    if (d.id) updateMut.mutate({ id: d.id, body })
-    else createMut.mutate(body)
+    const label = d.title.trim() || 'event'
+    if (d.id) {
+      const id = d.id
+      // The state as it was opened — restore it on undo (only when it's the event we edited).
+      const prev = originalEdit.current
+      const prevBody = prev && prev.id === id ? draftToRequest(prev) : null
+      updateMut.mutate(
+        { id, body },
+        {
+          onSuccess: () => {
+            if (!prevBody) return
+            record({
+              label: `edited “${label}”`,
+              undo: () => updateMut.mutateAsync({ id, body: prevBody }),
+              redo: () => updateMut.mutateAsync({ id, body }),
+            })
+          },
+        },
+      )
+    } else {
+      createMut.mutate(body, {
+        // Undo deletes what we just made; redo re-creates it. A recreate mints a new id, so the
+        // live id is tracked in the closure for a later undo to delete the right row.
+        onSuccess: (created) => {
+          let liveId = created.id
+          record({
+            label: `created “${label}”`,
+            undo: () => deleteMut.mutateAsync({ id: liveId }),
+            redo: async () => { liveId = (await createMut.mutateAsync(body)).id },
+          })
+        },
+      })
+    }
     closeDraft()
   }
 
-  const remove = (id: string, occurrence?: string) => {
-    deleteMut.mutate({ id, occurrence })
+  const remove = async (id: string, occurrence?: string) => {
+    // Deleting one occurrence of a series only adds an EXDATE, which no endpoint can lift —
+    // so it isn't undoable and stays off the stack. Whole-event deletes are recreated on undo.
+    if (occurrence) {
+      deleteMut.mutate({ id, occurrence })
+      closeDraft()
+      return
+    }
+    // Capture the event before it's gone, so undo can recreate it.
+    const snapshot = await getEvent(id).catch(() => null)
+    deleteMut.mutate(
+      { id },
+      {
+        onSuccess: () => {
+          if (!snapshot) return
+          const body = dtoToRequest(snapshot)
+          let liveId: string | null = null // set by undo's recreate; redo deletes that new row
+          record({
+            label: `deleted “${snapshot.title || 'event'}”`,
+            undo: async () => { liveId = (await createMut.mutateAsync(body)).id },
+            redo: () => deleteMut.mutateAsync({ id: liveId ?? id }),
+          })
+        },
+      },
+    )
     closeDraft()
   }
 
   // Fires after a drag or an edge-resize, for single events only (recurring occurrences are
   // not drag-editable). Sends just the fields a grid edit can touch: the API leaves attendees
   // and the owning calendar alone when they're absent, so guests survive a resize untouched.
+  // A grid event (its current or pre-drag snapshot) → the save request a move/resize sends.
+  const eventToBody = (ev: EventApi): SaveEventRequest => ({
+    title: ev.title,
+    description: (ev.extendedProps.description as string) || null,
+    location: (ev.extendedProps.location as string) || null,
+    categoryId: (ev.extendedProps.categoryId as string | null) ?? null, // keep the assignment on drag edits
+    start: ev.allDay ? toApiIso(ev.startStr, true) : (ev.start ?? new Date()).toISOString(),
+    // FullCalendar's all-day end is exclusive; the API stores an inclusive last day.
+    end: ev.end ? (ev.allDay ? toApiIso(addDays(ev.endStr.slice(0, 10), -1), true) : ev.end.toISOString()) : null,
+    allDay: ev.allDay,
+    recurrence: null,
+    timeZone: browserTz,
+    reminders: (ev.extendedProps.reminders as { minutesBefore: number; channel: string }[] | undefined)?.map((r) => ({
+      minutesBefore: r.minutesBefore,
+      channel: r.channel,
+    })) ?? null,
+  })
+
   const applyChange = (info: EventChangeArg) => {
-    const ev = info.event
-    const body: SaveEventRequest = {
-      title: ev.title,
-      description: (ev.extendedProps.description as string) || null,
-      location: (ev.extendedProps.location as string) || null,
-      categoryId: (ev.extendedProps.categoryId as string | null) ?? null, // keep the assignment on drag edits
-      start: ev.allDay ? toApiIso(ev.startStr, true) : (ev.start ?? new Date()).toISOString(),
-      // FullCalendar's all-day end is exclusive; the API stores an inclusive last day.
-      end: ev.end ? (ev.allDay ? toApiIso(addDays(ev.endStr.slice(0, 10), -1), true) : ev.end.toISOString()) : null,
-      allDay: ev.allDay,
-      recurrence: null,
-      timeZone: browserTz,
-      reminders: (ev.extendedProps.reminders as { minutesBefore: number; channel: string }[] | undefined)?.map((r) => ({
-        minutesBefore: r.minutesBefore,
-        channel: r.channel,
-      })) ?? null,
-    }
+    const id = info.event.extendedProps.seriesId as string
+    const newBody = eventToBody(info.event)
+    const oldBody = eventToBody(info.oldEvent) // position before the drag — the undo target
     updateMut.mutate(
-      { id: ev.extendedProps.seriesId as string, body },
-      // The grid already moved the box optimistically. If the save fails, put it back —
-      // otherwise the calendar keeps showing times that were never stored.
-      { onError: () => info.revert() },
+      { id, body: newBody },
+      {
+        // The grid already moved the box optimistically. If the save fails, put it back —
+        // otherwise the calendar keeps showing times that were never stored.
+        onError: () => info.revert(),
+        // Record only once the move actually persisted (a reverted move isn't on the stack).
+        onSuccess: () =>
+          record({
+            label: `moved “${info.event.title || 'event'}”`,
+            undo: () => updateMut.mutateAsync({ id, body: oldBody }),
+            redo: () => updateMut.mutateAsync({ id, body: newBody }),
+          }),
+      },
     )
   }
 
@@ -827,6 +969,12 @@ export default function CalendarView({
           onRespond={draft.id && draft.invitationStatus ? (status) => respond(draft.id!, status) : undefined}
           onClose={closeDraft}
         />
+      )}
+
+      {toast && (
+        <div className="undo-toast" role="status" aria-live="polite">
+          {toast}
+        </div>
       )}
     </>
   )
