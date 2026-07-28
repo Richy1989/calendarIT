@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getMailAccount } from './api/mailAccount'
 import { listCategories } from './api/categories'
 import DateTimeField from './components/DateTimeField'
+import { parseLocalValue, toLocalValue } from './lib/dates'
 
 export type EventDraft = {
   id?: string
@@ -90,6 +91,13 @@ export default function EventModal({
   const [recurrence, setRecurrence] = useState(draft.recurrence)
   const [reminders, setReminders] = useState(draft.reminders)
   const [location, setLocation] = useState(draft.location)
+
+  // Moving the start drags the end along by the same delta, keeping the duration fixed.
+  const changeStart = (next: string) => {
+    const delta = parseLocalValue(next, allDay).getTime() - parseLocalValue(start, allDay).getTime()
+    setStart(next)
+    if (delta) setEnd(toLocalValue(new Date(parseLocalValue(end, allDay).getTime() + delta), allDay))
+  }
 
   const addReminder = () => setReminders((rs) => [...rs, { minutesBefore: 15, channel: 'Email' }])
   const removeReminder = (i: number) => setReminders((rs) => rs.filter((_, idx) => idx !== i))
@@ -215,7 +223,7 @@ export default function EventModal({
         <div className="field-row">
           <div className="field">
             <label htmlFor="ev-start">Starts</label>
-            <DateTimeField id="ev-start" ariaLabel="Start date and time" value={start} allDay={allDay} onChange={setStart} />
+            <DateTimeField id="ev-start" ariaLabel="Start date and time" value={start} allDay={allDay} onChange={changeStart} />
           </div>
           <div className="field">
             <label htmlFor="ev-end">Ends</label>
