@@ -2211,3 +2211,56 @@ input[aria-invalid='true']:focus-visible {
     transform: translate(-50%, 0);
   }
 }
+
+/* ============================================================================
+   Phones (≤640px). Two changes:
+     A. Collapse the top bar to  [logo] [──── search ────] [avatar].
+     B. Give the calendar toolbar a compact two-row layout — the pickers and the
+        month/week/day/list switch move to a footer bar (see CalendarView.tsx,
+        which swaps headerToolbar/footerToolbar at this same breakpoint).
+   ========================================================================== */
+@media (max-width: 640px) {
+  /* --- A. Top bar -------------------------------------------------------- */
+  .app-header {
+    padding: 0.6rem 0.85rem;
+    gap: 0.55rem;
+  }
+  /* The wordmark and the ticking clock are desktop garnish; on a phone they only
+     crowd the row. Keep the logo mark and the profile avatar. */
+  .brand-word,
+  .header-actions .eyebrow {
+    display: none;
+  }
+  /* Let search own the middle of the row instead of the side padding. */
+  .header-search {
+    padding: 0;
+  }
+  /* Reclaim the wide desktop gutters for the grid itself. */
+  .app-main {
+    padding: 0.5rem 0.6rem 0.7rem;
+  }
+
+  /* --- B. FullCalendar toolbar ------------------------------------------ */
+  /* Chunks wrap rather than overflow, and both bars get tighter spacing. */
+  .calendar-shell .fc .fc-toolbar {
+    flex-wrap: wrap;
+    gap: 0.4rem 0.5rem;
+  }
+  .calendar-shell .fc .fc-header-toolbar {
+    margin-bottom: 0.6rem;
+  }
+  .calendar-shell .fc .fc-footer-toolbar {
+    margin-top: 0.6rem;
+  }
+  .calendar-shell .fc .fc-toolbar-title {
+    font-size: 1.05rem;
+  }
+  .calendar-shell .fc .fc-button {
+    padding: 0.32rem 0.55rem;
+    font-size: 0.8rem;
+  }
+  /* The footer's view-switch group stretches to fill the bar and space out. */
+  .calendar-shell .fc .fc-footer-toolbar .fc-button-group {
+    flex: 1;
+  }
+}

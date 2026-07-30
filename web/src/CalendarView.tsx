@@ -42,6 +42,22 @@ function hexToRgba(hex: string, alpha: number): string {
 
 const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
+/** Tracks a CSS media query and re-renders when it flips. Used to swap the calendar's
+ *  toolbar between the roomy desktop layout and a compact two-row phone layout. */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const onChange = () => setMatches(mq.matches)
+    onChange()
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [query])
+  return matches
+}
+
 // API DTO → FullCalendar input. Recurring occurrences get a unique render id but carry
 // the master id (seriesId) for edit/delete, and are not drag-editable in this phase.
 function dtoToInput(dto: EventDto): EventInput {
@@ -151,6 +167,9 @@ export default function CalendarView({
   // stays mounted (hidden) so its date/view state survives the round trip.
   const savedView = getSavedView()
   const [agendaMode, setAgendaMode] = useState(savedView === 'agendaList')
+  // Below this width the toolbar can't hold every control on one row, so we split it
+  // across a header (New · title · prev/next/today) and a footer (pickers + view switch).
+  const isNarrow = useMediaQuery('(max-width: 640px)')
   const initialFcView = savedView === 'agendaList' ? 'dayGridMonth' : savedView
   const [range, setRange] = useState<{ from: string; to: string } | null>(null)
   const { data: dtos = [] } = useQuery({
@@ -730,11 +749,22 @@ export default function CalendarView({
           },
           listBtn: { text: 'list', click: enterAgenda },
         }}
-        headerToolbar={{
-          left: 'addEvent calPicker catPicker',
-          center: 'title',
-          right: 'prev,next todaySelect dayGridMonth,timeGridWeek,timeGridDay,listBtn',
-        }}
+        headerToolbar={
+          isNarrow
+            ? { left: 'addEvent', center: 'title', right: 'prev,next todaySelect' }
+            : {
+                left: 'addEvent calPicker catPicker',
+                center: 'title',
+                right: 'prev,next todaySelect dayGridMonth,timeGridWeek,timeGridDay,listBtn',
+              }
+        }
+        // On phones the pickers + view switch move to a bottom bar — thumb-reachable and
+        // it frees the top row for the date. Desktop keeps everything in the header.
+        footerToolbar={
+          isNarrow
+            ? { left: 'calPicker catPicker', right: 'dayGridMonth,timeGridWeek,timeGridDay,listBtn' }
+            : undefined
+        }
         height="100%"
         nowIndicator
         // Which column month/week grids open on. Without this FullCalendar uses its own default
@@ -759,7 +789,7 @@ export default function CalendarView({
         selectMirror
         selectMinDistance={8} // plain clicks keep their click/double-click behavior; only a real drag selects
         unselectAuto={false} // the highlight stays under the editor; closeDraft() clears it
-        dayMaxEvents={4}
+        dayMaxEvents={isNarrow ? 2 : 4}
         events={events}
         datesSet={handleDatesSet}
         dateClick={handleDateClick}
