@@ -9,8 +9,8 @@
 ---
 
 No feeds to scroll, no AI to argue with, no "productivity suite" to sign up for.
-CalendarIT is a self-hosted calendar you run on your own box: make events, get
-reminded, sync to your phone. That's the whole pitch.
+CalendarIT is a self-hosted calendar that's just that — a beautiful, easy-to-use calendar.
+Try it, you'll like it.
 
 <p align="center">
   <img src="docs/ScreenShot_Month.png" alt="CalendarIT — month view" width="100%" />
