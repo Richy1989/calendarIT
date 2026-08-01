@@ -71,15 +71,15 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
 
 ### With Docker
 
-Copy the env template and set a signing key:
+Set a signing key — Compose reads it from a `.env` in the same folder:
 
 ```bash
-cp .env.example .env
-# set JWT_SIGNING_KEY (min 32 chars), e.g. openssl rand -base64 48
+echo "JWT_SIGNING_KEY=$(openssl rand -base64 48)" > .env
 ```
 
 A minimal `docker-compose.yml` — one container on the built-in SQLite database, no separate DB
-needed (the repo ships a fuller, commented version that uses PostgreSQL):
+needed (the repo ships a fuller, commented version that uses PostgreSQL, with its own
+`.env.example`):
 
 ```yaml
 services:
