@@ -41,7 +41,7 @@ public sealed class ReminderDispatchJob(
     /// </summary>
     public async Task RunAsync(AppDbContext db, IUserMailSender mail, IWebPushSender push, CancellationToken cancellationToken = default)
     {
-        var now = Truncate(timeProvider.GetUtcNow().UtcDateTime);
+        var now = ReminderOccurrences.Truncate(timeProvider.GetUtcNow().UtcDateTime);
         var windowStart = now - Lookback;
 
         // Only reminders that could possibly be due are read. A one-off event fires at
@@ -70,7 +70,7 @@ public sealed class ReminderDispatchJob(
         {
             var offset = TimeSpan.FromMinutes(reminder.MinutesBefore);
             // trigger in (windowStart, now]  ⇔  occurrence start in (windowStart+offset, now+offset]
-            foreach (var occStart in OccurrencesInWindow(reminder.Event!, windowStart + offset, now + offset))
+            foreach (var occStart in ReminderOccurrences.InWindow(reminder.Event!, windowStart + offset, now + offset))
             {
                 due.Add((reminder, occStart));
             }
@@ -125,28 +125,6 @@ public sealed class ReminderDispatchJob(
                 SentAtUtc = now,
             });
             await db.SaveChangesAsync(cancellationToken);
-        }
-    }
-
-    private static IEnumerable<DateTime> OccurrencesInWindow(CalendarEvent ev, DateTime occFrom, DateTime occTo)
-    {
-        if (ev.RRule is null)
-        {
-            if (ev.StartUtc > occFrom && ev.StartUtc <= occTo)
-            {
-                yield return Truncate(ev.StartUtc);
-            }
-            yield break;
-        }
-
-        var end = ev.EndUtc ?? ev.StartUtc.AddHours(1);
-        var exDates = RecurrenceExpander.ParseExDates(ev.ExDates);
-        foreach (var occ in RecurrenceExpander.Expand(ev.StartUtc, end, ev.TimeZoneId, ev.RRule, exDates, occFrom, occTo.AddSeconds(1)))
-        {
-            if (occ.StartUtc > occFrom && occ.StartUtc <= occTo)
-            {
-                yield return Truncate(occ.StartUtc);
-            }
         }
     }
 
@@ -251,7 +229,4 @@ public sealed class ReminderDispatchJob(
         }
         return $"{utc:f} UTC";
     }
-
-    private static DateTime Truncate(DateTime dt) =>
-        new(dt.Ticks - (dt.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc);
 }
