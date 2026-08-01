@@ -102,6 +102,9 @@ public static class DependencyInjection
         services.AddSingleton<IWebPushSender, WebPushSender>();
         services.AddScoped<IPushSubscriptionService, PushSubscriptionService>();
 
+        // Read-only per-user due-reminder query for the local-notification fallback poller.
+        services.AddScoped<IDueReminderQuery, DueReminderQuery>();
+
         AddBackgroundJobs(services);
 
         return services;
