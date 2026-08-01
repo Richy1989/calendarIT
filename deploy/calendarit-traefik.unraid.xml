@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/Richy1989/calendarIT/issues</Support>
   <Project>https://github.com/Richy1989/calendarIT</Project>
-  <Overview>A lightweight, modern, self-hosted calendar. Make events (one-off and recurring), get email reminders, colour-code your events, import/export iCalendar (.ics), and sync to your phone with any CalDAV client. It does what you want — and just that. This variant ships with Traefik labels preconfigured for calendarit.home.lab.</Overview>
+  <Overview>A lightweight, modern, self-hosted calendar. Make events (one-off and recurring), get email or browser (Web Push) reminders, colour-code your events, import/export iCalendar (.ics), and sync to your phone with any CalDAV client. It does what you want — and just that. This variant ships with Traefik labels preconfigured for calendarit.home.lab.</Overview>
   <Category>Productivity:</Category>
   <WebUI>http://calendarit.home.lab/</WebUI>
   <TemplateURL/>
@@ -20,7 +20,7 @@
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Description>CalendarIT — a lightweight, self-hosted calendar (React web UI + ASP.NET Core REST API), preconfigured to sit behind Traefik. The container carries Traefik labels that route Host(`calendarit.home.lab`) to nginx on container port 80 — no published host port required as long as Traefik reaches this container over a shared Docker network (set Network to the same custom network your Traefik container uses, e.g. proxynet, and point calendarit.home.lab at your Traefik IP in your local DNS). Recurring events (RRULE) with correct time zones and DST, colour-coded categories, email reminders and invitations, and iCalendar (.ics) import/export. This single-container build runs the React UI behind nginx and the API together in one image, storing data in a built-in SQLite database (or point it at your own Postgres). Mount /data to your appdata share so your events and uploaded avatars survive container updates. A JWT signing key is auto-generated and persisted under /data on first run; set your own JWT Signing Key to override.
+  <Description>CalendarIT — a lightweight, self-hosted calendar (React web UI + ASP.NET Core REST API), preconfigured to sit behind Traefik. The container carries Traefik labels that route Host(`calendarit.home.lab`) to nginx on container port 80 — no published host port required as long as Traefik reaches this container over a shared Docker network (set Network to the same custom network your Traefik container uses, e.g. proxynet, and point calendarit.home.lab at your Traefik IP in your local DNS). Recurring events (RRULE) with correct time zones and DST, colour-coded categories, email and browser (Web Push) reminders and invitations, and iCalendar (.ics) import/export. This single-container build runs the React UI behind nginx and the API together in one image, storing data in a built-in SQLite database (or point it at your own Postgres). Mount /data to your appdata share so your events and uploaded avatars survive container updates. A JWT signing key is auto-generated and persisted under /data on first run; set your own JWT Signing Key to override.
 
 There are no SMTP settings here: email is sent through each user's own mail account, connected inside the app under Settings — Email. Users without one simply get their reminders written to the container log instead.
 
@@ -82,6 +82,21 @@ Once you have created your account, set Disable Registration to true so nobody e
       <Name>Serilog__MinimumLevel__Default</Name>
       <Mode/>
     </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>VAPID_PUBLIC_KEY</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>VAPID_PRIVATE_KEY</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>VAPID_SUBJECT</Name>
+      <Mode/>
+    </Variable>
   </Environment>
   <Labels>
     <Label>
@@ -119,4 +134,7 @@ Once you have created your account, set Disable Registration to true so nobody e
   <Config Name="Trusted Proxy Hops" Target="FORWARDED_PROXY_HOPS" Default="2" Description="How many proxies sit in front of the app, used to work out each visitor&apos;s real IP address (which the login rate limit and the logs rely on). 2 is right for this template: Traefik, then the nginx inside the container. Add one for every further proxy in the chain — counting too few makes every visitor look like one address, too many lets visitors fake theirs." Type="Variable" Display="advanced" Required="false" Mask="false">2</Config>
   <Config Name="Auth Rate Limit" Target="AUTH_RATE_LIMIT_PER_MINUTE" Default="20" Description="How many sign-in, registration, and token-refresh requests one IP address may make per minute before being turned away. The default suits a household; raise it only if legitimate users share one address and hit the limit." Type="Variable" Display="advanced" Required="false" Mask="false">20</Config>
   <Config Name="Log Level" Target="Serilog__MinimumLevel__Default" Default="Information" Description="Minimum log level written to the container log: Verbose, Debug, Information (default), Warning, Error, or Fatal." Type="Variable" Display="advanced" Required="false" Mask="false">Information</Config>
+  <Config Name="VAPID Public Key" Target="VAPID_PUBLIC_KEY" Default="" Description="Optional. Public half of the VAPID key pair that signs browser (Web Push) reminder notifications. LEAVE EMPTY to auto-generate a pair on first run and persist it under /data (recommended) — browser notifications then work with no setup. Set your own (both keys) only to keep the same keys across multiple instances or rebuilds." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="VAPID Private Key" Target="VAPID_PRIVATE_KEY" Default="" Description="Optional. Private half of the VAPID key pair (keep secret). Leave empty to auto-generate it alongside the public key. Only set this if you also set the VAPID Public Key." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="VAPID Subject" Target="VAPID_SUBJECT" Default="" Description="Optional. Contact URI sent to push services with each notification, e.g. mailto:admin@example.com. Leave empty to use the built-in default. Only relevant when browser notifications are used." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
 </Container>

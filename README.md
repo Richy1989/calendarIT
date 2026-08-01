@@ -36,11 +36,14 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
 ## What it does
 
 - 📅 **Events, the fast way** — drag on the grid to create, double-click or right-click,
-  drag to move or resize.
+  drag to move or resize — with undo/redo for every change.
 - 🗂️ **Multiple calendars** — split Personal from Work, toggle which are shown, move
   events between them; each syncs as its own calendar over CalDAV.
 - 🔁 **Recurring events** — repeat rules with exceptions (RRULE).
-- ⏰ **Reminders** — by email or browser notification (Web Push), set per appointment.
+- ⏰ **Reminders** — by email or browser notification (Web Push), set per appointment; they
+  also sync to your phone as calendar alarms (VALARM) over CalDAV.
+- 📱 **Made for phones too** — a responsive layout with a thumb-reachable toolbar, and swipe
+  left/right to page between views.
 - 🌍 **Time zones** — stored correctly, displayed in yours, DST-safe.
 - 🎨 **Categories** — named colors (Work, Family, …) managed in Settings; recolor a
   category and every appointment in it follows. Syncs via the iCalendar `CATEGORIES` +
@@ -170,6 +173,12 @@ read your database, so it grants no new access, but it is worth knowing.
 > stored encrypted). Users without a connected account simply get their reminders logged
 > instead of emailed.
 
+> **Browser notifications are opt-in per browser.** Choose **Browser** on an appointment's
+> reminder (or flip the toggle in **Settings → General**) and allow the permission prompt. They
+> arrive even when CalendarIT isn't open, and need a secure origin — HTTPS in production, or
+> `localhost` in dev. No keys to configure: VAPID keys are generated automatically on first run
+> (set `VAPID_*` only if you want to pin them across deployments).
+
 ## Project layout
 
 ```
@@ -187,7 +196,8 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Foundations: solution, logging, health checks, Docker skeleton
 - ✅ Accounts & auth: Identity + JWT with rotating refresh tokens
 - ✅ Web UI shell: calendar views, event editor (title, time, color, location, description)
-- ✅ Events persist to the database — create / edit / delete / drag, scoped per user
+- ✅ Events persist to the database — create / edit / delete / drag, scoped per user, with
+  undo/redo
 - ✅ Recurring events (RRULE) with timezone/DST-correct expansion; delete a single
   occurrence or the whole series (editing a single occurrence is still on the list)
 - ✅ iCal (.ics) import / export — round-trips title, time + zone, all-day, color, RRULE;
@@ -201,22 +211,23 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
   toggles, each exposed as its own CalDAV collection
 - ✅ Categories — events take their color from a named category (managed in Settings);
   existing per-event colors were auto-migrated into categories on first startup
+- ✅ Mobile — responsive phone layout, a thumb-reachable bottom toolbar, and swipe left/right
+  to page between views (visual polish still ongoing)
 - ✅ Inviting guests — connect your own email account (Settings → Email, password stored
-  encrypted), add guests to an event, and they get a standard iMIP invite with Accept/Decline
-  in their calendar; updates and cancellations are mailed too. **Guest replies now sync back**:
-  with IMAP configured, your inbox is scanned on a configurable interval (default 5 min) and
-  each Accept/Decline/Tentative updates the guest's status on the event (read-only, idempotent —
-  messages are never modified). **Receiving invitations now works too**: the same inbox scan
-  picks up invitations others email you (iMIP REQUEST) and adds them to your calendar as pending
-  (dashed outline + ✉), and removes them when the organizer cancels. **You can also respond**:
-  open a received invitation and Accept / Maybe / Decline — your status is saved and an iMIP REPLY
-  is emailed back to the organizer. Incoming messages must actually come from the organizer (or
-  guest) the invitation names, so nobody can put events on your calendar under someone else's
-  name; mismatches are logged and ignored.
-- ❌ Optimizing for small screens, does not look pretty currenty on the phone
+  encrypted), add guests to an event, and they get a standard iMIP invite with Accept/Decline in
+  their calendar; updates and cancellations are mailed too.
+  - **Guest replies sync back** — with IMAP configured, your inbox is scanned on a configurable
+    interval (default 5 min) and each Accept/Decline/Tentative updates the guest's status on the
+    event (read-only, idempotent — messages are never modified).
+  - **Receiving invitations** — the same scan picks up invitations others email you (iMIP
+    REQUEST), adds them as pending (dashed outline + ✉), and removes them when the organizer cancels.
+  - **Responding** — open a received invitation and Accept / Maybe / Decline; your status is
+    saved and an iMIP REPLY is emailed back to the organizer.
+  - Incoming messages must genuinely come from the organizer (or guest) the invitation names, so
+    nobody can put events on your calendar under someone else's name — mismatches are logged and ignored.
 
-Not everything above is wired end-to-end yet — check the roadmap before relying on a
-feature.
+A few edges are still rough (noted above and in the roadmap), but the features listed here work
+end-to-end.
 
 ## Support
 

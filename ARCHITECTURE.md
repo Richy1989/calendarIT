@@ -1,6 +1,6 @@
 # CalendarIT — Architecture
 
-> Status: **Built and running** — everything in the v1 scope below ships except Web Push.
+> Status: **Built and running** — the full v1 scope below ships, Web Push included.
 > Last updated: 2026-07-24
 >
 > This document is the *design rationale*: why the pieces are shaped the way they are. For
@@ -384,7 +384,8 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
    serialization path to avoid divergence.
 5. ~~Refresh-token strategy~~ — **resolved:** access + rotating refresh token, server-side
    refresh-token tracking (see §4.4). SPA token storage detail decided in Phase 1/2.
-6. **Web Push** browser support & VAPID key lifecycle/rotation. The only unbuilt v1 feature.
+6. **Web Push** browser support & VAPID key lifecycle/rotation — now built (VAPID keys
+   auto-generate under `APPDATA_PATH`; rotation is still manual via the `VAPID_*` env vars).
 7. **Anything arriving from outside is hostile input** — learned the hard way in the
    2026-07-24 review. An `.ics` may carry a TZID no tzdb knows, an RRULE that repeats by the
    second, or an ORGANIZER line naming someone who didn't send it. Every ingest path (import,
@@ -454,8 +455,10 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
      sends **email via MailKit/SMTP** (falls back to a log-only sender when SMTP unset, so
      dev works). Reminders round-trip through the events API + the modal's reminder editor
      (offset presets). Verified: reminder dispatched with timezone-correct start time.
-   - ⬜ *5b (next):* **Web Push** — VAPID keys, `PushSubscription`, service worker, browser
-     subscribe flow, and the WebPush dispatch branch (currently logs "delivery in 5b").
+   - ✅ *Done (5b — Web Push):* `VapidKeyStore` (keys from `VAPID_*`, else generated once and
+     persisted to `appdata/vapid.json`), `PushSubscription` + migration, `/api/push` subscribe
+     endpoints, a `sw.js` service worker + browser subscribe flow, and the `ReminderDispatchJob`
+     WebPush branch delivering to each of the owner's subscriptions (pruning gone ones).
 6. **CalDAV** — library spike, protocol endpoints, app-password auth, DAVx⁵ validation.
    - ✅ *Done:* hand-rolled `CalendarIT.CalDav` (see §9.1) — discovery, ETags/CTag,
      calendar-query (time-range honoured server-side) / calendar-multiget, GET/PUT/DELETE.
