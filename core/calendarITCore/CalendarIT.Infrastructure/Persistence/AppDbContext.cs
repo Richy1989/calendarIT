@@ -26,6 +26,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
 
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+
     public DbSet<MailAccount> MailAccounts => Set<MailAccount>();
 
     public DbSet<Attendee> Attendees => Set<Attendee>();
@@ -132,6 +134,23 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             entity.HasKey(n => n.Id);
             entity.HasIndex(n => new { n.ReminderId, n.OccurrenceStartUtc }).IsUnique();
+        });
+
+        builder.Entity<PushSubscription>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Endpoint).HasMaxLength(2000).IsRequired();
+            entity.Property(s => s.P256dh).HasMaxLength(255).IsRequired();
+            entity.Property(s => s.Auth).HasMaxLength(255).IsRequired();
+            entity.Property(s => s.UserAgent).HasMaxLength(500);
+            // One subscription per endpoint; re-subscribing the same browser upserts this row.
+            entity.HasIndex(s => s.Endpoint).IsUnique();
+            entity.HasIndex(s => s.UserId);
+
+            entity.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(s => s.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<MailAccount>(entity =>

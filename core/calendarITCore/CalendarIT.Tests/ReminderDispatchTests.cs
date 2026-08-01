@@ -21,6 +21,7 @@ public sealed class ReminderDispatchTests : IDisposable
     private readonly AppDbContext _db;
     private readonly FixedTimeProvider _clock = new(new DateTimeOffset(2026, 9, 1, 8, 0, 0, TimeSpan.Zero));
     private readonly FakeUserMailSender _mail = new();
+    private readonly FakeWebPushSender _push = new();
     private readonly Guid _userId = Guid.NewGuid();
     private Guid _calendarId;
 
@@ -58,7 +59,8 @@ public sealed class ReminderDispatchTests : IDisposable
         new(new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
             _clock, NullLogger<ReminderDispatchJob>.Instance);
 
-    private async Task<CalendarEvent> AddEventAsync(DateTime startUtc, int minutesBefore, string? rrule = null)
+    private async Task<CalendarEvent> AddEventAsync(
+        DateTime startUtc, int minutesBefore, string? rrule = null, ReminderChannel channel = ReminderChannel.Email)
     {
         var ev = new CalendarEvent
         {
@@ -71,7 +73,7 @@ public sealed class ReminderDispatchTests : IDisposable
             RRule = rrule,
             TimeZoneId = "UTC",
             CreatedAt = startUtc,
-            Reminders = [new Reminder { Id = Guid.NewGuid(), MinutesBefore = minutesBefore, Channel = ReminderChannel.Email }],
+            Reminders = [new Reminder { Id = Guid.NewGuid(), MinutesBefore = minutesBefore, Channel = channel }],
         };
         _db.Events.Add(ev);
         await _db.SaveChangesAsync();
@@ -84,7 +86,7 @@ public sealed class ReminderDispatchTests : IDisposable
         // 09:00 start, 60 min lead → triggers at 08:00, which is now.
         await AddEventAsync(new DateTime(2026, 9, 1, 9, 0, 0), minutesBefore: 60);
 
-        await Job().RunAsync(_db, _mail);
+        await Job().RunAsync(_db, _mail, _push);
 
         var (userId, message) = Assert.Single(_mail.Sent);
         Assert.Equal(_userId, userId);
@@ -98,7 +100,7 @@ public sealed class ReminderDispatchTests : IDisposable
         // 10:00 start, 60 min lead → triggers at 09:00, an hour after now.
         await AddEventAsync(new DateTime(2026, 9, 1, 10, 0, 0), minutesBefore: 60);
 
-        await Job().RunAsync(_db, _mail);
+        await Job().RunAsync(_db, _mail, _push);
 
         Assert.Empty(_mail.Sent);
     }
@@ -109,7 +111,7 @@ public sealed class ReminderDispatchTests : IDisposable
         // Triggered yesterday; the lookback window is 90 seconds, not a day.
         await AddEventAsync(new DateTime(2026, 8, 31, 9, 0, 0), minutesBefore: 60);
 
-        await Job().RunAsync(_db, _mail);
+        await Job().RunAsync(_db, _mail, _push);
 
         Assert.Empty(_mail.Sent);
     }
@@ -119,8 +121,8 @@ public sealed class ReminderDispatchTests : IDisposable
     {
         await AddEventAsync(new DateTime(2026, 9, 1, 9, 0, 0), minutesBefore: 60);
 
-        await Job().RunAsync(_db, _mail);
-        await Job().RunAsync(_db, _mail); // a second tick inside the same lookback window
+        await Job().RunAsync(_db, _mail, _push);
+        await Job().RunAsync(_db, _mail, _push); // a second tick inside the same lookback window
 
         Assert.Single(_mail.Sent);
         Assert.Equal(1, await _db.NotificationLogs.CountAsync());
@@ -132,7 +134,7 @@ public sealed class ReminderDispatchTests : IDisposable
         // Series started weeks ago; today's occurrence is the one coming due.
         await AddEventAsync(new DateTime(2026, 8, 1, 9, 0, 0), minutesBefore: 60, rrule: "FREQ=DAILY");
 
-        await Job().RunAsync(_db, _mail);
+        await Job().RunAsync(_db, _mail, _push);
 
         Assert.Single(_mail.Sent);
     }
@@ -144,7 +146,7 @@ public sealed class ReminderDispatchTests : IDisposable
         // which is what the query's horizon is for.
         await AddEventAsync(new DateTime(2026, 9, 8, 8, 0, 0), minutesBefore: 60 * 24 * 7);
 
-        await Job().RunAsync(_db, _mail);
+        await Job().RunAsync(_db, _mail, _push);
 
         Assert.Single(_mail.Sent);
     }
@@ -155,9 +157,62 @@ public sealed class ReminderDispatchTests : IDisposable
         _mail.HasAccount = false;
         await AddEventAsync(new DateTime(2026, 9, 1, 9, 0, 0), minutesBefore: 60);
 
-        await Job().RunAsync(_db, _mail);
+        await Job().RunAsync(_db, _mail, _push);
 
         Assert.Empty(_mail.Sent);
         Assert.Equal(1, await _db.NotificationLogs.CountAsync()); // not retried forever
+    }
+
+    [Fact]
+    public async Task WebPushReminder_PushesToTheOwnersSubscription_NotEmail()
+    {
+        AddSubscription("https://push.example/abc");
+        await AddEventAsync(new DateTime(2026, 9, 1, 9, 0, 0), minutesBefore: 60, channel: ReminderChannel.WebPush);
+
+        await Job().RunAsync(_db, _mail, _push);
+
+        var (sub, message) = Assert.Single(_push.Sent);
+        Assert.Equal("https://push.example/abc", sub.Endpoint);
+        Assert.Contains("Dentist", message.Title);
+        Assert.Empty(_mail.Sent); // a browser reminder never falls back to email
+    }
+
+    [Fact]
+    public async Task WebPushReminder_IsNotSentTwice()
+    {
+        AddSubscription("https://push.example/abc");
+        await AddEventAsync(new DateTime(2026, 9, 1, 9, 0, 0), minutesBefore: 60, channel: ReminderChannel.WebPush);
+
+        await Job().RunAsync(_db, _mail, _push);
+        await Job().RunAsync(_db, _mail, _push);
+
+        Assert.Single(_push.Sent);
+        Assert.Equal(1, await _db.NotificationLogs.CountAsync());
+    }
+
+    [Fact]
+    public async Task WebPushReminder_PrunesASubscriptionThePushServiceReportsGone()
+    {
+        AddSubscription("https://push.example/gone");
+        _push.ExpiredEndpoints.Add("https://push.example/gone");
+        await AddEventAsync(new DateTime(2026, 9, 1, 9, 0, 0), minutesBefore: 60, channel: ReminderChannel.WebPush);
+
+        await Job().RunAsync(_db, _mail, _push);
+
+        Assert.Empty(await _db.PushSubscriptions.ToListAsync());
+    }
+
+    private void AddSubscription(string endpoint)
+    {
+        _db.PushSubscriptions.Add(new PushSubscription
+        {
+            Id = Guid.NewGuid(),
+            UserId = _userId,
+            Endpoint = endpoint,
+            P256dh = "key",
+            Auth = "auth",
+            CreatedAtUtc = _clock.GetUtcNow().UtcDateTime,
+        });
+        _db.SaveChanges();
     }
 }

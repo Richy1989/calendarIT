@@ -4,6 +4,7 @@ import { getMailAccount } from './api/mailAccount'
 import { listCategories } from './api/categories'
 import DateTimeField from './components/DateTimeField'
 import { parseLocalValue, toLocalValue } from './lib/dates'
+import { ensurePushSubscribed } from './push/webPush'
 
 export type EventDraft = {
   id?: string
@@ -99,10 +100,31 @@ export default function EventModal({
     if (delta) setEnd(toLocalValue(new Date(parseLocalValue(end, allDay).getTime() + delta), allDay))
   }
 
+  const [pushHint, setPushHint] = useState<string | null>(null)
   const addReminder = () => setReminders((rs) => [...rs, { minutesBefore: 15, channel: 'Email' }])
   const removeReminder = (i: number) => setReminders((rs) => rs.filter((_, idx) => idx !== i))
   const setReminderOffset = (i: number, minutesBefore: number) =>
     setReminders((rs) => rs.map((r, idx) => (idx === i ? { ...r, minutesBefore } : r)))
+  // Switching a reminder to Browser needs this device subscribed first; if the user blocks the
+  // permission (or the browser can't), keep the row on Email rather than saving a channel that
+  // will never deliver.
+  const setReminderChannel = async (i: number, channel: string) => {
+    if (channel === 'WebPush') {
+      const result = await ensurePushSubscribed()
+      if (result !== 'subscribed') {
+        setPushHint(
+          result === 'denied'
+            ? 'Browser notifications are blocked — enable them in your browser settings, then try again.'
+            : result === 'unsupported'
+              ? "This browser can't show notifications."
+              : "Couldn't enable browser notifications. Please try again.",
+        )
+        return
+      }
+      setPushHint(null)
+    }
+    setReminders((rs) => rs.map((r, idx) => (idx === i ? { ...r, channel } : r)))
+  }
   const [description, setDescription] = useState(draft.description)
   const [attendees, setAttendees] = useState(draft.attendees)
   const [guestInput, setGuestInput] = useState('')
@@ -271,7 +293,15 @@ export default function EventModal({
                     </option>
                   ))}
                 </select>
-                <span className="reminder-via">email</span>
+                <select
+                  className="reminder-channel"
+                  value={r.channel}
+                  onChange={(e) => setReminderChannel(i, e.target.value)}
+                  aria-label="Reminder delivery"
+                >
+                  <option value="Email">Email</option>
+                  <option value="WebPush">Browser</option>
+                </select>
                 <button type="button" className="reminder-remove" onClick={() => removeReminder(i)} aria-label="Remove reminder">
                   ✕
                 </button>
@@ -280,6 +310,7 @@ export default function EventModal({
             <button type="button" className="reminder-add" onClick={addReminder}>
               ＋ Add reminder
             </button>
+            {pushHint && <p className="field-hint">{pushHint}</p>}
           </div>
         </div>
 

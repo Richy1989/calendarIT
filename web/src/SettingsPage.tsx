@@ -8,6 +8,7 @@ import { deleteMailAccount, getMailAccount, saveMailAccount, testMailAccount } f
 import { changePassword } from './api/password'
 import { useClock } from './clock'
 import { useWeekStart, type WeekStartPref } from './weekStart'
+import { disablePush, ensurePushSubscribed, isPushSupported, pushPermission } from './push/webPush'
 import Logo from './Logo'
 
 type Section = 'general' | 'calendars' | 'categories' | 'sync' | 'security' | 'email'
@@ -186,6 +187,69 @@ const WEEK_START_OPTIONS: readonly { label: string; value: WeekStartPref }[] = [
   { label: 'Sunday', value: 'sunday' },
   { label: 'Monday', value: 'monday' },
 ]
+
+/**
+ * Device-level browser-notification control. Turning it on registers this browser for Web Push;
+ * appointments then choose "Browser" as a reminder channel. Per-browser: each device the user
+ * wants notifications on enables it once here (or the first time they pick Browser on an event).
+ */
+function NotificationsCard() {
+  const supported = isPushSupported()
+  const [enabled, setEnabled] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!supported) return
+    navigator.serviceWorker
+      .getRegistration('/sw.js')
+      .then((r) => r?.pushManager.getSubscription())
+      .then((sub) => setEnabled(Boolean(sub)))
+      .catch(() => {})
+  }, [supported])
+
+  const toggle = async (on: boolean) => {
+    setBusy(true)
+    setNotice(null)
+    try {
+      if (on) {
+        const result = await ensurePushSubscribed()
+        setEnabled(result === 'subscribed')
+        if (result === 'denied') setNotice('Blocked. Allow notifications for this site in your browser settings.')
+        else if (result !== 'subscribed') setNotice("Couldn't enable browser notifications.")
+      } else {
+        await disablePush()
+        setEnabled(false)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="settings-card">
+      <h2>Browser notifications</h2>
+      <p className="settings-sub">
+        Get reminders as desktop/phone notifications on this device, even when CalendarIT isn’t open.
+        Choose “Browser” on an appointment’s reminder to use it.
+      </p>
+      {supported ? (
+        <>
+          <label className="toggle">
+            <input type="checkbox" checked={enabled} disabled={busy} onChange={(e) => toggle(e.target.checked)} />
+            <span>Enable notifications on this device</span>
+          </label>
+          {notice && <p className="settings-hint">{notice}</p>}
+          {pushPermission() === 'denied' && !notice && (
+            <p className="settings-hint">Notifications are blocked in your browser settings for this site.</p>
+          )}
+        </>
+      ) : (
+        <p className="settings-hint">This browser doesn’t support notifications (or the site isn’t on a secure origin).</p>
+      )}
+    </div>
+  )
+}
 
 function GeneralSection() {
   const queryClient = useQueryClient()
@@ -374,6 +438,8 @@ function GeneralSection() {
           : 'Applies to the calendar grid and the date picker.'}
       </p>
     </div>
+
+    <NotificationsCard />
 
     <div className="settings-card">
       <h2>Import &amp; export</h2>

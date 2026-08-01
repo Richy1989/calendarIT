@@ -1,3 +1,4 @@
+using CalendarIT.Application.Notifications;
 using CalendarIT.Domain;
 using CalendarIT.Infrastructure.Calendars;
 using CalendarIT.Infrastructure.Mail;
@@ -30,6 +31,7 @@ public sealed class ReminderDispatchJob(
         await RunAsync(
             scope.ServiceProvider.GetRequiredService<AppDbContext>(),
             scope.ServiceProvider.GetRequiredService<IUserMailSender>(),
+            scope.ServiceProvider.GetRequiredService<IWebPushSender>(),
             context.CancellationToken);
     }
 
@@ -37,7 +39,7 @@ public sealed class ReminderDispatchJob(
     /// One dispatch pass, against an already-resolved scope. Separate from <see cref="Execute"/>
     /// so the window arithmetic and the dedup can be tested without standing up Quartz.
     /// </summary>
-    public async Task RunAsync(AppDbContext db, IUserMailSender mail, CancellationToken cancellationToken = default)
+    public async Task RunAsync(AppDbContext db, IUserMailSender mail, IWebPushSender push, CancellationToken cancellationToken = default)
     {
         var now = Truncate(timeProvider.GetUtcNow().UtcDateTime);
         var windowStart = now - Lookback;
@@ -93,6 +95,13 @@ public sealed class ReminderDispatchJob(
             .Where(u => ownerIds.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => u.Email, cancellationToken);
 
+        // Browser push targets, grouped by owner: one owner may have several (one per browser).
+        var subsByOwner = (await db.PushSubscriptions
+                .Where(s => ownerIds.Contains(s.UserId))
+                .ToListAsync(cancellationToken))
+            .GroupBy(s => s.UserId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         foreach (var (reminder, occStart) in due)
         {
             if (!sent.Add((reminder.Id, occStart)))
@@ -102,7 +111,9 @@ public sealed class ReminderDispatchJob(
 
             var ev = reminder.Event!;
             var ownerUserId = ev.Calendar!.OwnerUserId;
-            await DispatchAsync(reminder, ev, occStart, ownerUserId, emailByOwner.GetValueOrDefault(ownerUserId), mail, cancellationToken);
+            await DispatchAsync(
+                reminder, ev, occStart, ownerUserId, emailByOwner.GetValueOrDefault(ownerUserId),
+                subsByOwner.GetValueOrDefault(ownerUserId), mail, push, db, cancellationToken);
 
             // Recorded one at a time, right after sending: a failure later in the batch must not
             // roll back the record of what already went out, or those reminders send twice.
@@ -141,11 +152,12 @@ public sealed class ReminderDispatchJob(
 
     private async Task DispatchAsync(
         Reminder reminder, CalendarEvent ev, DateTime occStartUtc, Guid ownerUserId, string? ownerEmail,
-        IUserMailSender mail, CancellationToken cancellationToken)
+        List<PushSubscription>? subscriptions, IUserMailSender mail, IWebPushSender push, AppDbContext db,
+        CancellationToken cancellationToken)
     {
         if (reminder.Channel == ReminderChannel.WebPush)
         {
-            logger.LogInformation("Web Push reminder for {EventId} @ {Occurrence:o} — delivery lands in Phase 5b", ev.Id, occStartUtc);
+            await DispatchWebPushAsync(reminder, ev, occStartUtc, subscriptions, push, db, cancellationToken);
             return;
         }
 
@@ -179,6 +191,46 @@ public sealed class ReminderDispatchJob(
             logger.LogInformation(
                 "[reminder:no-mail-account] user {UserId} has no connected mail account; reminder for {EventId} not sent. To={Email} Subject={Subject}",
                 ownerUserId, ev.Id, ownerEmail, subject);
+        }
+    }
+
+    private async Task DispatchWebPushAsync(
+        Reminder reminder, CalendarEvent ev, DateTime occStartUtc, List<PushSubscription>? subscriptions,
+        IWebPushSender push, AppDbContext db, CancellationToken cancellationToken)
+    {
+        if (!push.IsConfigured)
+        {
+            logger.LogInformation(
+                "[reminder:no-vapid] Web Push reminder for {EventId} not sent: VAPID keys are not configured", ev.Id);
+            return;
+        }
+
+        if (subscriptions is not { Count: > 0 })
+        {
+            logger.LogInformation(
+                "[reminder:no-push-subscription] no browser subscriptions for event {EventId}; reminder not sent", ev.Id);
+            return;
+        }
+
+        var localStart = FormatLocal(occStartUtc, ev.TimeZoneId);
+        var body = $"Starts at {localStart}." +
+                   (string.IsNullOrWhiteSpace(ev.Location) ? "" : $"\nLocation: {ev.Location}");
+        // Same tag for every browser + this occurrence, so a second device doesn't stack a duplicate.
+        var message = new PushMessage($"Reminder: {ev.Title}", body, Url: "/", Tag: $"{reminder.Id}:{occStartUtc:O}");
+
+        foreach (var sub in subscriptions)
+        {
+            var result = await push.SendAsync(sub, message, cancellationToken);
+            switch (result)
+            {
+                case PushSendResult.Sent:
+                    logger.LogInformation("Sent WebPush reminder for {EventId} @ {Occurrence:o}", ev.Id, occStartUtc);
+                    break;
+                case PushSendResult.Expired:
+                    // Gone for good — drop it so we stop trying. Persisted with the NotificationLog write.
+                    db.PushSubscriptions.Remove(sub);
+                    break;
+            }
         }
     }
 

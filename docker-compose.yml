@@ -54,6 +54,12 @@ services:
       # The address reset links point at. Never derived from the request (Host is a header
       # anyone can set), so without this, reset emails aren't sent at all.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      # Browser notifications (Web Push). Optional: unset, a key pair is generated on first
+      # start and persisted to the appdata volume (vapid.json), so it survives restarts. Set
+      # both to pin keys across separate deployments.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@calendarit.local}
       # No SMTP settings: email (invitations + reminders) is sent through each user's own
       # mail account, connected in-app under Settings → Email.
     networks:

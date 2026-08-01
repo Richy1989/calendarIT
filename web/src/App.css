@@ -1097,6 +1097,12 @@ input[aria-invalid='true']:focus-visible {
   min-width: 0;
 }
 
+/* The channel picker stays compact; the offset picker takes the remaining width. */
+.reminder-row select.reminder-channel {
+  flex: 0 0 auto;
+  width: auto;
+}
+
 .reminder-via {
   font-family: var(--font-mono);
   font-size: 0.66rem;

@@ -4,6 +4,7 @@ using CalendarIT.Infrastructure.Auth;
 using CalendarIT.Infrastructure.Calendars;
 using CalendarIT.Infrastructure.Identity;
 using CalendarIT.Application.Mail;
+using CalendarIT.Application.Notifications;
 using CalendarIT.Application.Profile;
 using CalendarIT.Infrastructure.Mail;
 using CalendarIT.Infrastructure.Notifications;
@@ -29,6 +30,11 @@ public static class DependencyInjection
     {
         var dbOptions = ReadDatabaseOptions(configuration);
         services.AddSingleton(Options.Create(dbOptions));
+
+        // VAPID keys for browser Web Push — read from env, else generated once under AppDataPath.
+        // Built eagerly (does file IO once) so both the sender and the subscribe endpoint share it.
+        services.AddSingleton(new VapidKeyStore(configuration, dbOptions));
+
         services.AddSingleton(Options.Create(ReadJwtOptions(configuration)));
         services.AddSingleton(Options.Create(new AuthOptions
         {
@@ -91,6 +97,10 @@ public static class DependencyInjection
         services.AddScoped<IIncomingInvitationService, IncomingInvitationService>();
         services.AddScoped<IUserMailSender, UserMailSender>();
         services.AddScoped<IPasswordResetMailer, PasswordResetMailer>();
+
+        // Browser Web Push: a reusable, thread-safe sender (singleton) and a per-request store.
+        services.AddSingleton<IWebPushSender, WebPushSender>();
+        services.AddScoped<IPushSubscriptionService, PushSubscriptionService>();
 
         AddBackgroundJobs(services);
 

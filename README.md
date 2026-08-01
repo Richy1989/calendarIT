@@ -40,7 +40,7 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
 - 🗂️ **Multiple calendars** — split Personal from Work, toggle which are shown, move
   events between them; each syncs as its own calendar over CalDAV.
 - 🔁 **Recurring events** — repeat rules with exceptions (RRULE).
-- ⏰ **Reminders** — by email (browser Web Push is in progress).
+- ⏰ **Reminders** — by email or browser notification (Web Push), set per appointment.
 - 🌍 **Time zones** — stored correctly, displayed in yours, DST-safe.
 - 🎨 **Categories** — named colors (Work, Family, …) managed in Settings; recolor a
   category and every appointment in it follows. Syncs via the iCalendar `CATEGORIES` +
@@ -122,7 +122,8 @@ Everything is set through environment variables (12-factor):
 | `AUTH_RATE_LIMIT_PER_MINUTE`              | Auth requests allowed per client IP per minute. Default `20` |
 | `FORWARDED_PROXY_HOPS`                    | How many `X-Forwarded-For` hops to trust. Default `1` — see below |
 | `Serilog__MinimumLevel__Default`          | Log level (console-only, to stdout). Default `Information` |
-| `VAPID_*`                                 | Web Push reminders (planned)                     |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`  | Web Push signing keys. **Optional** — auto-generated and persisted under `APPDATA_PATH` if unset. Set both to pin them across deployments |
+| `VAPID_SUBJECT`                           | Contact URI in push messages, e.g. `mailto:admin@example.com`. Default `mailto:admin@calendarit.local` |
 
 > **Set `PUBLIC_BASE_URL` if you want self-service password reset.** The address in a reset
 > link is deliberately never read from the request: `Host` is just a header, and the
@@ -191,7 +192,8 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
   occurrence or the whole series (editing a single occurrence is still on the list)
 - ✅ iCal (.ics) import / export — round-trips title, time + zone, all-day, color, RRULE;
   export a selection of calendars, import into a chosen or new calendar
-- ✅ Reminders — **email** via a Quartz.NET job (recurrence-aware, timezone-correct, dedup)
+- ✅ Reminders — **email** and **browser notifications (Web Push)** via a Quartz.NET job
+  (recurrence-aware, timezone-correct, dedup); the channel is chosen per reminder on the event
 - ✅ CalDAV server — two-way sync with standard clients: discovery, ETags/CTag,
   calendar-query/multiget, create/edit/delete (no RFC 6578 sync-tokens yet — clients
   fall back to CTag polling; reminders don't map to VALARM yet)
@@ -199,7 +201,6 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
   toggles, each exposed as its own CalDAV collection
 - ✅ Categories — events take their color from a named category (managed in Settings);
   existing per-event colors were auto-migrated into categories on first startup
-- 🚧 Web Push reminders (VAPID + service worker)
 - ✅ Inviting guests — connect your own email account (Settings → Email, password stored
   encrypted), add guests to an event, and they get a standard iMIP invite with Accept/Decline
   in their calendar; updates and cancellations are mailed too. **Guest replies now sync back**:
