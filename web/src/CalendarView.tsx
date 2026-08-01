@@ -288,6 +288,7 @@ export default function CalendarView({
   const [selectedDate, setSelectedDate] = useState<string>(() => dayKey(new Date()))
   const lastClick = useRef<{ dateStr: string; time: number } | null>(null)
   const calendarRef = useRef<FullCalendar>(null)
+  const fcHostRef = useRef<HTMLDivElement>(null)
   const lastView = useRef<string | null>(null)
   const appliedServerView = useRef(false)
   const suppressPersist = useRef(false)
@@ -384,6 +385,54 @@ export default function CalendarView({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [draft, menu, yearPop, calPop, catPop, agendaMode])
+
+  // Touch swipe: on phones/tablets a horizontal flick over the grid pages prev/next, the same
+  // as the toolbar arrows and the desktop Left/Right keys. We never preventDefault, so vertical
+  // scrolling in week/day views is untouched — only a clearly-horizontal, quick flick pages.
+  useEffect(() => {
+    const host = fcHostRef.current
+    if (!host) return
+
+    let startX = 0
+    let startY = 0
+    let startT = 0
+    let tracking = false
+
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) { tracking = false; return } // ignore pinch / multi-touch
+      startX = e.touches[0].clientX
+      startY = e.touches[0].clientY
+      startT = Date.now()
+      tracking = true
+    }
+    const onMove = (e: TouchEvent) => {
+      if (e.touches.length > 1) tracking = false // became a pinch mid-gesture
+    }
+    const onEnd = (e: TouchEvent) => {
+      if (!tracking) return
+      tracking = false
+      if (agendaMode || draft) return // the list has no pages; don't page behind the editor
+      const t = e.changedTouches[0]
+      const dx = t.clientX - startX
+      const dy = t.clientY - startY
+      if (Date.now() - startT > 600) return // slow = a scroll or long-press drag, not a flick
+      if (Math.abs(dx) < 60) return // too short to be a deliberate swipe
+      if (Math.abs(dx) < Math.abs(dy) * 1.5) return // too vertical — leave scrolling alone
+      const api = calendarRef.current?.getApi()
+      if (!api) return
+      if (dx < 0) api.next() // swipe left → forward in time
+      else api.prev() // swipe right → back
+    }
+
+    host.addEventListener('touchstart', onStart, { passive: true })
+    host.addEventListener('touchmove', onMove, { passive: true })
+    host.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      host.removeEventListener('touchstart', onStart)
+      host.removeEventListener('touchmove', onMove)
+      host.removeEventListener('touchend', onEnd)
+    }
+  }, [agendaMode, draft])
 
   // Popover openers, shared by the FullCalendar toolbar buttons and the agenda toolbar.
   const openCalPop = (rect: DOMRect) => {
@@ -731,7 +780,7 @@ export default function CalendarView({
 
   return (
     <>
-      <div className="calendar-fc-host" style={agendaMode ? { display: 'none' } : undefined}>
+      <div className="calendar-fc-host" ref={fcHostRef} style={agendaMode ? { display: 'none' } : undefined}>
       <FullCalendar
         ref={calendarRef}
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
