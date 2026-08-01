@@ -441,8 +441,11 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
      all-day `VALUE=DATE`, `RRULE`, `UID`, and **COLOR** (hex → nearest CSS3 name on
      export via `CssColorMap`, name → hex on import). Frontend: Export downloads the
      `.ics`; Import uploads a file and refetches. Verified round-trip incl. re-import dedup.
+   - ✅ **VALARM ↔ reminders** both ways: export/PUT emit a `DISPLAY` alarm per reminder
+     (`TRIGGER:-PTnM`, channel preserved in `X-CALENDARIT-CHANNEL`); import/PUT read alarms
+     back into `Reminder` rows. A PUT with no VALARM leaves existing reminders intact.
    - ⬜ *Deferred:* reading **EXDATE back on import** (export writes it; Ical.Net v5's
-     `ExceptionDates` shape needs extra plumbing) and multi-VALARM/attendee mapping.
+     `ExceptionDates` shape needs extra plumbing) and attendee mapping.
 5. **Reminders** — Quartz.NET jobs, email (via each user's connected mail account), Web Push (VAPID), reminder UI.
    - ✅ *Done (5a — email):* `Reminder` (per event, `MinutesBefore` + `Channel`) and
      `NotificationLog` (unique on ReminderId+occurrence → idempotent) entities; migrations
@@ -457,7 +460,8 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
    - ✅ *Done:* hand-rolled `CalendarIT.CalDav` (see §9.1) — discovery, ETags/CTag,
      calendar-query (time-range honoured server-side) / calendar-multiget, GET/PUT/DELETE.
      Auth is Basic against the web login's own credentials, not app passwords (§9.2).
-   - ⬜ *Deferred:* RFC 6578 sync-collection; reminders don't map to VALARM.
+   - ✅ Reminders sync as **VALARM** both directions (see §4 phase 4 note).
+   - ⬜ *Deferred:* RFC 6578 sync-collection.
 7. **Hardening & deploy** — sample compose, docs, env-var config, migrations on startup.
    - ✅ *Done:* single-container image (`deploy/Dockerfile`: nginx serving the SPA + reverse
      proxying the API, SQLite under `/data`), `docker-compose.yml` with Postgres, Unraid

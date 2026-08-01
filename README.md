@@ -195,8 +195,8 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Reminders — **email** and **browser notifications (Web Push)** via a Quartz.NET job
   (recurrence-aware, timezone-correct, dedup); the channel is chosen per reminder on the event
 - ✅ CalDAV server — two-way sync with standard clients: discovery, ETags/CTag,
-  calendar-query/multiget, create/edit/delete (no RFC 6578 sync-tokens yet — clients
-  fall back to CTag polling; reminders don't map to VALARM yet)
+  calendar-query/multiget, create/edit/delete, reminders as VALARM both ways (no RFC 6578
+  sync-tokens yet — clients fall back to CTag polling)
 - ✅ Multiple calendars — create/rename/delete in Settings, per-calendar visibility
   toggles, each exposed as its own CalDAV collection
 - ✅ Categories — events take their color from a named category (managed in Settings);

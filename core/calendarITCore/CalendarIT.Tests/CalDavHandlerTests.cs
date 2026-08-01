@@ -182,6 +182,91 @@ public sealed class CalDavHandlerTests : IDisposable
         Assert.Equal("#8FBC8F", updated.Color);
     }
 
+    private const string PutIcsWithAlarm =
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//DAVx5//Test//EN\r\nBEGIN:VEVENT\r\n" +
+        "UID:phone-1@test\r\nSUMMARY:From the phone\r\nDTSTART:20260901T100000Z\r\nDTEND:20260901T110000Z\r\n" +
+        "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:From the phone\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\n" +
+        "END:VEVENT\r\nEND:VCALENDAR\r\n";
+
+    [Fact]
+    public async Task Put_WithValarm_StoresReminder()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+
+        var ctx = Context(PutIcsWithAlarm);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        var stored = await _db.Events.Include(e => e.Reminders).SingleAsync(e => e.Uid == "phone-1@test");
+        var reminder = Assert.Single(stored.Reminders);
+        Assert.Equal(15, reminder.MinutesBefore);
+    }
+
+    [Fact]
+    public async Task Put_ValarmWithChannelProp_RoundTripsChannel()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+
+        var ics = PutIcsWithAlarm.Replace("TRIGGER:-PT15M\r\n", "TRIGGER:-PT15M\r\nX-CALENDARIT-CHANNEL:WebPush\r\n");
+        var ctx = Context(ics);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        var stored = await _db.Events.Include(e => e.Reminders).SingleAsync(e => e.Uid == "phone-1@test");
+        Assert.Equal(ReminderChannel.WebPush, Assert.Single(stored.Reminders).Channel);
+    }
+
+    [Fact]
+    public async Task Get_EmitsValarmForReminder()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        var ctx = Context(PutIcs);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+        var stored = await _db.Events.SingleAsync(e => e.Uid == "phone-1@test");
+        _db.Reminders.Add(new Reminder
+        {
+            Id = Guid.NewGuid(), EventId = stored.Id, MinutesBefore = 30, Channel = ReminderChannel.WebPush,
+        });
+        await _db.SaveChangesAsync();
+
+        var getCtx = Context();
+        var ics = await ExecuteAsync(await _handler.GetEvent(calId, "phone-1@test.ics", getCtx), getCtx);
+        Assert.Contains("BEGIN:VALARM", ics);
+        Assert.Contains("TRIGGER:-PT30M", ics);
+        Assert.Contains("X-CALENDARIT-CHANNEL:WebPush", ics);
+    }
+
+    [Fact]
+    public async Task Put_WithoutValarm_PreservesExistingReminders()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+
+        var ctx = Context(PutIcsWithAlarm);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        // A later edit whose ICS carries no VALARM (a client that doesn't manage alarms) must not
+        // wipe the reminder — the same caution the COLOR/EXDATE handling takes.
+        ctx = Context(PutIcs.Replace("From the phone", "Edited on the phone"));
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        var stored = await _db.Events.Include(e => e.Reminders).SingleAsync(e => e.Uid == "phone-1@test");
+        Assert.Single(stored.Reminders);
+    }
+
+    [Fact]
+    public async Task Put_WithValarms_ReplacesExistingReminders()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+
+        var ctx = Context(PutIcsWithAlarm); // 15-minute reminder
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        // A phone edit that changes the alarm to 1 hour should replace, not accumulate.
+        ctx = Context(PutIcsWithAlarm.Replace("TRIGGER:-PT15M", "TRIGGER:-PT1H"));
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        var stored = await _db.Events.Include(e => e.Reminders).SingleAsync(e => e.Uid == "phone-1@test");
+        Assert.Equal(60, Assert.Single(stored.Reminders).MinutesBefore);
+    }
+
     [Fact]
     public async Task Put_WithColor_SnapsToNearestCategory()
     {

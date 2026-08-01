@@ -178,7 +178,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
                 .Where(u => u is not null)
                 .Cast<string>()
                 .ToList();
-            events = await db.Events.AsNoTracking().Include(e => e.Category)
+            events = await db.Events.AsNoTracking().Include(e => e.Category).Include(e => e.Reminders)
                 .Where(e => e.CalendarId == cal.Id && uids.Contains(e.Uid))
                 .ToListAsync(ctx.RequestAborted);
 
@@ -198,7 +198,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             // meant the response grew with the account's whole history rather than the window.
             var (rangeStart, rangeEnd) = ReadTimeRange(body);
 
-            var query = db.Events.AsNoTracking().Include(e => e.Category)
+            var query = db.Events.AsNoTracking().Include(e => e.Category).Include(e => e.Reminders)
                 .Where(e => e.CalendarId == cal.Id);
             if (rangeEnd is { } end)
             {
@@ -289,7 +289,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         var ifMatch = ctx.Request.Headers.IfMatch.ToString();
         var ifNoneMatch = ctx.Request.Headers.IfNoneMatch.ToString();
 
-        var existing = await db.Events.FirstOrDefaultAsync(
+        var existing = await db.Events.Include(e => e.Reminders).FirstOrDefaultAsync(
             e => e.CalendarId == cal.Id && e.Uid == uid, ctx.RequestAborted);
 
         // For category resolution: an incoming CATEGORIES/COLOR is matched against the
@@ -305,6 +305,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
                 return Results.StatusCode(StatusCodes.Status412PreconditionFailed);
             }
             var created = ICalEventMapper.FromICalEvent(ve, cal.Id, uid, now, categories);
+            created.Reminders = ICalEventMapper.ReadReminders(ve); // sync the client's VALARMs in
             db.Events.Add(created);
             await db.SaveChangesAsync(ctx.RequestAborted);
             ctx.Response.Headers.ETag = ETagOf(created.UpdatedAt);
@@ -317,6 +318,19 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         }
 
         ICalEventMapper.Apply(ve, existing, now, categories);
+        // Two-way reminder sync: when the client sends VALARMs, they become the reminder set.
+        // When it sends none, keep what's there — many clients drop alarms they don't manage, and
+        // wiping the user's web-set reminders on every poll would be worse than not honouring a
+        // phone-side "delete last alarm". (Same caution the EXDATE handling takes.)
+        if (ve.Alarms.Count > 0)
+        {
+            db.Reminders.RemoveRange(existing.Reminders); // delete the old set outright…
+            foreach (var reminder in ICalEventMapper.ReadReminders(ve))
+            {
+                reminder.EventId = existing.Id; // …and insert the client's current alarms
+                db.Reminders.Add(reminder);
+            }
+        }
         await db.SaveChangesAsync(ctx.RequestAborted);
         ctx.Response.Headers.ETag = ETagOf(existing.UpdatedAt);
         return Results.StatusCode(StatusCodes.Status204NoContent);
@@ -390,7 +404,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         }
         var uid = Uri.UnescapeDataString(resource[..^4]);
         var query = track ? db.Events : db.Events.AsNoTracking();
-        return await query.Include(e => e.Category)
+        return await query.Include(e => e.Category).Include(e => e.Reminders)
             .FirstOrDefaultAsync(e => e.CalendarId == cal.Id && e.Uid == uid, ct);
     }
 

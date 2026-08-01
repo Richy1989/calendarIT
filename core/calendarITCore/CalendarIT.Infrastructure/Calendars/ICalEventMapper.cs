@@ -3,6 +3,7 @@ using CalendarIT.Domain;
 using Ical.Net.DataTypes;
 using Ical.Net.Serialization.DataTypes;
 using DomainEvent = CalendarIT.Domain.CalendarEvent;
+using ICalAlarm = Ical.Net.CalendarComponents.Alarm;
 using ICalEvent = Ical.Net.CalendarComponents.CalendarEvent;
 
 namespace CalendarIT.Infrastructure.Calendars;
@@ -15,6 +16,10 @@ namespace CalendarIT.Infrastructure.Calendars;
 /// </summary>
 public static class ICalEventMapper
 {
+    /// <summary>Non-standard property that carries our delivery channel through a VALARM
+    /// round-trip, so a reminder synced out and back keeps its Email/WebPush choice.</summary>
+    private const string ChannelProperty = "X-CALENDARIT-CHANNEL";
+
     public static ICalEvent ToICalEvent(DomainEvent e)
     {
         var ve = new ICalEvent
@@ -66,8 +71,83 @@ public static class ICalEventMapper
         {
             ve.AddProperty("CATEGORIES", e.Category.Name);
         }
+
+        // Reminders ride along as VALARMs so a synced client (a phone, say) shows them too.
+        // ACTION:DISPLAY is what clients reliably surface; our own channel is preserved in an
+        // X-property for a faithful round-trip. The server still sends its own copy regardless —
+        // syncing a device is additive, so the same reminder may alert on both. Callers must
+        // have the Reminders collection loaded.
+        foreach (var r in e.Reminders)
+        {
+            var alarm = new ICalAlarm
+            {
+                Action = "DISPLAY",
+                Description = string.IsNullOrWhiteSpace(e.Title) ? "Reminder" : e.Title,
+                Trigger = new Trigger(-Duration.FromMinutes(r.MinutesBefore)),
+            };
+            alarm.AddProperty(ChannelProperty, r.Channel.ToString());
+            ve.Alarms.Add(alarm);
+        }
         return ve;
     }
+
+    /// <summary>
+    /// Reads a VEVENT's VALARMs back into reminders — for CalDAV PUTs and .ics import. Only alarms
+    /// we can represent survive: a relative trigger at or before the start. Absolute triggers,
+    /// after-start triggers, and <c>RELATED=END</c> are dropped, since our model is strictly
+    /// "N minutes before start". The channel comes from our X-property when a faithful client
+    /// preserved it, otherwise defaults to Email.
+    /// </summary>
+    public static List<Reminder> ReadReminders(ICalEvent ve)
+    {
+        var reminders = new List<Reminder>();
+        foreach (var alarm in ve.Alarms)
+        {
+            if (TriggerMinutesBefore(alarm.Trigger) is not { } minutes)
+            {
+                continue;
+            }
+            reminders.Add(new Reminder
+            {
+                Id = Guid.NewGuid(),
+                MinutesBefore = minutes,
+                Channel = ParseChannel(alarm.Properties[ChannelProperty]?.Value?.ToString()),
+            });
+        }
+        return reminders;
+    }
+
+    /// <summary>Minutes-before-start for a VALARM trigger, or null when it can't be represented.</summary>
+    private static int? TriggerMinutesBefore(Trigger? trigger)
+    {
+        if (trigger?.Duration is not { } d)
+        {
+            return null; // absent, or an absolute DATE-TIME trigger
+        }
+        if (!string.IsNullOrEmpty(trigger.Related) &&
+            trigger.Related.Equals("END", StringComparison.OrdinalIgnoreCase))
+        {
+            return null; // relative to the event end, which we don't model
+        }
+        var signed = DurationToMinutes(d);
+        return signed > 0 ? null : -signed; // after-start is unrepresentable; before/at start → 0..N
+    }
+
+    /// <summary>Total minutes of an iCalendar duration, sign preserved. Robust to whichever way
+    /// Ical.Net signs the components (value or the separate <c>Sign</c>): abs magnitude × sign.</summary>
+    private static int DurationToMinutes(Duration d)
+    {
+        var magnitude =
+            Math.Abs(d.Weeks ?? 0) * 7 * 24 * 60 +
+            Math.Abs(d.Days ?? 0) * 24 * 60 +
+            Math.Abs(d.Hours ?? 0) * 60 +
+            Math.Abs(d.Minutes ?? 0) +
+            (int)Math.Round(Math.Abs(d.Seconds ?? 0) / 60.0);
+        return d.Sign < 0 ? -magnitude : magnitude;
+    }
+
+    private static ReminderChannel ParseChannel(string? raw) =>
+        Enum.TryParse<ReminderChannel>(raw, ignoreCase: true, out var c) ? c : ReminderChannel.Email;
 
     public static DomainEvent FromICalEvent(
         ICalEvent ve, Guid calendarId, string uid, DateTime now, IReadOnlyList<Category>? categories = null)

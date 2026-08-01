@@ -14,7 +14,7 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
     public async Task<string> ExportAsync(
         Guid userId, IReadOnlyCollection<Guid>? calendarIds = null, CancellationToken cancellationToken = default)
     {
-        var query = db.Events.AsNoTracking().Include(e => e.Category)
+        var query = db.Events.AsNoTracking().Include(e => e.Category).Include(e => e.Reminders)
             .Where(e => e.Calendar!.OwnerUserId == userId);
         if (calendarIds is { Count: > 0 })
         {
@@ -73,7 +73,9 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
             // A CATEGORIES name the user doesn't have yet becomes a new category, colored
             // from the incoming COLOR when present — so imports keep their grouping.
             EnsureCategoryExists(ve, userId, categories, now);
-            db.Events.Add(ICalEventMapper.FromICalEvent(ve, calendar.Id, uid, now, categories));
+            var ev = ICalEventMapper.FromICalEvent(ve, calendar.Id, uid, now, categories);
+            ev.Reminders = ICalEventMapper.ReadReminders(ve); // import VALARMs as reminders
+            db.Events.Add(ev);
             imported++;
         }
 
