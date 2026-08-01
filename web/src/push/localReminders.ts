@@ -35,6 +35,7 @@ async function pollOnce(): Promise<void> {
   if (getNotifyMode() !== 'local') return
   const now = Date.now()
   const items = await getDueReminders(sinceUtc)
+  if (items === null) return // fetch failed — keep sinceUtc so this window is retried next tick
   sinceUtc = new Date(now).toISOString()
 
   const { toShow, nextShown } = selectToShow(loadShown(now), items, now)
