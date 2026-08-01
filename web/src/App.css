@@ -2259,8 +2259,37 @@ input[aria-invalid='true']:focus-visible {
     padding: 0.32rem 0.55rem;
     font-size: 0.8rem;
   }
-  /* The footer's view-switch group stretches to fill the bar and space out. */
-  .calendar-shell .fc .fc-footer-toolbar .fc-button-group {
-    flex: 1;
+  /* Bottom bar on phones: stack the two chunks into clean, full-width rows instead of
+     letting them wrap and crowd to the left. The pickers share the top row, the view-switch
+     group fills the bottom one — each button taking an equal slice of the width. */
+  .calendar-shell .fc .fc-footer-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
+  }
+  /* FullCalendar always renders an (empty) center chunk; without this it'd add a blank row. */
+  .calendar-shell .fc .fc-footer-toolbar .fc-toolbar-chunk:empty {
+    display: none;
+  }
+  .calendar-shell .fc .fc-footer-toolbar .fc-toolbar-chunk {
+    display: flex;
+    width: 100%;
+    gap: 0.4rem;
+  }
+  /* Standalone picker buttons and the view-switch group each share their row evenly. */
+  .calendar-shell .fc .fc-footer-toolbar .fc-toolbar-chunk > .fc-button,
+  .calendar-shell .fc .fc-footer-toolbar .fc-toolbar-chunk > .fc-button-group {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  /* A long picker label ("All categories ▾") clips with an ellipsis rather than overflowing. */
+  .calendar-shell .fc .fc-footer-toolbar .fc-toolbar-chunk > .fc-button {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .calendar-shell .fc .fc-footer-toolbar .fc-button-group .fc-button {
+    flex: 1 1 0;
+    min-width: 0;
   }
 }
