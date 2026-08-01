@@ -5,6 +5,8 @@ import { getProfile } from './api/profile'
 import { getAuthConfig, requestPasswordReset, resetPassword } from './api/password'
 import { getVisibleCalendars, getVisibleCategories, saveVisibleCalendars, saveVisibleCategories } from './prefs'
 import { getTokens, setTokens, type AuthTokens } from './auth/authStorage'
+import { getNotifyMode } from './push/webPush'
+import { startLocalReminderPoller, stopLocalReminderPoller } from './push/localReminders'
 import CalendarView from './CalendarView'
 import { ClockProvider, useHour12 } from './clock'
 import { WeekStartProvider } from './weekStart'
@@ -60,6 +62,17 @@ export default function App() {
     window.addEventListener('auth-expired', onExpired)
     return () => window.removeEventListener('auth-expired', onExpired)
   }, [])
+
+  // While signed in on a browser that fell back to local notifications, poll for due reminders
+  // and show them. Push-mode browsers are served by the backend job and don't poll.
+  useEffect(() => {
+    if (!tokens || getNotifyMode() !== 'local') {
+      stopLocalReminderPoller()
+      return
+    }
+    startLocalReminderPoller()
+    return () => stopLocalReminderPoller()
+  }, [tokens])
 
   if (!tokens) {
     return <AuthGate onAuthenticated={persist} />
