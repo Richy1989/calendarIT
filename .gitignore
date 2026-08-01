@@ -14,7 +14,6 @@ artifacts/
 *.dll
 *.exe
 *.pdb
-skills-lock.json
 
 # --- .NET / Visual Studio user & IDE files ---
 .vs/
@@ -69,6 +68,11 @@ appdata/
 # matches the SQLite migrations PROJECT directory (…Migrations.Sqlite). Re-include the
 # directory node so git descends into it; bin/ and obj/ below still exclude build output.
 !**/*.Sqlite/
+
+# --- Agent skills / tooling (local, not shared) ---
+.agents/
+.claude/
+skills-lock.json
 
 # --- OS noise ---
 .DS_Store
