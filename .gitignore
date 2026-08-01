@@ -82,3 +82,6 @@ desktop.ini
 # --- Logs ---
 *.log
 logs/
+
+# Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
+.superpowers/
