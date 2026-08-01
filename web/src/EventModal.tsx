@@ -4,7 +4,8 @@ import { getMailAccount } from './api/mailAccount'
 import { listCategories } from './api/categories'
 import DateTimeField from './components/DateTimeField'
 import { parseLocalValue, toLocalValue } from './lib/dates'
-import { ensurePushSubscribed } from './push/webPush'
+import { enableNotifications } from './push/webPush'
+import { startLocalReminderPoller } from './push/localReminders'
 
 export type EventDraft = {
   id?: string
@@ -105,23 +106,29 @@ export default function EventModal({
   const removeReminder = (i: number) => setReminders((rs) => rs.filter((_, idx) => idx !== i))
   const setReminderOffset = (i: number, minutesBefore: number) =>
     setReminders((rs) => rs.map((r, idx) => (idx === i ? { ...r, minutesBefore } : r)))
-  // Switching a reminder to Browser needs this device subscribed first; if the user blocks the
-  // permission (or the browser can't), keep the row on Email rather than saving a channel that
-  // will never deliver.
+  // Switching a reminder to Browser needs notifications enabled on this device first. This tries
+  // real Web Push, and on a browser that can't subscribe (e.g. Brave with Google services off)
+  // falls back to local mode — notifications shown while CalendarIT is open. Only if the user
+  // blocks the permission (or the browser can't notify at all) do we keep the row on Email.
   const setReminderChannel = async (i: number, channel: string) => {
     if (channel === 'WebPush') {
-      const result = await ensurePushSubscribed()
-      if (result !== 'subscribed') {
+      const result = await enableNotifications()
+      if (result === 'denied' || result === 'unsupported') {
         setPushHint(
           result === 'denied'
             ? 'Browser notifications are blocked — enable them in your browser settings, then try again.'
-            : result === 'unsupported'
-              ? "This browser can't show notifications."
-              : "Couldn't enable browser notifications. Please try again.",
+            : "This browser can't show notifications.",
         )
         return
       }
-      setPushHint(null)
+      // 'push' or 'local' — the reminder can be delivered. In local mode this device only shows
+      // notifications while CalendarIT is open, so start the poller now and say so.
+      if (result === 'local') {
+        startLocalReminderPoller()
+        setPushHint('This browser will show reminders while CalendarIT is open in a tab or installed as an app.')
+      } else {
+        setPushHint(null)
+      }
     }
     setReminders((rs) => rs.map((r, idx) => (idx === i ? { ...r, channel } : r)))
   }
