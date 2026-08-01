@@ -78,39 +78,20 @@ cp .env.example .env
 # set JWT_SIGNING_KEY (min 32 chars), e.g. openssl rand -base64 48
 ```
 
-A minimal `docker-compose.yml` (the repo ships a fuller, commented version with network
-isolation for Postgres):
+A minimal `docker-compose.yml` — one container on the built-in SQLite database, no separate DB
+needed (the repo ships a fuller, commented version that uses PostgreSQL):
 
 ```yaml
 services:
-  db:
-    image: postgres:17
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-calendarit}
-      POSTGRES_USER: ${POSTGRES_USER:-calendarit}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-calendarit} -d ${POSTGRES_DB:-calendarit}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   app:
     build: .                       # or an image you've built/pushed
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
     environment:
-      DATABASE_PROVIDER: Postgres
-      POSTGRES_CONNECTION: "Host=db;Port=5432;Database=${POSTGRES_DB:-calendarit};Username=${POSTGRES_USER:-calendarit};Password=${POSTGRES_PASSWORD:-changeme}"
-      APPDATA_PATH: /appdata
-      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}      # optional — required only for password-reset emails
-      FORWARDED_PROXY_HOPS: ${FORWARDED_PROXY_HOPS:-1}   # optional (default 1)
+      # DATABASE_PROVIDER defaults to Sqlite — no separate database service required.
+      APPDATA_PATH: /appdata       # SQLite file, avatars, and auto-generated keys live here
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env}   # required — min 32 chars
+      # Optional extras (see the Configuration table below): DISABLE_REGISTRATION,
+      # PUBLIC_BASE_URL (for password-reset emails), FORWARDED_PROXY_HOPS, VAPID_*, …
     volumes:
       - appdata:/appdata
     # The app serves plain HTTP on :8080 and is deliberately NOT published to the host — put a
@@ -119,7 +100,6 @@ services:
     #   ports: ["127.0.0.1:8080:8080"]
 
 volumes:
-  pgdata:
   appdata:
 ```
 
