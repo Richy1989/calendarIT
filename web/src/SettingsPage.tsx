@@ -8,7 +8,11 @@ import { deleteMailAccount, getMailAccount, saveMailAccount, testMailAccount } f
 import { changePassword } from './api/password'
 import { useClock } from './clock'
 import { useWeekStart, type WeekStartPref } from './weekStart'
-import { disablePush, ensurePushSubscribed, isPushSupported, pushPermission } from './push/webPush'
+import {
+  disableNotifications, enableNotifications, getNotifyMode, isLocalNotifySupported,
+  pushPermission, type NotifyMode,
+} from './push/webPush'
+import { startLocalReminderPoller, stopLocalReminderPoller } from './push/localReminders'
 import Logo from './Logo'
 
 type Section = 'general' | 'calendars' | 'categories' | 'sync' | 'security' | 'email' | 'about'
@@ -194,37 +198,42 @@ const WEEK_START_OPTIONS: readonly { label: string; value: WeekStartPref }[] = [
 ]
 
 /**
- * Device-level browser-notification control. Turning it on registers this browser for Web Push;
- * appointments then choose "Browser" as a reminder channel. Per-browser: each device the user
- * wants notifications on enables it once here (or the first time they pick Browser on an event).
+ * Device-level notification control. Enabling tries real Web Push (delivers when the app is
+ * closed); on a browser that can't subscribe (e.g. Brave with Google services off) it falls back
+ * to local notifications that fire while CalendarIT is open. Per-browser.
  */
 function NotificationsCard() {
-  const supported = isPushSupported()
-  const [enabled, setEnabled] = useState(false)
+  const supported = isLocalNotifySupported()
+  const [mode, setMode] = useState<NotifyMode | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!supported) return
-    navigator.serviceWorker
-      .getRegistration('/sw.js')
-      .then((r) => r?.pushManager.getSubscription())
-      .then((sub) => setEnabled(Boolean(sub)))
-      .catch(() => {})
-  }, [supported])
+    setMode(getNotifyMode())
+  }, [])
+
+  const enabled = mode !== null
 
   const toggle = async (on: boolean) => {
     setBusy(true)
     setNotice(null)
     try {
       if (on) {
-        const result = await ensurePushSubscribed()
-        setEnabled(result === 'subscribed')
-        if (result === 'denied') setNotice('Blocked. Allow notifications for this site in your browser settings.')
-        else if (result !== 'subscribed') setNotice("Couldn't enable browser notifications.")
+        const result = await enableNotifications()
+        if (result === 'denied') {
+          setNotice('Blocked. Allow notifications for this site in your browser settings.')
+          setMode(null)
+        } else if (result === 'unsupported') {
+          setNotice("This browser can't show notifications.")
+          setMode(null)
+        } else {
+          setMode(result)
+          if (result === 'local') startLocalReminderPoller()
+        }
       } else {
-        await disablePush()
-        setEnabled(false)
+        await disableNotifications()
+        stopLocalReminderPoller()
+        setMode(null)
       }
     } finally {
       setBusy(false)
@@ -235,8 +244,8 @@ function NotificationsCard() {
     <div className="settings-card">
       <h2>Browser notifications</h2>
       <p className="settings-sub">
-        Get reminders as desktop/phone notifications on this device, even when CalendarIT isn’t open.
-        Choose “Browser” on an appointment’s reminder to use it.
+        Get reminders as desktop/phone notifications on this device. Choose “Browser” on an
+        appointment’s reminder to use it.
       </p>
       {supported ? (
         <>
@@ -244,6 +253,15 @@ function NotificationsCard() {
             <input type="checkbox" checked={enabled} disabled={busy} onChange={(e) => toggle(e.target.checked)} />
             <span>Enable notifications on this device</span>
           </label>
+          {enabled && mode === 'local' && (
+            <p className="settings-hint">
+              This browser doesn’t support background push (or it’s turned off), so notifications
+              work while CalendarIT is open in a tab or installed as an app.
+            </p>
+          )}
+          {enabled && mode === 'push' && (
+            <p className="settings-hint">Notifications work even when CalendarIT isn’t open.</p>
+          )}
           {notice && <p className="settings-hint">{notice}</p>}
           {pushPermission() === 'denied' && !notice && (
             <p className="settings-hint">Notifications are blocked in your browser settings for this site.</p>
