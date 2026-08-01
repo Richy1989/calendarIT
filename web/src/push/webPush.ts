@@ -6,6 +6,40 @@ import { api } from '../api/client'
 
 export type PushEnableResult = 'subscribed' | 'denied' | 'unsupported' | 'error'
 
+export type NotifyMode = 'push' | 'local'
+
+/** Pure decision: given permission + push capability, which mode this device lands in. */
+export function decideNotifyMode(opts: {
+  permission: NotificationPermission
+  pushSupported: boolean
+  pushSubscribed: boolean
+}): NotifyMode | 'denied' {
+  if (opts.permission !== 'granted') return 'denied'
+  if (opts.pushSupported && opts.pushSubscribed) return 'push'
+  return 'local'
+}
+
+const NOTIFY_MODE_KEY = 'calendarit.notifyMode'
+
+/** The notification mode chosen on this browser, or null if notifications are off here. */
+export function getNotifyMode(): NotifyMode | null {
+  const v = localStorage.getItem(NOTIFY_MODE_KEY)
+  return v === 'push' || v === 'local' ? v : null
+}
+
+function setNotifyMode(mode: NotifyMode): void {
+  localStorage.setItem(NOTIFY_MODE_KEY, mode)
+}
+
+function clearNotifyMode(): void {
+  localStorage.removeItem(NOTIFY_MODE_KEY)
+}
+
+/** Whether this browser can show local notifications (service worker + Notification API). */
+export function isLocalNotifySupported(): boolean {
+  return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'Notification' in window
+}
+
 /** Whether this browser can do Web Push at all (Safari <16, http origins, etc. can't). */
 export function isPushSupported(): boolean {
   return (
@@ -90,4 +124,37 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const output = new Uint8Array(new ArrayBuffer(raw.length))
   for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i)
   return output
+}
+
+/**
+ * Enable notifications on this device. Tries real Web Push first (delivers when the app is closed);
+ * if the browser can't/won't subscribe but notification permission is granted, falls back to local
+ * mode (the app polls and shows notifications while open). Persists the resolved mode.
+ */
+export async function enableNotifications(): Promise<NotifyMode | 'denied' | 'unsupported'> {
+  if (!isLocalNotifySupported()) return 'unsupported'
+
+  const permission = await Notification.requestPermission()
+  if (permission !== 'granted') return 'denied'
+
+  let pushSubscribed = false
+  if (isPushSupported()) {
+    pushSubscribed = (await ensurePushSubscribed()) === 'subscribed'
+  }
+
+  const mode = decideNotifyMode({ permission, pushSupported: isPushSupported(), pushSubscribed })
+  if (mode === 'denied') return 'denied'
+
+  if (mode === 'local') {
+    // No push subscription, but we still need the service worker registered to show notifications.
+    await registerServiceWorker()
+  }
+  setNotifyMode(mode)
+  return mode
+}
+
+/** Turn notifications off on this device: drop any push subscription and clear the stored mode. */
+export async function disableNotifications(): Promise<void> {
+  clearNotifyMode()
+  await disablePush()
 }
