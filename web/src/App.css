@@ -503,6 +503,69 @@
   font-weight: 600;
 }
 
+/* About page: grouped library lists with a license pill per row */
+.lib-group {
+  margin-top: 1.4rem;
+}
+
+.lib-group:first-of-type {
+  margin-top: 0.4rem;
+}
+
+.lib-list {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lib-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.lib-row:last-child {
+  border-bottom: none;
+}
+
+.lib-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.lib-name:hover {
+  color: var(--accent);
+}
+
+.lib-name svg {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.lib-name:hover svg {
+  color: var(--accent);
+}
+
+.license-badge {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  background: var(--surface-3);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  white-space: nowrap;
+}
+
 .settings-foot {
   margin-top: 2.5rem;
   text-align: center;

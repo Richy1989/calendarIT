@@ -11,7 +11,7 @@ import { useWeekStart, type WeekStartPref } from './weekStart'
 import { disablePush, ensurePushSubscribed, isPushSupported, pushPermission } from './push/webPush'
 import Logo from './Logo'
 
-type Section = 'general' | 'calendars' | 'categories' | 'sync' | 'security' | 'email'
+type Section = 'general' | 'calendars' | 'categories' | 'sync' | 'security' | 'email' | 'about'
 
 /** Dedicated, full-page settings screen: sidebar nav + a content card per section. */
 export default function SettingsPage({
@@ -55,6 +55,9 @@ export default function SettingsPage({
           <button className={navClass(section === 'email')} onClick={() => setSection('email')}>
             <MailIcon /> Email
           </button>
+          <button className={navClass(section === 'about')} onClick={() => setSection('about')}>
+            <InfoIcon /> About
+          </button>
           <div className="settings-nav-divider" />
           <button className="settings-nav-item settings-signout" onClick={onLogout}>
             <SignOutIcon /> Sign out
@@ -72,6 +75,8 @@ export default function SettingsPage({
             <SyncSection />
           ) : section === 'email' ? (
             <EmailSection />
+          ) : section === 'about' ? (
+            <AboutSection />
           ) : (
             <SecuritySection onLogout={onLogout} />
           )}
@@ -1238,6 +1243,104 @@ function SyncSection() {
   )
 }
 
+/** A single third-party dependency shown on the About page. */
+type Library = { name: string; license: string; url: string }
+
+// Curated list of the *major* libraries CalendarIT is built on — hand-maintained, not generated,
+// so it stays to the handful that matter rather than every transitive dependency. Keep in sync
+// with web/package.json and the backend .csproj PackageReferences when a headline dep changes.
+const FRONTEND_LIBRARIES: readonly Library[] = [
+  { name: 'React', license: 'MIT', url: 'https://react.dev' },
+  { name: 'FullCalendar', license: 'MIT', url: 'https://fullcalendar.io' },
+  { name: 'TanStack Query', license: 'MIT', url: 'https://tanstack.com/query' },
+  { name: 'openapi-fetch', license: 'MIT', url: 'https://openapi-ts.dev/openapi-fetch/' },
+  { name: 'Vite', license: 'MIT', url: 'https://vite.dev' },
+  { name: 'Inter, JetBrains Mono & Space Grotesk (fonts)', license: 'SIL OFL 1.1', url: 'https://fontsource.org' },
+]
+
+const BACKEND_LIBRARIES: readonly Library[] = [
+  { name: '.NET / ASP.NET Core', license: 'MIT', url: 'https://dotnet.microsoft.com' },
+  { name: 'Entity Framework Core', license: 'MIT', url: 'https://learn.microsoft.com/ef/core/' },
+  { name: 'Npgsql (EF Core provider)', license: 'PostgreSQL', url: 'https://www.npgsql.org' },
+  {
+    name: 'ASP.NET Core Identity',
+    license: 'MIT',
+    url: 'https://learn.microsoft.com/aspnet/core/security/authentication/identity',
+  },
+  { name: 'Ical.Net', license: 'MIT', url: 'https://github.com/ical-org/ical.net' },
+  { name: 'Quartz.NET', license: 'Apache-2.0', url: 'https://www.quartz-scheduler.net' },
+  { name: 'MailKit', license: 'MIT', url: 'https://github.com/jstedfast/MailKit' },
+  { name: 'Serilog', license: 'Apache-2.0', url: 'https://serilog.net' },
+  { name: 'WebPush', license: 'MPL-2.0', url: 'https://github.com/web-push-libs/web-push-csharp' },
+]
+
+const REPO_URL = 'https://github.com/Richy1989/calendarIT'
+
+/** One dependency row: name on the left, license pill + outbound link on the right. */
+function LibraryRow({ lib }: { lib: Library }) {
+  return (
+    <li className="lib-row">
+      <a className="lib-name" href={lib.url} target="_blank" rel="noreferrer">
+        {lib.name}
+        <ExternalIcon />
+      </a>
+      <span className="license-badge">{lib.license}</span>
+    </li>
+  )
+}
+
+/** About: the project's own name/license plus the major open-source libraries it's built on. */
+function AboutSection() {
+  return (
+    <>
+      <div className="settings-card">
+        <h2>About CalendarIT</h2>
+        <p className="settings-sub">A self-hosted calendar.</p>
+
+        <div className="settings-rows">
+          <div className="settings-row">
+            <span className="settings-row-label">License</span>
+            <span className="settings-row-value">MIT License · © 2026 Richy Leopold</span>
+          </div>
+          <div className="settings-row">
+            <span className="settings-row-label">Source</span>
+            <a className="settings-row-value lib-name" href={REPO_URL} target="_blank" rel="noreferrer">
+              {REPO_URL.replace('https://', '')}
+              <ExternalIcon />
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <h2>Open-source libraries</h2>
+        <p className="settings-sub">
+          CalendarIT stands on excellent open-source work. These are the major libraries it's built on and
+          the licenses they're offered under.
+        </p>
+
+        <div className="lib-group">
+          <span className="eyebrow">Frontend</span>
+          <ul className="lib-list">
+            {FRONTEND_LIBRARIES.map((lib) => (
+              <LibraryRow key={lib.name} lib={lib} />
+            ))}
+          </ul>
+        </div>
+
+        <div className="lib-group">
+          <span className="eyebrow">Backend</span>
+          <ul className="lib-list">
+            {BACKEND_LIBRARIES.map((lib) => (
+              <LibraryRow key={lib.name} lib={lib} />
+            ))}
+          </ul>
+        </div>
+      </div>
+    </>
+  )
+}
+
 const navClass = (active: boolean) => 'settings-nav-item' + (active ? ' active' : '')
 
 /* --- inline icons -------------------------------------------------------- */
@@ -1266,6 +1369,18 @@ function PhoneIcon() {
 }
 function SignOutIcon() {
   return <svg {...iconProps}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></svg>
+}
+function InfoIcon() {
+  return <svg {...iconProps}><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
+}
+function ExternalIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+    </svg>
+  )
 }
 function CameraIcon() {
   return (
