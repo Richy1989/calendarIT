@@ -43,15 +43,17 @@ async function pollOnce(): Promise<void> {
 
   const reg = await navigator.serviceWorker.ready
   for (const item of toShow) {
-    reg.showNotification(`Reminder: ${item.title}`, {
-      body: bodyFor(item.occurrenceStartUtc, item.location),
-      tag: `${item.reminderId}:${item.occurrenceStartUtc}`,
-      data: { url: '/' },
-    })
+    void reg
+      .showNotification(`Reminder: ${item.title}`, {
+        body: bodyFor(item.occurrenceStartUtc, item.location),
+        tag: `${item.reminderId}:${item.occurrenceStartUtc}`,
+        data: { url: '/' },
+      })
+      .catch(() => {})
   }
 }
 
-const onWake = () => { void pollOnce() }
+const onWake = () => { void pollOnce().catch(() => {}) }
 
 /** Begin polling (idempotent). Safe to call on login and after enabling local mode. */
 export function startLocalReminderPoller(): void {
@@ -59,7 +61,7 @@ export function startLocalReminderPoller(): void {
   sinceUtc = new Date().toISOString()
   timer = window.setInterval(onWake, POLL_MS)
   window.addEventListener('focus', onWake)
-  void pollOnce()
+  void pollOnce().catch(() => {})
 }
 
 /** Stop polling and detach listeners (idempotent). */
