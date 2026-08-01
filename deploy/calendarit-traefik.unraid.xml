@@ -13,7 +13,7 @@
   <Category>Productivity:</Category>
   <WebUI>http://calendarit.home.lab/</WebUI>
   <TemplateURL/>
-  <Icon>https://raw.githubusercontent.com/Richy1989/calendarIT/main/public/logo.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/Richy1989/calendarIT/refs/heads/main/public/logo.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>

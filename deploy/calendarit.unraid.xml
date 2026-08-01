@@ -11,19 +11,20 @@
   <Project>https://github.com/Richy1989/calendarIT</Project>
   <Overview>A lightweight, modern, self-hosted calendar. Make events (one-off and recurring), get email or browser (Web Push) reminders, colour-code your events, import/export iCalendar (.ics), and sync to your phone with any CalDAV client. It does what you want — and just that.</Overview>
   <Category>Productivity:</Category>
-  <WebUI>http://[IP]:[PORT:80]/</WebUI>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL/>
-  <Icon>https://raw.githubusercontent.com/Richy1989/calendarIT/main/public/logo.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/Richy1989/calendarIT/refs/heads/main/public/logo.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Description>CalendarIT — a lightweight, self-hosted calendar (React web UI + ASP.NET Core REST API). Recurring events (RRULE) with correct time zones and DST, colour-coded categories, email and browser (Web Push) reminders and invitations, and iCalendar (.ics) import/export. This single-container build runs the React UI behind nginx and the API together in one image, storing data in a built-in SQLite database (or point it at your own Postgres). Mount /data to your appdata share so your events and uploaded avatars survive container updates. A JWT signing key is auto-generated and persisted under /data on first run; set your own JWT Signing Key to override.
-
-There are no SMTP settings here: email is sent through each user's own mail account, connected inside the app under Settings — Email. Users without one simply get their reminders written to the container log instead.
-
+  <Description>CalendarIT — a lightweight, self-hosted calendar (React web UI + ASP.NET Core REST API).
+  
+Recurring events with correct time zones and DST, colour-coded categories, email and browser (Web Push) reminders and invitations, and iCalendar (.ics) import/export.
+This single-container build runs the React UI behind nginx and the API together in one image, storing data in a built-in SQLite database (or point it at your own Postgres).
+Mount /data to your appdata share so your events and uploaded avatars survive container updates. A JWT signing key is auto-generated and persisted under /data on first run; set your own JWT Signing Key to override.
 Once you have created your account, set Disable Registration to true so nobody else can sign up on your server.</Description>
   <Networking>
     <Mode>bridge</Mode>
