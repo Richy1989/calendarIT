@@ -69,22 +69,65 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
 
 ## Quick start
 
-### With Docker (closest to production)
+### With Docker
+
+Copy the env template and set a signing key:
 
 ```bash
 cp .env.example .env
 # set JWT_SIGNING_KEY (min 32 chars), e.g. openssl rand -base64 48
-docker compose up --build
 ```
 
-The app serves plain HTTP on `:8080`. Put your reverse proxy (Caddy / Traefik / nginx /
-…) in front of it to terminate TLS — CalDAV clients effectively require HTTPS.
+A minimal `docker-compose.yml` (the repo ships a fuller, commented version with network
+isolation for Postgres):
 
-That port is **not published to the host**: an unencrypted copy of the site sitting on your
-server's public IP would hand out passwords and CalDAV credentials in the clear to anyone who
-found it. Attach your proxy to the `calendarit-edge` network and point it at `http://app:8080`
-— `docker-compose.yml` has a worked example. If your proxy runs on the host instead of in a
-container, uncomment the `127.0.0.1:8080:8080` binding there.
+```yaml
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-calendarit}
+      POSTGRES_USER: ${POSTGRES_USER:-calendarit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-calendarit} -d ${POSTGRES_DB:-calendarit}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .                       # or an image you've built/pushed
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_PROVIDER: Postgres
+      POSTGRES_CONNECTION: "Host=db;Port=5432;Database=${POSTGRES_DB:-calendarit};Username=${POSTGRES_USER:-calendarit};Password=${POSTGRES_PASSWORD:-changeme}"
+      APPDATA_PATH: /appdata
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}      # optional — required only for password-reset emails
+      FORWARDED_PROXY_HOPS: ${FORWARDED_PROXY_HOPS:-1}   # optional (default 1)
+    volumes:
+      - appdata:/appdata
+    # The app serves plain HTTP on :8080 and is deliberately NOT published to the host — put a
+    # TLS-terminating reverse proxy in front and point it at http://app:8080 (CalDAV clients
+    # effectively require HTTPS). To reach it directly from the host, publish to loopback only:
+    #   ports: ["127.0.0.1:8080:8080"]
+
+volumes:
+  pgdata:
+  appdata:
+```
+
+Then start it:
+
+```bash
+docker compose up --build      # add -d to run in the background
+```
 
 Running Unraid? Ready-made templates live in [`deploy/`](./deploy) —
 `calendarit.unraid.xml` (plain) and `calendarit-traefik.unraid.xml` (with Traefik

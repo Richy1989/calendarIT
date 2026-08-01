@@ -35,31 +35,34 @@ services:
       db:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
+      # --- Required (these make this Postgres stack run) ---
       DATABASE_PROVIDER: Postgres
       POSTGRES_CONNECTION: "Host=db;Port=5432;Database=${POSTGRES_DB:-calendarit};Username=${POSTGRES_USER:-calendarit};Password=${POSTGRES_PASSWORD:-changeme}"
       APPDATA_PATH: /appdata
-      APPLY_MIGRATIONS: "true"
-      # Log level (Serilog reads config; override per-namespace with
-      # Serilog__MinimumLevel__Override__<Namespace>). Console-only, to stdout.
-      Serilog__MinimumLevel__Default: Information
-      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env}
-      JWT_ISSUER: ${JWT_ISSUER:-calendarit}
-      JWT_AUDIENCE: ${JWT_AUDIENCE:-calendarit}
-      # Your reverse proxy talks to this container directly, so one hop is trusted when
-      # resolving the client IP the auth rate limit keys on.
-      FORWARDED_PROXY_HOPS: ${FORWARDED_PROXY_HOPS:-1}
-      AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-20}
-      DISABLE_REGISTRATION: ${DISABLE_REGISTRATION:-false}
-      # The address reset links point at. Never derived from the request (Host is a header
-      # anyone can set), so without this, reset emails aren't sent at all.
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
-      # Browser notifications (Web Push). Optional: unset, a key pair is generated on first
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env}   # required — min 32 chars
+      # --- Optional (shown with their defaults; delete any line to accept the default) ---
+      ASPNETCORE_ENVIRONMENT: Production                    # optional (default Production)
+      APPLY_MIGRATIONS: "true"                             # optional (default true)
+      JWT_ISSUER: ${JWT_ISSUER:-calendarit}               # optional
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-calendarit}           # optional
+      DISABLE_REGISTRATION: ${DISABLE_REGISTRATION:-false}   # optional (default false)
+      AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-20}   # optional (default 20)
+      # optional (default 1). Your reverse proxy talks to this container directly, so one hop is
+      # trusted when resolving the client IP the auth rate limit keys on.
+      FORWARDED_PROXY_HOPS: ${FORWARDED_PROXY_HOPS:-1}   # optional (default 1)
+      # optional (default Information). Log level (Serilog reads config; override per-namespace
+      # with Serilog__MinimumLevel__Override__<Namespace>). Console-only, to stdout.
+      Serilog__MinimumLevel__Default: Information        # optional (default Information)
+      # optional — but required for self-service password-reset emails. The address reset links
+      # point at; never derived from the request (Host is a header anyone can set), so without
+      # this, reset emails aren't sent at all.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}              # optional
+      # optional. Browser notifications (Web Push): unset, a key pair is generated on first
       # start and persisted to the appdata volume (vapid.json), so it survives restarts. Set
       # both to pin keys across separate deployments.
-      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
-      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
-      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@calendarit.local}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}            # optional
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}          # optional
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@calendarit.local}   # optional
       # No SMTP settings: email (invitations + reminders) is sent through each user's own
       # mail account, connected in-app under Settings → Email.
     networks:
