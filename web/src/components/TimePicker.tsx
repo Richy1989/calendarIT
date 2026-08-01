@@ -35,6 +35,19 @@ function Spin({
     setBuffer(pad2(value))
   }
 
+  // Clicking outside the picker closes it via the popover backdrop's mousedown, which unmounts
+  // this input before the browser fires blur — so the on-blur commit never runs and a value just
+  // typed (not yet confirmed with Enter or a tab-out) would be lost. Commit any in-progress edit
+  // on unmount too. A ref holds the latest buffer/onCommit so the unmount-only effect stays current.
+  const pending = useRef({ buffer, onCommit })
+  pending.current = { buffer, onCommit }
+  useEffect(
+    () => () => {
+      if (focused.current) pending.current.onCommit(pending.current.buffer)
+    },
+    [],
+  )
+
   return (
     <div className="tp-spin">
       <button type="button" className="tp-step" onClick={() => onStep(1)} aria-label={`${label} up`}>
