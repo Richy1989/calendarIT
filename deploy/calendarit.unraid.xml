@@ -11,7 +11,7 @@
   <Project>https://github.com/Richy1989/calendarIT</Project>
   <Overview>A lightweight, modern, self-hosted calendar. Make events (one-off and recurring), get email or browser (Web Push) reminders, colour-code your events, import/export iCalendar (.ics), and sync to your phone with any CalDAV client. It does what you want — and just that.</Overview>
   <Category>Productivity:</Category>
-  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <WebUI>http://[IP]:[PORT:80]/</WebUI>
   <TemplateURL/>
   <Icon>https://raw.githubusercontent.com/Richy1989/calendarIT/refs/heads/main/public/logo.png</Icon>
   <ExtraParams/>

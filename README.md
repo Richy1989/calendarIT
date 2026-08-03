@@ -134,7 +134,7 @@ cd web && npm run gen:api
 
 ## Configuration
 
-Everything is set through environment variables (12-factor):
+Everything is set through environment variables:
 
 | Variable                                  | Purpose                                          |
 | ----------------------------------------- | ------------------------------------------------ |
