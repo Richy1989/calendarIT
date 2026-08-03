@@ -21,14 +21,14 @@
   <DonateText/>
   <DonateLink/>
   <Description>CalendarIT — a lightweight, self-hosted calendar (React web UI + ASP.NET Core REST API).
-  <Screenshot>https://raw.githubusercontent.com/Richy1989/calendarIT/refs/heads/main/docs/ScreenShot_List_Search.png</Screenshot>
-  <Screenshot>https://raw.githubusercontent.com/Richy1989/calendarIT/refs/heads/main/docs/ScreenShot_Month.png</Screenshot>
-  <Screenshot>https://raw.githubusercontent.com/Richy1989/calendarIT/refs/heads/main/docs/ScreenShot_Week.png</Screenshot>
   
 Recurring events with correct time zones and DST, colour-coded categories, email and browser (Web Push) reminders and invitations, and iCalendar (.ics) import/export.
 This single-container build runs the React UI behind nginx and the API together in one image, storing data in a built-in SQLite database (or point it at your own Postgres).
 Mount /data to your appdata share so your events and uploaded avatars survive container updates. A JWT signing key is auto-generated and persisted under /data on first run; set your own JWT Signing Key to override.
 Once you have created your account, set Disable Registration to true so nobody else can sign up on your server.</Description>
+  <Screenshot>https://raw.githubusercontent.com/Richy1989/calendarIT/refs/heads/main/docs/ScreenShot_List_Search.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/Richy1989/calendarIT/refs/heads/main/docs/ScreenShot_Month.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/Richy1989/calendarIT/refs/heads/main/docs/ScreenShot_Week.png</Screenshot>
   <Networking>
     <Mode>bridge</Mode>
     <Publish>
