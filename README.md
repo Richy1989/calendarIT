@@ -252,6 +252,13 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 A few edges are still rough (noted above and in the roadmap), but the features listed here work
 end-to-end.
 
+## Missing / next
+
+Not there yet — on the list:
+
+- ⬜ **Task management** — to-dos with due dates and completion, alongside events, syncing over
+  CalDAV as `VTODO`.
+
 ## Support
 
 CalendarIT is free and self-hosted — no accounts, no subscriptions. If it's useful to you and you'd
