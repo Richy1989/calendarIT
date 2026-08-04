@@ -299,6 +299,16 @@ export default function CalendarView({
   // or day view lands on today rather than on whichever date the month grid happened to be
   // anchored to after a few pages of browsing.
   const [selectedDate, setSelectedDate] = useState<string>(() => dayKey(new Date()))
+  // A single click selects (highlights) an appointment; a double click opens it. This selection is
+  // what the keyboard copy/cut act on. We keep the render id (to re-apply the highlight after paging
+  // re-mounts the element), the master series id (for copy/cut), and the live DOM element so the
+  // highlight can move without a full React re-render.
+  const [selectedEvent, setSelectedEvent] = useState<{ id: string; seriesId: string } | null>(null)
+  const selectedEventIdRef = useRef<string | null>(null)
+  // A single event can render as several DOM segments (a multi-week bar in month view, or a
+  // multi-day event split across day columns). We track every mounted segment by render id so the
+  // whole appointment highlights as one, not just the piece that was clicked.
+  const eventSegs = useRef(new Map<string, Set<HTMLElement>>())
   const lastClick = useRef<{ dateStr: string; time: number } | null>(null)
   const calendarRef = useRef<FullCalendar>(null)
   const fcHostRef = useRef<HTMLDivElement>(null)
@@ -587,6 +597,7 @@ export default function CalendarView({
   // week view a start/end time possibly spanning days, month view a span of days.
   // Opens the new-appointment editor prefilled with exactly what was selected.
   const handleSelect = (arg: DateSelectArg) => {
+    clearEventSelection()
     setSelectedDate(dayKey(arg.start))
     const blank = { title: '', categoryId: defaultCategoryId(), location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
     if (arg.allDay) {
@@ -604,7 +615,42 @@ export default function CalendarView({
     calendarRef.current?.getApi().unselect()
   }
 
+  // Fine-pointer (mouse) devices get select-on-single-click / open-on-double-click. Touch has no
+  // easy double-tap and no keyboard shortcuts, so a single tap there keeps opening the editor.
+  const isCoarsePointer = () => window.matchMedia?.('(pointer: coarse)').matches ?? false
+
+  // Toggle the highlight across every mounted segment of one event (all its week-rows / columns).
+  const markSegments = (id: string, on: boolean) => {
+    eventSegs.current.get(id)?.forEach((el) => el.classList.toggle('fc-event-selected', on))
+  }
+
+  const clearEventSelection = () => {
+    if (selectedEventIdRef.current) markSegments(selectedEventIdRef.current, false)
+    selectedEventIdRef.current = null
+    setSelectedEvent(null)
+  }
+
+  // Highlight the clicked appointment (all of its segments), moving the highlight off the previous.
+  const selectEvent = (ev: EventApi) => {
+    if (selectedEventIdRef.current && selectedEventIdRef.current !== ev.id) {
+      markSegments(selectedEventIdRef.current, false)
+    }
+    selectedEventIdRef.current = ev.id
+    markSegments(ev.id, true)
+    setSelectedEvent({ id: ev.id, seriesId: ev.extendedProps.seriesId as string })
+  }
+
+  const handleEventClick = (info: EventClickArg) => {
+    if (isCoarsePointer()) {
+      openForEdit(info.event.extendedProps.seriesId) // touch: a tap opens, as before
+      return
+    }
+    setSelectedDate(dayKey(info.event.start ?? new Date()))
+    selectEvent(info.event)
+  }
+
   const handleDateClick = (arg: DateClickArg) => {
+    clearEventSelection() // clicking a day drops the appointment selection
     setSelectedDate(dayKey(arg.date))
     const now = Date.now()
     const prev = lastClick.current
@@ -724,6 +770,19 @@ export default function CalendarView({
     void writeIcsToSystemClipboard(() => exportEventIcs(masterId))
   }
 
+  // Cut: copy the event to the clipboard, then delete it (undoable — Ctrl-Z brings it back).
+  // Always the whole series, matching Copy; Paste (Ctrl-V) re-creates it on the target day. No
+  // draft is open here, so this reuses the same undoable delete path as the context menu.
+  const cutEvent = async (masterId: string) => {
+    const dto = await getEvent(masterId).catch(() => null)
+    if (!dto) { showToast('Couldn’t cut that'); return }
+    writeEventClipboard(snapshotFromDto(dto))
+    void writeIcsToSystemClipboard(() => exportEventIcs(masterId))
+    clearEventSelection()
+    await remove(masterId)
+    showToast(`Cut “${dto.title || 'event'}”`)
+  }
+
   // Paste the clipboard event onto a day, preserving its time-of-day and duration. Creates a
   // fresh event (new server UID) via the same create + undo path a new appointment uses.
   const doPaste = (targetDay: string) => {
@@ -766,6 +825,48 @@ export default function CalendarView({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [draft, menu, yearPop, calPop, catPop, selectedDate])
+
+  // Keyboard actions on the selected appointment: Ctrl/Cmd-C copies, Ctrl/Cmd-X cuts,
+  // Delete/Backspace removes it (all undoable), Escape clears the selection. Refs keep the
+  // listener stable while always calling the latest copy/cut/remove (which close over mutations
+  // + calendars). Guarded like paste: ignored in the editor, popovers, or a text field, and
+  // Ctrl-C is left to the browser while the user has real page text selected to copy.
+  const copyRef = useRef(copyEvent)
+  copyRef.current = copyEvent
+  const cutRef = useRef(cutEvent)
+  cutRef.current = cutEvent
+  const removeSelRef = useRef((id: string) => remove(id))
+  removeSelRef.current = (id: string) => remove(id)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (draft || menu || yearPop || calPop || catPop) return
+      if (e.key === 'Escape') { clearEventSelection(); return }
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (target?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+      // Delete / Backspace removes the selected appointment (whole series, like Cut; undoable).
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (!selectedEvent) return
+        e.preventDefault()
+        const id = selectedEvent.seriesId
+        clearEventSelection()
+        void removeSelRef.current(id)
+        return
+      }
+
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+      const key = e.key.toLowerCase()
+      if (key !== 'c' && key !== 'x') return
+      if (!selectedEvent) return
+      if (key === 'c' && (window.getSelection()?.toString().length ?? 0) > 0) return // real text copy
+      e.preventDefault()
+      if (key === 'c') void copyRef.current(selectedEvent.seriesId)
+      else void cutRef.current(selectedEvent.seriesId)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [draft, menu, yearPop, calPop, catPop, selectedEvent])
 
   // Fires after a drag or an edge-resize, for single events only (recurring occurrences are
   // not drag-editable). Sends just the fields a grid edit can touch: the API leaves attendees
@@ -817,6 +918,13 @@ export default function CalendarView({
   }
 
   const onEventMount = (arg: EventMountArg) => {
+    // Expose the event's own category color to CSS, so the selection highlight glows in the
+    // appointment's colour rather than a fixed accent (cyan already means "now"/"today").
+    if (arg.event.borderColor) arg.el.style.setProperty('--ev-color', arg.event.borderColor)
+    // Register this segment so a multi-segment appointment highlights as a whole (see eventSegs).
+    const segs = eventSegs.current.get(arg.event.id) ?? new Set<HTMLElement>()
+    segs.add(arg.el)
+    eventSegs.current.set(arg.event.id, segs)
     // A received invitation reads by its RSVP state: pending & maybe stay provisional (dashed +
     // ✉/?), accepted becomes a solid confirmed box (✓). Declined ones are filtered out upstream
     // and never mount. The organizer is surfaced in the tooltip.
@@ -831,6 +939,13 @@ export default function CalendarView({
         arg.el.title = `Invitation from ${organizer}`
       }
     }
+    // Re-apply the selection highlight when a segment (re)mounts (paging, data refresh, etc.).
+    if (arg.event.id === selectedEventIdRef.current) arg.el.classList.add('fc-event-selected')
+    // Double click opens the editor (a single click only selects — see handleEventClick).
+    arg.el.addEventListener('dblclick', (e) => {
+      e.preventDefault()
+      openForEdit(arg.event.extendedProps.seriesId)
+    })
     arg.el.addEventListener('contextmenu', (e) => {
       e.preventDefault()
       e.stopPropagation()
@@ -843,6 +958,15 @@ export default function CalendarView({
         occurrenceStart: arg.event.extendedProps.occurrenceStart,
       })
     })
+  }
+
+  // Drop a segment from the registry when FullCalendar unmounts it, so the id→segments map
+  // doesn't leak stale elements across paging or data refreshes.
+  const onEventUnmount = (arg: EventMountArg) => {
+    const segs = eventSegs.current.get(arg.event.id)
+    if (!segs) return
+    segs.delete(arg.el)
+    if (segs.size === 0) eventSegs.current.delete(arg.event.id)
   }
 
   return (
@@ -916,10 +1040,11 @@ export default function CalendarView({
         dayCellClassNames={(arg) =>
           arg.view.type !== 'timeGridDay' && dayKey(arg.date) === selectedDate ? ['is-selected'] : []
         }
-        eventClick={(info: EventClickArg) => openForEdit(info.event.extendedProps.seriesId)}
+        eventClick={handleEventClick}
         eventChange={applyChange}
         dayCellDidMount={onDateCellMount}
         eventDidMount={onEventMount}
+        eventWillUnmount={onEventUnmount}
       />
       </div>
 
