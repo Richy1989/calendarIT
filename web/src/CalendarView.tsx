@@ -17,7 +17,7 @@ import type {
 } from '@fullcalendar/core'
 import EventModal, { type EventDraft } from './EventModal'
 import AgendaView from './AgendaView'
-import { createEvent, deleteEvent, getEvent, listEvents, respondToInvitation, updateEvent, type EventDto, type RsvpStatus, type SaveEventRequest } from './api/events'
+import { createEvent, deleteEvent, exportEventIcs, getEvent, listEvents, respondToInvitation, updateEvent, type EventDto, type RsvpStatus, type SaveEventRequest } from './api/events'
 import { listCalendars } from './api/calendars'
 import { listCategories } from './api/categories'
 import { saveDefaultView } from './api/profile'
@@ -27,6 +27,15 @@ import { Popover } from './components/Popover'
 import { addDays, dayKey, toLocalInput } from './lib/dates'
 import { useUndoStack } from './lib/useUndoStack'
 import { getSavedView, saveView, UNCATEGORIZED } from './prefs'
+import {
+  hasEventClipboard,
+  pasteOnto,
+  readEventClipboard,
+  snapshotFromDto,
+  subscribeClipboard,
+  writeEventClipboard,
+  writeIcsToSystemClipboard,
+} from './lib/eventClipboard'
 
 // Uncategorized events render in this neutral default (categories carry the real colors).
 const DEFAULT_COLOR = '#708090' // slategray
@@ -279,6 +288,10 @@ export default function CalendarView({
     toastTimer.current = setTimeout(() => setToast(null), 2500)
   }, [])
   const [menu, setMenu] = useState<ContextMenu | null>(null)
+  // Whether the clipboard holds a copied event — drives the "Paste" affordance, and stays in
+  // sync when another tab copies (subscribeClipboard also listens for the storage event).
+  const [canPaste, setCanPaste] = useState(hasEventClipboard)
+  useEffect(() => subscribeClipboard(() => setCanPaste(hasEventClipboard())), [])
   // Year quick-jump popover, opened by clicking the toolbar title ("August 2026").
   // `base` is the first year of the visible 12-year window; `current` the year on screen.
   const [yearPop, setYearPop] = useState<{ x: number; y: number; base: number; current: number } | null>(null)
@@ -700,6 +713,60 @@ export default function CalendarView({
     closeDraft()
   }
 
+  // Copy an event to the clipboard. Always copies the master series (so copying a recurring
+  // occurrence duplicates the whole rule, like "Edit series"). Writes the reliable in-app JSON
+  // snapshot, then best-effort iCalendar to the system clipboard for other calendar apps.
+  const copyEvent = async (masterId: string) => {
+    const dto = await getEvent(masterId).catch(() => null)
+    if (!dto) { showToast('Couldn’t copy that'); return }
+    writeEventClipboard(snapshotFromDto(dto))
+    showToast(`Copied “${dto.title || 'event'}”`)
+    void writeIcsToSystemClipboard(() => exportEventIcs(masterId))
+  }
+
+  // Paste the clipboard event onto a day, preserving its time-of-day and duration. Creates a
+  // fresh event (new server UID) via the same create + undo path a new appointment uses.
+  const doPaste = (targetDay: string) => {
+    const snap = readEventClipboard()
+    if (!snap) return
+    const draft = pasteOnto(snap, targetDay)
+    // The copied calendar may be hidden, deleted, or from another tab — fall back to the default.
+    if (!draft.calendarId || !calendars.some((c) => c.id === draft.calendarId)) draft.calendarId = defaultCalendarId()
+    const body = draftToRequest(draft)
+    const label = draft.title.trim() || 'event'
+    createMut.mutate(body, {
+      onSuccess: (created) => {
+        let liveId = created.id
+        record({
+          label: `pasted “${label}”`,
+          undo: () => deleteMut.mutateAsync({ id: liveId }),
+          redo: async () => { liveId = (await createMut.mutateAsync(body)).id },
+        })
+      },
+    })
+    showToast(`Pasted “${label}”`)
+  }
+
+  // Ctrl/Cmd-V pastes onto the selected day. The ref keeps the listener stable while always
+  // calling the latest doPaste (which closes over calendars + mutations).
+  const pasteRef = useRef(doPaste)
+  pasteRef.current = doPaste
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+      if (e.key.toLowerCase() !== 'v') return
+      if (draft || menu || yearPop || calPop || catPop) return // don't hijack paste in the editor / popovers
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (target?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return // leave native paste alone
+      if (!hasEventClipboard()) return
+      e.preventDefault()
+      pasteRef.current(selectedDate)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [draft, menu, yearPop, calPop, catPop, selectedDate])
+
   // Fires after a drag or an edge-resize, for single events only (recurring occurrences are
   // not drag-editable). Sends just the fields a grid edit can touch: the API leaves attendees
   // and the owning calendar alone when they're absent, so guests survive a resize untouched.
@@ -895,11 +962,19 @@ export default function CalendarView({
                 <button className="ctx-item" onClick={() => { openNewOn(menu.date, true); setMenu(null) }}>
                   New all-day event
                 </button>
+                {canPaste && (
+                  <button className="ctx-item" onClick={() => { doPaste(dayKey(menu.date)); setMenu(null) }}>
+                    Paste appointment
+                  </button>
+                )}
               </>
             ) : (
               <>
                 <button className="ctx-item" onClick={() => { openForEdit(menu.seriesId); setMenu(null) }}>
                   {menu.recurring ? 'Edit series' : 'Edit'}
+                </button>
+                <button className="ctx-item" onClick={() => { copyEvent(menu.seriesId); setMenu(null) }}>
+                  Copy
                 </button>
                 {menu.recurring ? (
                   <>
@@ -1045,6 +1120,7 @@ export default function CalendarView({
           calendars={calendars}
           onSave={save}
           onDelete={draft.id ? (id) => remove(id) : undefined}
+          onCopy={draft.id ? (id) => copyEvent(id) : undefined}
           onRespond={draft.id && draft.invitationStatus ? (status) => respond(draft.id!, status) : undefined}
           onClose={closeDraft}
         />

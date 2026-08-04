@@ -29,6 +29,17 @@ public sealed class EventsController(IEventService events, ICalendarIoService ca
         return File(Encoding.UTF8.GetBytes(ics), "text/calendar", "calendarit.ics");
     }
 
+    [HttpGet("{id:guid}/export.ics")]
+    [Produces("text/calendar")]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ExportEvent(Guid id, CancellationToken cancellationToken)
+    {
+        var ics = await calendarIo.ExportEventAsync(User.GetUserId(), id, cancellationToken);
+        return ics is null
+            ? NotFound()
+            : File(Encoding.UTF8.GetBytes(ics), "text/calendar", "event.ics");
+    }
+
     [HttpPost("import")]
     [ProducesResponseType<ImportResult>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

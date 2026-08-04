@@ -72,6 +72,7 @@ export default function EventModal({
   calendars = [],
   onSave,
   onDelete,
+  onCopy,
   onRespond,
   onClose,
 }: {
@@ -80,6 +81,8 @@ export default function EventModal({
   calendars?: { id: string; name: string }[]
   onSave: (draft: EventDraft) => void
   onDelete?: (id: string) => void
+  /** Copies this (saved) event to the clipboard. Present only for existing events. */
+  onCopy?: (id: string) => void
   /** Present only for a received invitation: records the user's RSVP. */
   onRespond?: (status: 'Accepted' | 'Declined' | 'Tentative') => void
   onClose: () => void
@@ -422,6 +425,11 @@ export default function EventModal({
           {isEdit && onDelete && (
             <button type="button" className="btn-danger" onClick={() => onDelete(draft.id!)}>
               Delete
+            </button>
+          )}
+          {isEdit && onCopy && (
+            <button type="button" className="btn-ghost" onClick={() => onCopy(draft.id!)}>
+              Copy
             </button>
           )}
           <span className="spacer" />

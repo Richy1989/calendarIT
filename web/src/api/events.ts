@@ -14,6 +14,14 @@ export async function exportIcs(calendarIds?: string[]): Promise<Blob> {
   return res.blob()
 }
 
+/** Fetches a single event serialized as a standards-compliant .ics VCALENDAR — used to put
+ *  iCalendar text on the *system* clipboard so other calendar apps can paste it. */
+export async function exportEventIcs(id: string): Promise<string> {
+  const res = await fetch(`/api/events/${encodeURIComponent(id)}/export.ics`, { headers: await authHeaders() })
+  if (!res.ok) throw new Error('Export failed')
+  return res.text()
+}
+
 /** Where an import lands: an existing calendar, or a brand-new one with this name. */
 export type ImportTarget = { calendarId?: string; newCalendarName?: string }
 

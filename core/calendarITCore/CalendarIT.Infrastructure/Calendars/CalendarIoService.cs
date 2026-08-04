@@ -32,6 +32,23 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
         return new CalendarSerializer().SerializeToString(cal);
     }
 
+    public async Task<string?> ExportEventAsync(
+        Guid userId, Guid eventId, CancellationToken cancellationToken = default)
+    {
+        var ev = await db.Events.AsNoTracking().Include(x => x.Category).Include(x => x.Reminders)
+            .SingleOrDefaultAsync(x => x.Id == eventId && x.Calendar!.OwnerUserId == userId, cancellationToken);
+        if (ev is null)
+        {
+            return null;
+        }
+
+        // Same mapper + serializer as the bulk export, so a copied event is byte-for-byte the
+        // iCalendar any other client would get on a full .ics export.
+        var cal = new ICalCalendar { ProductId = "-//CalendarIT//EN" };
+        cal.Events.Add(ICalEventMapper.ToICalEvent(ev));
+        return new CalendarSerializer().SerializeToString(cal);
+    }
+
     public async Task<ImportResult> ImportAsync(
         Guid userId, string ics, Guid? calendarId = null, string? newCalendarName = null,
         CancellationToken cancellationToken = default)

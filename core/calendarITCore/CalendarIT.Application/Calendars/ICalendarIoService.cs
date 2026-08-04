@@ -13,6 +13,12 @@ public interface ICalendarIoService
     Task<string> ExportAsync(Guid userId, IReadOnlyCollection<Guid>? calendarIds = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Serializes a single owned event to a one-event VCALENDAR string (for copying to the
+    /// clipboard as standard iCalendar), or <c>null</c> when the user owns no event with that id.
+    /// </summary>
+    Task<string?> ExportEventAsync(Guid userId, Guid eventId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Parses an .ics document and adds its events to a calendar: a newly created one when
     /// <paramref name="newCalendarName"/> is given, else <paramref name="calendarId"/> when
     /// the user owns it, else the default calendar. Events whose UID already exists for the

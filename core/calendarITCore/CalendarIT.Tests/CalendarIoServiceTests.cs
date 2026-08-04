@@ -141,6 +141,37 @@ public sealed class CalendarIoServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ExportEvent_ReturnsOnlyThatEvent()
+    {
+        await _service.ImportAsync(_userId, Ics("BEGIN:VEVENT\r\nUID:one@test\r\nSUMMARY:Copy me\r\nDTSTART:20260801T090000Z\r\nEND:VEVENT"));
+        await _service.ImportAsync(_userId, Ics("BEGIN:VEVENT\r\nUID:two@test\r\nSUMMARY:Not me\r\nDTSTART:20260802T090000Z\r\nEND:VEVENT"));
+        var target = await _db.Events.SingleAsync(e => e.Uid == "one@test");
+
+        var ics = await _service.ExportEventAsync(_userId, target.Id);
+
+        Assert.NotNull(ics);
+        var exported = Calendar.Load(ics)!;
+        var ve = Assert.Single(exported.Events);
+        Assert.Equal("Copy me", ve.Summary);
+    }
+
+    [Fact]
+    public async Task ExportEvent_UnknownId_ReturnsNull()
+    {
+        Assert.Null(await _service.ExportEventAsync(_userId, Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task ExportEvent_OtherUsersEvent_ReturnsNull()
+    {
+        await _service.ImportAsync(_userId, Ics("BEGIN:VEVENT\r\nUID:mine@test\r\nSUMMARY:Mine\r\nDTSTART:20260801T090000Z\r\nEND:VEVENT"));
+        var mine = await _db.Events.SingleAsync(e => e.Uid == "mine@test");
+
+        // A different user must not be able to export an event they don't own.
+        Assert.Null(await _service.ExportEventAsync(Guid.NewGuid(), mine.Id));
+    }
+
+    [Fact]
     public async Task ImportExport_TimedEvent_RoundTripsUnchanged()
     {
         var ics = Ics("BEGIN:VEVENT\r\nUID:timed@test\r\nSUMMARY:Timed\r\nDTSTART:20260801T090000Z\r\nDTEND:20260801T103000Z\r\nEND:VEVENT");
