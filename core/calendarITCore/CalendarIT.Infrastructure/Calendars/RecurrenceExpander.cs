@@ -52,7 +52,7 @@ public static class RecurrenceExpander
     private static CalendarEvent BuildEvent(CalDateTime start, CalDateTime end, string rrule)
     {
         var evt = new CalendarEvent { Start = start, End = end };
-        evt.RecurrenceRules.Add(new RecurrencePattern(rrule));
+        evt.RecurrenceRule = new RecurrenceRule(rrule);
         return evt;
     }
 

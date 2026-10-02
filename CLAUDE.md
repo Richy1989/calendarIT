@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 CalendarIT is a self-hosted calendar: an ASP.NET Core (.NET 10 preview) Web API backend plus a
-React + Vite + TypeScript SPA. It does events, recurring events, reminders (email; browser Web
-Push is in progress), .ics import/export, a CalDAV server for phone sync, and iMIP email
+React + Vite + TypeScript SPA. It does events, recurring events, reminders (email and browser
+Web Push), .ics import/export, a CalDAV server for phone sync, and iMIP email
 invitations. `README.md` "Status" is the authoritative feature list. `ARCHITECTURE.md` is design
 rationale only and its header/phase list can lag reality — trust the code over both.
 
@@ -94,8 +94,10 @@ lockout (10 fails / 15 min) is enforced manually in both `AuthService` and the C
 ### Background jobs (Quartz.NET, every minute)
 
 - `ReminderDispatchJob` — recurrence-expanded, timezone-correct, idempotent via `NotificationLog`.
-  Its `WebPush` branch is currently a stub (Phase 5b). Reminders send **email through the owner's
-  own connected mail account**, not a global relay — there are no `SMTP_*` env vars.
+  Email reminders go **through the owner's own connected mail account**, not a global relay —
+  there are no `SMTP_*` env vars. WebPush reminders are VAPID-signed (`WebPushSender`); keys come
+  from `VAPID_*` env or are auto-generated and persisted (`VapidKeyStore`, `vapid.json`). Browsers
+  without a push service fall back to polling `GET /api/reminders/due` (`web/src/push/localReminders.ts`).
 - `InvitationInboxJob` — scans each user's IMAP inbox read-only for iMIP REQUEST/CANCEL/REPLY.
 
 ### Security posture: outside input is hostile

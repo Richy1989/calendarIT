@@ -42,9 +42,12 @@ public static class InvitationBuilder
             _ => ("NEEDS-ACTION", "Responded to"),
         };
 
+        var organizerEmail = evt.OrganizerEmail
+            ?? throw new ArgumentException("Cannot reply to an invitation with no organizer.", nameof(evt));
+
         var ve = ICalEventMapper.ToICalEvent(evt);
         ve.Sequence = evt.Sequence;
-        ve.Organizer = new Organizer($"mailto:{evt.OrganizerEmail}");
+        ve.Organizer = new Organizer($"mailto:{organizerEmail}");
         // A REPLY names exactly one attendee: the person replying.
         ve.Attendees.Clear();
         ve.Attendees.Add(new ICalAttendee($"mailto:{replier.Address}")
@@ -62,7 +65,7 @@ public static class InvitationBuilder
 
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(replier.Address, replier.Address));
-        message.To.Add(MailboxAddress.Parse(evt.OrganizerEmail));
+        message.To.Add(MailboxAddress.Parse(organizerEmail));
         message.Subject = $"{verb}: {evt.Title}";
         message.Body = new MultipartAlternative
         {

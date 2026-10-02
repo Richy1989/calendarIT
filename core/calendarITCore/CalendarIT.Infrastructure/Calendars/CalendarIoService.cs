@@ -29,7 +29,7 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
         {
             cal.Events.Add(ICalEventMapper.ToICalEvent(e));
         }
-        return new CalendarSerializer().SerializeToString(cal);
+        return new CalendarSerializer().SerializeToString(cal)!;
     }
 
     public async Task<string?> ExportEventAsync(

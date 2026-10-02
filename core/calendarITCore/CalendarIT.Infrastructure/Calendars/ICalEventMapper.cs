@@ -53,7 +53,7 @@ public static class ICalEventMapper
 
         if (!string.IsNullOrWhiteSpace(e.RRule))
         {
-            ve.RecurrenceRules.Add(new RecurrencePattern(e.RRule));
+            ve.RecurrenceRule = new RecurrenceRule(e.RRule);
         }
         foreach (var ex in ParseExDates(e.ExDates))
         {
@@ -186,8 +186,8 @@ public static class ICalEventMapper
             endUtc = inclusive < startUtc ? startUtc : inclusive;
         }
 
-        var rrule = ve.RecurrenceRules.Count > 0
-            ? new RecurrencePatternSerializer().SerializeToString(ve.RecurrenceRules[0])
+        var rrule = ve.RecurrenceRule is not null
+            ? new RecurrenceRuleSerializer().SerializeToString(ve.RecurrenceRule)
             : null;
 
         // Category resolution, most-specific first: a CATEGORIES name matching one of the
