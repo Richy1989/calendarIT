@@ -189,6 +189,11 @@ localStorage for first paint and reconcile to the server profile.
 - If asked to commit and or push, commit under local git user of the system.
 - **No Claude attribution in commits**: no `Co-Authored-By: Claude …`, no "Generated with Claude
   Code", no session links — nothing mentioning Claude in commit messages (or PR descriptions).
+- **Close GitHub issues from the commit**: when a commit implements or fixes an issue, end the
+  message body with a closing keyword per issue, e.g. `Closes #1` / `Fixes #2` (one keyword per
+  issue: `Closes #1, closes #2`). GitHub closes them when the commit (or the PR containing it)
+  lands on `main`. Check open issues first (`gh issue list`, or the public API if `gh` isn't
+  logged in) so related work isn't missed.
 - **Existing databases must keep working on update — no data loss, ever.** Schema or data changes
   go through migrations in *both* provider assemblies; existing rows are migrated, backfilled or
   renamed, never dropped (e.g. duplicate UIDs were renamed, not deleted). Verify the upgrade on a
