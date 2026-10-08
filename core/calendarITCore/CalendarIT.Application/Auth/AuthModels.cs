@@ -93,3 +93,20 @@ public sealed record AuthResult(bool Succeeded, AuthTokens? Tokens, IReadOnlyLis
 
     public static AuthResult Failure(params string[] errors) => new(false, null, errors);
 }
+
+/// <summary>Who is signing in or refreshing — recorded on the session so the user can tell their
+/// devices apart. Never used for any security decision.</summary>
+public sealed record AuthClient(string? UserAgent, string? IpAddress);
+
+/// <summary>
+/// One signed-in device or browser. <paramref name="Current"/> marks the session the request
+/// itself was made from.
+/// </summary>
+public sealed record SessionDto(
+    Guid Id,
+    string? UserAgent,
+    string? IpAddress,
+    DateTimeOffset StartedAt,
+    DateTimeOffset LastActiveAt,
+    DateTimeOffset ExpiresAt,
+    bool Current);

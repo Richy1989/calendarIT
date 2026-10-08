@@ -33,8 +33,11 @@ npm run gen:api    # regenerate src/api/schema.d.ts from the LIVE backend OpenAP
 
 Both at once: `./deploy/dev.ps1` (or `dev.sh`) runs backend + frontend in one terminal.
 Demo data: `./deploy/seed.ps1` seeds user `test@test.com` / `Test1234#1234`.
-Docker (production shape): `docker compose up --build` — single container, nginx serves the SPA
-and reverse-proxies `/api` to the .NET API. Requires `JWT_SIGNING_KEY` (≥32 chars) in `.env`.
+Docker: one `Dockerfile`, two targets. The default (`runtime`, what `docker compose up --build`
+builds) is the .NET app serving API + SPA on :8080 next to Postgres; `--target bundle` (the
+published image, Unraid) puts nginx on :80 in front of it with all state under `/data`. Both run
+the app as an unprivileged user (`PUID`/`PGID`, default 1654) after chowning the data dir.
+Compose requires `JWT_SIGNING_KEY` (≥32 chars) in `.env`.
 
 ### The build file-lock gotcha (hit this constantly)
 
@@ -83,6 +86,29 @@ This expansion runs everywhere occurrences matter (event listing, reminders, Cal
 Time-zone ids are normalized on save; unknown ids are treated as "floating" via the `TimeZones`
 helper — the single place that decision is made.
 
+- **Rules are validated on the way in** (`RecurrenceRules`: unparseable or sub-hourly → 400 from the
+  API, dropped to a one-off from CalDAV/import/iMIP) and **expansion never throws or runs
+  unbounded** (`MaxUnmatchedIncrementsLimit`, per-call and per-response occurrence caps). One bad
+  row must not break a user's calendar or the reminder job that serves everyone.
+- **Edited occurrences are override rows**: a normal one-off event with `SeriesMasterId` +
+  `RecurrenceIdUtc` (iCalendar RECURRENCE-ID), same `Uid`/calendar as the master. The master's
+  `ExDates` holds deletions **and** overridden instants, so every expansion skips them for free;
+  `ICalEventMapper.ToICalEvents` subtracts the override instants again when writing EXDATE.
+  Anything looking events up by UID must filter `SeriesMasterId == null`.
+- `SeriesWriter` writes a whole iCalendar resource (master + overrides) for CalDAV PUT, import and
+  iMIP. A CalDAV resource = one master with its overrides; overrides never appear as their own
+  resource, and any change to an override bumps the master's `UpdatedAt` (the ETag).
+- **CalDAV ETags use microseconds** (`Ticks / 10`) — Postgres truncates timestamps to µs.
+- The web editor builds custom rules in `web/src/lib/rrule.ts` (FREQ/INTERVAL/BYDAY/COUNT/UNTIL).
+  It never rewrites a rule it can't fully parse, and only rebuilds the text when the user changes
+  it — a changed rule counts as a moved series server-side, which drops exceptions and overrides.
+
+**Calendar default category**: `Calendar.DefaultCategoryId`. An event without its own category
+*shows* in it (color, `EffectiveCategoryId`, category counts, ICS/CalDAV `CATEGORIES`) without
+being written to it, so recoloring the calendar recolors its events. Incoming iCalendar data
+naming the default leaves the event inheriting, and a bare `COLOR` isn't snapped to a category in
+such a calendar.
+
 ### Auth
 
 ASP.NET Core Identity (Guid keys, `ApplicationUser`) + JWT access tokens with **rotating refresh
@@ -91,22 +117,55 @@ so `/dav` uses **HTTP Basic validated against the same Identity user store** (no
 passwords) — relies on operator TLS, with a credential cache to avoid PBKDF2 per request. Login
 lockout (10 fails / 15 min) is enforced manually in both `AuthService` and the CalDAV handler.
 
-### Background jobs (Quartz.NET, every minute)
+**Sessions**: each sign-in is a session (`RefreshToken.SessionId`, constant across rotations);
+access tokens carry it as `sid`, and `SessionValidator` (JwtBearer `OnTokenValidated`, cached 30s,
+evicted on revoke) rejects tokens whose session was signed out — revocation is immediate.
+Rotation claims the old token with a conditional UPDATE (one winner per race), and a token
+re-presented within 30s of its rotation is a sibling tab, not theft (no chain revocation). The SPA
+also serializes refreshes across tabs with the Web Locks API. Unknown/locked accounts still burn a
+password hash (`PasswordTiming`) so timing can't enumerate users; CalDAV failures are throttled
+per IP (`CalDavFailureThrottle`); a password change bumps `CredentialEpochs`, retiring cached
+CalDAV logins.
+
+### Background jobs (Quartz.NET)
 
 - `ReminderDispatchJob` — recurrence-expanded, timezone-correct, idempotent via `NotificationLog`.
   Email reminders go **through the owner's own connected mail account**, not a global relay —
-  there are no `SMTP_*` env vars. WebPush reminders are VAPID-signed (`WebPushSender`); keys come
-  from `VAPID_*` env or are auto-generated and persisted (`VapidKeyStore`, `vapid.json`). Browsers
+  there are no `SMTP_*` env vars. Per-reminder failures are isolated (logged, never abort the
+  run). WebPush reminders are VAPID-signed (`WebPushSender`); keys come from `VAPID_*` env or
+  are auto-generated and persisted (`VapidKeyStore`, `vapid.json`). Browsers
   without a push service fall back to polling `GET /api/reminders/due` (`web/src/push/localReminders.ts`).
+- `OutboxDispatchJob` (every 30s + poked on enqueue) — **all mail is queued** (`IMailOutbox` →
+  `OutboxMessages`) and sent per user over one SMTP session, with backoff, expiry per kind, and
+  user-facing error text (`MailConnections.Describe`). Never send SMTP inline in a request.
+  Reminders stage their outbox row in the same `SaveChanges` as the `NotificationLog` row.
+- `MaintenanceJob` (nightly) — prunes expired refresh tokens, old dispatch logs, old outbox rows.
 - `InvitationInboxJob` — scans each user's IMAP inbox read-only for iMIP REQUEST/CANCEL/REPLY.
 
 ### Security posture: outside input is hostile
 
-Anything arriving by email, .ics import, or CalDAV PUT is untrusted. Inbound iMIP messages are
-verified against the sender (`ImipMime.IsFromClaimedSender`, From-only) so nobody can inject events
-as someone else. UIDs are caller-supplied, so internal invite copies are matched by a server-stamped
-`SourceOrganizerUserId`, never UID alone. Password-reset links come only from `PUBLIC_BASE_URL`
-(never the request Host) to avoid an enumeration/token-exfil oracle.
+Anything arriving by email, .ics import, or CalDAV PUT is untrusted — `ICalEventMapper.Apply`
+clips text to the column widths (Postgres enforces them; SQLite doesn't, so tests won't notice).
+Inbound iMIP messages are verified against the sender (`ImipMime.IsFromClaimedSender`, From-only)
+so nobody can inject events as someone else. UIDs are caller-supplied, so internal invite copies
+are matched by a server-stamped `SourceOrganizerUserId`, never UID alone. Password-reset links come
+only from `PUBLIC_BASE_URL` (never the request Host) to avoid an enumeration/token-exfil oracle.
+User-named hosts (mail servers, push endpoints) are SSRF-guarded on the address actually dialled (`OutboundHostPolicy`;
+`MAIL_HOST_POLICY`, push is always public-only). Security headers (CSP etc.) are set by the app
+itself (`SecurityHeaders`), so they hold without nginx; nginx hides the proxied duplicates.
+Errors leave as ProblemDetails: throw `InvalidInputException` for caller-fixable input → 400.
+
+**Logging** (`calendarITCore/Logging/`): `ConsoleLogFormatter` writes every line — short,
+aligned, coloured with ANSI escapes it writes itself (never a Serilog console theme: themes only
+apply on a terminal, and a container's stdout never is one); `NO_COLOR` turns colour off.
+`UseRequestLog` logs the path as requested and **never the query string or referer** — URLs
+can carry tokens (a reset link does); don't add `QueryString`, `$request` or `$http_referer` to
+any log, ours or nginx's. Everything the formatter writes, message text and values alike, has its
+control characters shown as `\xNN`, so outside input can't drive the terminal showing the log
+(structured properties are still better: they get highlighted). Levels live in the `Serilog`
+section of `appsettings.json`; the format lives in code. nginx (bundle image) logs only what
+never reached the API, in the same layout (`deploy/nginx.conf`); the release workflow checks
+the built image's log for leaked tokens and raw escapes.
 
 ### Frontend
 
@@ -128,6 +187,15 @@ localStorage for first paint and reconcile to the server profile.
 
 - Never commit and push by yourself, onyl when asked by the user
 - If asked to commit and or push, commit under local git user of the system.
+- **No Claude attribution in commits**: no `Co-Authored-By: Claude …`, no "Generated with Claude
+  Code", no session links — nothing mentioning Claude in commit messages (or PR descriptions).
+- **Existing databases must keep working on update — no data loss, ever.** Schema or data changes
+  go through migrations in *both* provider assemblies; existing rows are migrated, backfilled or
+  renamed, never dropped (e.g. duplicate UIDs were renamed, not deleted). Verify the upgrade on a
+  database created by the previous version (SQLite and Postgres), not just a fresh one.
+- **Keep the About page in sync**: when a library listed there (`FRONTEND_LIBRARIES` /
+  `BACKEND_LIBRARIES` in `web/src/SettingsPage.tsx`) is added, removed, replaced, or changes its
+  name/license/URL, update that list in the same change.
 - `web/.npmrc` sets `legacy-peer-deps` (openapi-typescript's peer wants TS 5; the repo runs TS 6).
 
 ## Rules

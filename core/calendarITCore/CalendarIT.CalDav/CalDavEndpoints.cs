@@ -19,6 +19,7 @@ public static class CalDavEndpoints
         // Singleton: the cache (and the pepper keying it) must outlive the request that filled it.
         services.AddMemoryCache();
         services.AddSingleton<CalDavCredentialCache>();
+        services.AddSingleton<CalDavFailureThrottle>();
         return services;
     }
 

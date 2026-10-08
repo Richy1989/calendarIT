@@ -2362,3 +2362,166 @@ input[aria-invalid='true']:focus-visible {
     min-width: 0;
   }
 }
+
+/* Edit scope for a repeating appointment: one occurrence or the whole series. */
+.scope-switch {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px;
+  margin-bottom: 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+}
+.scope-option {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--r-sm) - 2px);
+  transition: color 0.15s, background 0.15s;
+}
+.scope-option:hover {
+  color: var(--text);
+}
+.scope-option.active {
+  color: var(--text);
+  background: var(--surface-3);
+  box-shadow: var(--ring);
+}
+
+/* Signed-in devices and outgoing mail reuse the calendar list rows. */
+.session-item {
+  align-items: center;
+}
+.session-meta {
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+.session-meta.outbox-failed {
+  color: var(--danger);
+}
+
+/* Custom repeat editor (under the Repeats field). */
+.repeat-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+}
+.repeat-row,
+.repeat-choice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+/* Inside the editor, labels are sentence text ("Every", "Never", "On day 13"), not the form's
+   small uppercase field captions. */
+.repeat-editor label,
+.repeat-label {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text);
+}
+.repeat-editor .repeat-row label,
+.repeat-label {
+  color: var(--text-dim);
+}
+.repeat-editor .repeat-row select {
+  width: auto;
+}
+.repeat-editor .repeat-num {
+  width: 4.5rem;
+}
+.repeat-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.repeat-day {
+  min-width: 2.6rem;
+  padding: 0.3rem 0.45rem;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.repeat-day.active {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.repeat-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.repeat-editor .repeat-choice input[type='radio'] {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--accent);
+}
+.repeat-summary {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+/* Category picker (calendar defaults, import): a select with the chosen color, and an inline
+   "new category" row. */
+.category-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.category-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.category-picker select {
+  min-width: 0;
+  max-width: 16rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.82rem;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+.category-picker-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.category-picker-new input:not([type='color']) {
+  flex: 1 1 9rem;
+  min-width: 0;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+.cal-add-row .category-picker {
+  flex: none;
+}

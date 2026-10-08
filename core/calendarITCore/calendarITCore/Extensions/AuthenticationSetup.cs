@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using CalendarIT.Infrastructure.Auth;
 using Microsoft.IdentityModel.Tokens;
 
 namespace calendarITCore.Extensions;
@@ -31,7 +32,28 @@ public static class AuthenticationSetup
                     ValidateIssuerSigningKey = true,
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
                     ValidateLifetime = true,
-                    ClockSkew = TimeSpan.FromSeconds(30)
+                    ClockSkew = TimeSpan.FromSeconds(30),
+                    // Exactly the algorithm we sign with; nothing negotiable from the token header.
+                    ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+                };
+                options.Events = new JwtBearerEvents
+                {
+                    // A signature proves the token was issued, not that its session is still
+                    // signed in. Tokens from a signed-out session stop here instead of living out
+                    // their remaining minutes.
+                    OnTokenValidated = async context =>
+                    {
+                        var sid = context.Principal?.GetSessionId();
+                        if (sid is null)
+                        {
+                            return; // issued before sessions existed; expires within minutes
+                        }
+                        var sessions = context.HttpContext.RequestServices.GetRequiredService<SessionValidator>();
+                        if (!await sessions.IsActiveAsync(sid.Value, context.HttpContext.RequestAborted))
+                        {
+                            context.Fail("This session has been signed out.");
+                        }
+                    },
                 };
             });
 

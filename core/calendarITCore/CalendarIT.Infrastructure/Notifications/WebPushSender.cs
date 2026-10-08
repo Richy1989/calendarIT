@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.Sockets;
+using CalendarIT.Infrastructure.Net;
 using System.Text.Json;
 using CalendarIT.Application.Notifications;
 using Microsoft.Extensions.Logging;
@@ -15,7 +17,26 @@ namespace CalendarIT.Infrastructure.Notifications;
 /// </summary>
 public sealed class WebPushSender(VapidKeyStore vapid, ILogger<WebPushSender> logger) : IWebPushSender
 {
-    private readonly WebPushClient _client = new();
+    /// <summary>
+    /// A push endpoint is a URL the browser hands over — i.e. user input. Real ones belong to
+    /// public push services, so every connection is checked against the public-only policy on the
+    /// address actually dialled (DNS included): an "endpoint" pointing into the server's own
+    /// network is refused instead of being POSTed to once per reminder.
+    /// </summary>
+    private readonly WebPushClient _client = new(new HttpClient(new SocketsHttpHandler
+    {
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        ConnectCallback = async (context, cancellationToken) =>
+        {
+            var socket = await OutboundHostPolicy.ConnectAsync(
+                context.DnsEndPoint.Host, context.DnsEndPoint.Port, OutboundHostScope.Public, TimeSpan.FromSeconds(10), cancellationToken);
+            return new NetworkStream(socket, ownsSocket: true);
+        },
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(30),
+    });
 
     public bool IsConfigured => vapid.IsConfigured;
 

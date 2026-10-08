@@ -11,15 +11,25 @@ public sealed class CategoryService(AppDbContext db, TimeProvider timeProvider) 
     public async Task<IReadOnlyList<CategoryDto>> ListAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
+        var events = InCategory(db.Events);
         return await db.Categories.AsNoTracking()
             .Where(c => c.OwnerUserId == userId)
             .OrderBy(c => c.CreatedAt)
             .Select(c => new CategoryDto(
                 c.Id, c.Name, c.Color,
-                c.Events.Count,
-                c.Events.Count(e => e.RRule != null || (e.EndUtc ?? e.StartUtc) >= now)))
+                events.Count(e => e.CategoryId == c.Id || (e.CategoryId == null && e.Calendar!.DefaultCategoryId == c.Id)),
+                events.Count(e => (e.CategoryId == c.Id || (e.CategoryId == null && e.Calendar!.DefaultCategoryId == c.Id))
+                    && (e.RRule != null || (e.EndUtc ?? e.StartUtc) >= now))))
             .ToListAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// The appointments a category's counts are over: every event that shows in it — by its own
+    /// category or, without one, by its calendar's default — but not edited occurrences, which are
+    /// part of their series rather than appointments of their own.
+    /// </summary>
+    private static IQueryable<CalendarEvent> InCategory(IQueryable<CalendarEvent> events) =>
+        events.Where(e => e.SeriesMasterId == null);
 
     public async Task<CategorySaveOutcome> CreateAsync(Guid userId, SaveCategoryRequest request, CancellationToken cancellationToken = default)
     {
@@ -65,9 +75,10 @@ public sealed class CategoryService(AppDbContext db, TimeProvider timeProvider) 
         entity.UpdatedAt = now;
         await db.SaveChangesAsync(cancellationToken);
 
-        var count = await db.Events.CountAsync(e => e.CategoryId == entity.Id, cancellationToken);
-        var upcoming = await db.Events.CountAsync(
-            e => e.CategoryId == entity.Id && (e.RRule != null || (e.EndUtc ?? e.StartUtc) >= now), cancellationToken);
+        var shown = InCategory(db.Events)
+            .Where(e => e.CategoryId == entity.Id || (e.CategoryId == null && e.Calendar!.DefaultCategoryId == entity.Id));
+        var count = await shown.CountAsync(cancellationToken);
+        var upcoming = await shown.CountAsync(e => e.RRule != null || (e.EndUtc ?? e.StartUtc) >= now, cancellationToken);
         return new CategorySaveOutcome(CategorySaveStatus.Saved, new CategoryDto(entity.Id, entity.Name, entity.Color, count, upcoming));
     }
 

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using CalendarIT.Infrastructure.Auth;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace CalendarIT.CalDav;
@@ -19,7 +20,7 @@ namespace CalendarIT.CalDav;
 /// under a per-process random pepper, so the cache is useless if it leaks and dies with the
 /// process.
 /// </summary>
-public sealed class CalDavCredentialCache(IMemoryCache cache)
+public sealed class CalDavCredentialCache(IMemoryCache cache, CredentialEpochs? epochs = null)
 {
     /// <summary>
     /// How long a proven credential is trusted without re-checking. This is the window in which
@@ -31,14 +32,18 @@ public sealed class CalDavCredentialCache(IMemoryCache cache)
 
     private readonly byte[] _pepper = RandomNumberGenerator.GetBytes(32);
 
-    /// <summary>The identity a verified credential resolves to.</summary>
-    public sealed record CachedPrincipal(Guid UserId, string UserName);
+    /// <summary>The identity a verified credential resolves to, and the user's credential epoch
+    /// when it was verified (see <see cref="CredentialEpochs"/>).</summary>
+    public sealed record CachedPrincipal(Guid UserId, string UserName, long Epoch = 0);
 
+    /// <summary>A cached success — unless the user's password has changed since, which retires it.</summary>
     public bool TryGet(string username, string password, out CachedPrincipal? principal) =>
-        cache.TryGetValue(KeyFor(username, password), out principal) && principal is not null;
+        cache.TryGetValue(KeyFor(username, password), out principal)
+        && principal is not null
+        && principal.Epoch == (epochs?.Of(principal.UserId) ?? 0);
 
     public void Store(string username, string password, CachedPrincipal principal) =>
-        cache.Set(KeyFor(username, password), principal, Ttl);
+        cache.Set(KeyFor(username, password), principal with { Epoch = epochs?.Of(principal.UserId) ?? 0 }, Ttl);
 
     private string KeyFor(string username, string password)
     {

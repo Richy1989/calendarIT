@@ -89,7 +89,10 @@ public sealed class InternalInvitationDelivery(AppDbContext db, TimeProvider tim
         var now = timeProvider.GetUtcNow().UtcDateTime;
         // Match the invitee's copy by shared UID, wherever they may have filed it.
         var existing = await db.Events
-            .SingleOrDefaultAsync(e => e.Uid == master.Uid && e.Calendar!.OwnerUserId == inviteeUserId, cancellationToken);
+            .Include(e => e.Overrides)
+            .SingleOrDefaultAsync(
+                e => e.Uid == master.Uid && e.Calendar!.OwnerUserId == inviteeUserId && e.SeriesMasterId == null,
+                cancellationToken);
 
         // A row that isn't our copy is not ours to write to. The UID came from the organizer, who
         // may have chosen it (import, CalDAV) to collide with something the guest already has —
@@ -126,6 +129,55 @@ public sealed class InternalInvitationDelivery(AppDbContext db, TimeProvider tim
         copy.RRule = master.RRule;
         copy.ExDates = master.ExDates;
         copy.UpdatedAt = now;
+
+        await SyncOverridesAsync(master, copy, now, cancellationToken);
+    }
+
+    /// <summary>
+    /// Mirrors the organizer's edited occurrences onto the guest's copy. The copy's ExDates (taken
+    /// from the master) already suppress those instants, so without their override rows the moved
+    /// occurrences would simply vanish from the guest's calendar.
+    /// </summary>
+    private async Task SyncOverridesAsync(CalendarEvent master, CalendarEvent copy, DateTime now, CancellationToken cancellationToken)
+    {
+        var masterEntry = db.Entry(master);
+        if (masterEntry.State != EntityState.Detached && !masterEntry.Collection(m => m.Overrides).IsLoaded)
+        {
+            await masterEntry.Collection(m => m.Overrides).LoadAsync(cancellationToken);
+        }
+
+        var wanted = master.Overrides.Where(o => o.RecurrenceIdUtc is not null).ToDictionary(o => o.RecurrenceIdUtc!.Value);
+        foreach (var stale in copy.Overrides.Where(o => o.RecurrenceIdUtc is null || !wanted.ContainsKey(o.RecurrenceIdUtc.Value)).ToList())
+        {
+            copy.Overrides.Remove(stale);
+            db.Events.Remove(stale);
+        }
+        foreach (var (rid, source) in wanted)
+        {
+            var row = copy.Overrides.FirstOrDefault(o => o.RecurrenceIdUtc == rid);
+            if (row is null)
+            {
+                row = new CalendarEvent
+                {
+                    Id = Guid.NewGuid(),
+                    SeriesMasterId = copy.Id,
+                    RecurrenceIdUtc = rid,
+                    CreatedAt = now,
+                };
+                db.Events.Add(row);
+                EventService.AddOnce(copy.Overrides, row);
+            }
+            row.Title = source.Title;
+            row.Description = source.Description;
+            row.Location = source.Location;
+            row.Color = source.Color;
+            row.StartUtc = source.StartUtc;
+            row.EndUtc = source.EndUtc;
+            row.IsAllDay = source.IsAllDay;
+            row.TimeZoneId = source.TimeZoneId;
+            row.UpdatedAt = now;
+            SeriesWriter.InheritFromMaster(row, copy);
+        }
     }
 
     /// <summary>Withdraws the copy this organizer delivered — and only that. A row the guest owns
@@ -135,7 +187,8 @@ public sealed class InternalInvitationDelivery(AppDbContext db, TimeProvider tim
         var copy = await db.Events.SingleOrDefaultAsync(
             e => e.Uid == uid
                 && e.Calendar!.OwnerUserId == inviteeUserId
-                && e.SourceOrganizerUserId == organizerUserId,
+                && e.SourceOrganizerUserId == organizerUserId
+                && e.SeriesMasterId == null,
             cancellationToken);
         if (copy is not null)
         {

@@ -1,3 +1,4 @@
+using CalendarIT.Domain;
 using Microsoft.Extensions.Logging;
 using MimeKit;
 
@@ -14,7 +15,7 @@ public interface IPasswordResetMailer
 }
 
 /// <summary>
-/// Sends the reset mail through the user's <em>own</em> connected account.
+/// Queues the reset mail for the user's <em>own</em> connected account.
 ///
 /// This app has no global SMTP relay by design — all mail goes out through per-user accounts —
 /// which is awkward here, because the one person who can't act is the user themselves. It works
@@ -22,13 +23,18 @@ public interface IPasswordResetMailer
 /// without them being signed in, and <see cref="Domain.MailAccount.FromAddress"/> exists so the
 /// message can come from something like noreply@ rather than their personal address.
 ///
+/// The mail is queued, not sent inline. Sending inline made the forgot-password endpoint take
+/// seconds for a real account and milliseconds for an unknown one — which told anyone who asked
+/// exactly which addresses have accounts here.
+///
 /// When no mail account is connected there is nothing to send with. Rather than leave the
 /// account unrecoverable, the link is logged at warning level: on a self-hosted box whoever can
 /// read the container log already has the database, so this grants no access they didn't have —
-/// and it is the difference between a recoverable instance and one that needs SQL surgery.
+/// and it is the difference between a recoverable instance and one that needs SQL surgery. (If a
+/// queued reset mail can't be delivered, the outbox job logs it the same way.)
 /// </summary>
 public sealed class PasswordResetMailer(
-    IUserMailSender mail,
+    IMailOutbox outbox,
     ILogger<PasswordResetMailer> logger) : IPasswordResetMailer
 {
     public async Task SendAsync(Guid userId, string toAddress, string resetLink, CancellationToken cancellationToken = default)
@@ -50,22 +56,8 @@ public sealed class PasswordResetMailer(
                 """,
         };
 
-        bool sent;
-        try
+        if (await outbox.QueueAsync(userId, message, OutboxKind.PasswordReset, cancellationToken))
         {
-            sent = await mail.TrySendAsync(userId, message, cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // The mailbox is configured but not working (wrong password, host down). Falling
-            // through to the log keeps the account recoverable instead of silently dead-ending.
-            logger.LogWarning(ex, "Password-reset mail failed for user {UserId}; falling back to the log", userId);
-            sent = false;
-        }
-
-        if (sent)
-        {
-            logger.LogInformation("Sent a password-reset link to user {UserId}", userId);
             return;
         }
 

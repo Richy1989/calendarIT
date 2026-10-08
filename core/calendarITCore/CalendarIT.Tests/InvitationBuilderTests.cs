@@ -30,7 +30,7 @@ public sealed class InvitationBuilderTests
     // iCalendar folds lines at 75 octets (CRLF + space), which can split the substrings
     // we assert on — unfold before matching.
     private static string CalendarPart(MimeMessage message) =>
-        ((TextPart)((MultipartAlternative)message.Body).OfType<TextPart>()
+        ((TextPart)((MultipartAlternative)message.Body!).OfType<TextPart>()
             .Single(p => p.ContentType.MimeType == "text/calendar")).Text
         .Replace("\r\n ", string.Empty)
         .Replace("\n ", string.Empty);
@@ -55,7 +55,7 @@ public sealed class InvitationBuilderTests
         Assert.Contains("SEQUENCE:3", ics);
 
         // The transport-level content type must announce the method too.
-        var part = ((MultipartAlternative)message.Body).OfType<TextPart>()
+        var part = ((MultipartAlternative)message.Body!).OfType<TextPart>()
             .Single(p => p.ContentType.MimeType == "text/calendar");
         Assert.Equal("REQUEST", part.ContentType.Parameters["method"]);
     }

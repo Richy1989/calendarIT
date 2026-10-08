@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api/client'
 import { getProfile } from './api/profile'
 import { getAuthConfig, requestPasswordReset, resetPassword } from './api/password'
 import { getVisibleCalendars, getVisibleCategories, saveVisibleCalendars, saveVisibleCategories } from './prefs'
-import { getTokens, setTokens, type AuthTokens } from './auth/authStorage'
+import { getTokens, onTokensChangedElsewhere, setTokens, type AuthTokens } from './auth/authStorage'
+import { signOut } from './auth/session'
+import { clearEventClipboard } from './lib/eventClipboard'
 import { getNotifyMode } from './push/webPush'
 import { startLocalReminderPoller, stopLocalReminderPoller } from './push/localReminders'
 import CalendarView from './CalendarView'
@@ -50,18 +52,50 @@ export default function App() {
   const [visibleCats, setVisibleCats] = useState<string[] | null>(getVisibleCategories())
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: getProfile, enabled: !!tokens })
 
-  const persist = (t: AuthTokens | null) => {
+  const queryClient = useQueryClient()
+
+  // Every cached query belongs to whoever was signed in. Dropping the cache whenever the account
+  // changes is what stops the next person at this browser from briefly seeing the last one's
+  // calendar (queries aren't keyed by user, and stay "fresh" for half a minute).
+  const signedIn = (t: AuthTokens) => {
+    queryClient.clear()
     setTokens(t)
     setAuth(t)
   }
 
+  const signedOut = () => {
+    stopLocalReminderPoller()
+    clearEventClipboard()
+    queryClient.clear()
+    setAuth(null)
+  }
+
+  const logout = () => {
+    void signOut() // revokes the session server-side; local state goes right away
+    signedOut()
+  }
+
+  // The listeners below are registered once; the ref keeps them calling the latest signedOut.
+  const signedOutRef = useRef(signedOut)
+  signedOutRef.current = signedOut
+
   // If the refresh token has also expired, session.ts clears storage and fires this —
   // drop back to the login screen instead of leaving a dead session.
   useEffect(() => {
-    const onExpired = () => setAuth(null)
+    const onExpired = () => signedOutRef.current()
     window.addEventListener('auth-expired', onExpired)
     return () => window.removeEventListener('auth-expired', onExpired)
   }, [])
+
+  // Signing in or out in one tab does the same in the others.
+  useEffect(
+    () =>
+      onTokensChangedElsewhere((next) => {
+        if (!next) signedOutRef.current()
+        else setAuth((current) => (current?.refreshToken === next.refreshToken ? current : next))
+      }),
+    [],
+  )
 
   // While signed in on a browser that fell back to local notifications, poll for due reminders
   // and show them. Push-mode browsers are served by the backend job and don't poll.
@@ -75,7 +109,7 @@ export default function App() {
   }, [tokens])
 
   if (!tokens) {
-    return <AuthGate onAuthenticated={persist} />
+    return <AuthGate onAuthenticated={signedIn} />
   }
 
   if (settingsSection) {
@@ -87,7 +121,7 @@ export default function App() {
           <SettingsPage
             initialSection={settingsSection}
             onBack={() => setSettingsSection(null)}
-            onLogout={() => persist(null)}
+            onLogout={logout}
           />
         </WeekStartProvider>
       </ClockProvider>
@@ -114,7 +148,7 @@ export default function App() {
             email={profile?.email}
             avatarUrl={profile?.avatarDataUrl}
             onOpenSettings={() => setSettingsSection('general')}
-            onLogout={() => persist(null)}
+            onLogout={logout}
           />
         </div>
       </header>

@@ -128,3 +128,9 @@ export async function writeIcsToSystemClipboard(fetchIcs: () => Promise<string>)
     }
   } catch { /* best-effort — the in-app JSON clipboard is the reliable path */ }
 }
+
+/** Forgets the copied appointment — on sign-out, so the next person at this browser can't paste
+ *  the previous user's event. */
+export function clearEventClipboard(): void {
+  try { localStorage.removeItem(KEY) } catch { /* storage blocked — nothing stored either */ }
+}

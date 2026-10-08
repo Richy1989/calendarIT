@@ -33,6 +33,18 @@ public sealed class CalendarsController(ICalendarService calendars) : Controller
         return updated is null ? NotFound() : Ok(updated);
     }
 
+    /// <summary>Sets the category events in this calendar take when they have none of their own
+    /// (null clears it).</summary>
+    [HttpPut("{id:guid}/default-category")]
+    [ProducesResponseType<CalendarDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SetDefaultCategory(Guid id, SetCalendarCategoryRequest request, CancellationToken cancellationToken)
+    {
+        var updated = await calendars.SetDefaultCategoryAsync(User.GetUserId(), id, request.CategoryId, cancellationToken);
+        return updated is null ? NotFound() : Ok(updated);
+    }
+
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

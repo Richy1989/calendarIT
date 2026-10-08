@@ -38,7 +38,24 @@ public interface IEventService
     /// <summary>
     /// Deletes an event. If <paramref name="occurrence"/> is given and the event is a
     /// recurring series, that single occurrence is excluded (EXDATE) instead of deleting
-    /// the whole series. Returns false if nothing matched for this user.
+    /// the whole series — together with its edited version, if it has one. Deleting an edited
+    /// occurrence's own row removes that occurrence. Returns false if nothing matched for this user.
     /// </summary>
     Task<bool> DeleteAsync(Guid userId, Guid eventId, DateTimeOffset? occurrence, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Edits one occurrence of a series (identified by its original start, <paramref name="occurrence"/>),
+    /// leaving the rest of the series alone. The first edit creates the override; later ones update
+    /// it. Recurrence, calendar and guests in the request are ignored — they belong to the series.
+    /// Returns null when the series or that occurrence doesn't exist for this user.
+    /// </summary>
+    Task<EventDto?> UpsertOccurrenceAsync(
+        Guid userId, Guid seriesId, DateTimeOffset occurrence, SaveEventRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Puts one occurrence back to what the series says: drops its edits and, if it was deleted,
+    /// brings it back. Returns false when the series doesn't exist for this user.
+    /// </summary>
+    Task<bool> ResetOccurrenceAsync(
+        Guid userId, Guid seriesId, DateTimeOffset occurrence, CancellationToken cancellationToken = default);
 }

@@ -1,6 +1,4 @@
 using CalendarIT.Domain;
-using MailKit.Net.Smtp;
-using MailKit.Security;
 using Microsoft.Extensions.Logging;
 using MimeKit;
 
@@ -20,19 +18,21 @@ public interface IInvitationMailer
 }
 
 /// <summary>
-/// v1 sends inline with the save request: a failed send is logged as a warning and never
-/// fails the event save (re-saving re-sends). No-op when the user has no mail account —
-/// attendees are still stored, just not notified. An outbox + retry job is a follow-up.
+/// Queues invitation mail in the user's outbox (<see cref="IMailOutbox"/>); the outbox job sends
+/// it, retrying while the mail server is unreachable. Saving an event therefore never waits on
+/// SMTP and never fails because of it. No-op when the user has no mail account — attendees are
+/// still stored, just not notified.
 /// </summary>
 public sealed class InvitationMailer(
     MailAccountService accounts,
+    IMailOutbox outbox,
     ILogger<InvitationMailer> logger) : IInvitationMailer
 {
     public Task SendRequestAsync(Guid userId, CalendarEvent evt, IReadOnlyList<Attendee> recipients, CancellationToken cancellationToken = default) =>
-        SendAsync(userId, evt, recipients, InvitationBuilder.BuildRequest, "REQUEST", cancellationToken);
+        QueueAsync(userId, evt, recipients, InvitationBuilder.BuildRequest, "REQUEST", cancellationToken);
 
     public Task SendCancelAsync(Guid userId, CalendarEvent evt, IReadOnlyList<Attendee> recipients, CancellationToken cancellationToken = default) =>
-        SendAsync(userId, evt, recipients, InvitationBuilder.BuildCancel, "CANCEL", cancellationToken);
+        QueueAsync(userId, evt, recipients, InvitationBuilder.BuildCancel, "CANCEL", cancellationToken);
 
     public async Task SendReplyAsync(Guid userId, CalendarEvent evt, AttendeeStatus status, CancellationToken cancellationToken = default)
     {
@@ -45,15 +45,14 @@ public sealed class InvitationMailer(
         if (account is null)
         {
             logger.LogInformation(
-                "No mail account configured for user {UserId} — REPLY for '{Title}' not sent to {Organizer}",
-                userId, evt.Title, evt.OrganizerEmail);
+                "No mail account configured for user {UserId} — REPLY for event {EventId} not sent",
+                userId, evt.Id);
             return;
         }
-        var (mailAccount, password) = account.Value;
-        await SendAllAsync(mailAccount, password, [InvitationBuilder.BuildReply(mailAccount, evt, status)], "REPLY", evt.Title, cancellationToken);
+        await outbox.QueueAsync(userId, InvitationBuilder.BuildReply(account.Value.Account, evt, status), OutboxKind.Reply, cancellationToken);
     }
 
-    private async Task SendAsync(
+    private async Task QueueAsync(
         Guid userId,
         CalendarEvent evt,
         IReadOnlyList<Attendee> recipients,
@@ -70,36 +69,14 @@ public sealed class InvitationMailer(
         if (account is null)
         {
             logger.LogInformation(
-                "No mail account configured for user {UserId} — {Method} for '{Title}' not sent to {Count} guest(s)",
-                userId, method, evt.Title, recipients.Count);
+                "No mail account configured for user {UserId} — {Method} for event {EventId} not sent to {Count} guest(s)",
+                userId, method, evt.Id, recipients.Count);
             return;
         }
-        var (mailAccount, password) = account.Value;
-        var messages = recipients.Select(r => build(mailAccount, evt, r)).ToList();
-        await SendAllAsync(mailAccount, password, messages, method, evt.Title, cancellationToken);
-    }
-
-    /// <summary>Opens one SMTP session on the user's account and sends every message. A failed
-    /// send is logged and swallowed — the event/RSVP is already stored, so it can be re-sent.</summary>
-    private async Task SendAllAsync(
-        MailAccount account, string password, IReadOnlyList<MimeMessage> messages,
-        string method, string title, CancellationToken cancellationToken)
-    {
-        try
+        foreach (var recipient in recipients)
         {
-            using var client = new SmtpClient();
-            await client.ConnectAsync(account.SmtpHost, account.SmtpPort, MailSecurity.For(account.SmtpUseSsl), cancellationToken);
-            await client.AuthenticateAsync(account.Username, password, cancellationToken);
-            foreach (var message in messages)
-            {
-                await client.SendAsync(message, cancellationToken);
-            }
-            await client.DisconnectAsync(quit: true, cancellationToken);
-            logger.LogInformation("Sent iMIP {Method} for '{Title}' ({Count} message(s))", method, title, messages.Count);
+            await outbox.QueueAsync(userId, build(account.Value.Account, evt, recipient), OutboxKind.Invitation, cancellationToken, save: false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "Sending iMIP {Method} for '{Title}' failed", method, title);
-        }
+        await outbox.FlushAsync(cancellationToken);
     }
 }

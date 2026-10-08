@@ -43,8 +43,26 @@ public class CalendarEvent
     /// <summary>iCalendar RRULE string (e.g. "FREQ=WEEKLY;BYDAY=MO"). Null = single event.</summary>
     public string? RRule { get; set; }
 
-    /// <summary>Excluded occurrence starts (UTC), newline-separated ISO 8601. Maps to EXDATE.</summary>
+    /// <summary>
+    /// Occurrence starts (UTC) the series' rule produces but that are not shown from the rule,
+    /// newline-separated ISO 8601: occurrences the user deleted (EXDATE) <em>and</em> occurrences
+    /// replaced by an override row. Keeping both here means every expansion — calendar view,
+    /// reminders, search — skips an overridden occurrence without knowing overrides exist; the
+    /// iCalendar writer subtracts the override instants again so EXDATE carries only deletions.
+    /// </summary>
     public string? ExDates { get; set; }
+
+    /// <summary>
+    /// Set on an override row: the series (master) this row replaces one occurrence of. An
+    /// override is a plain one-off event otherwise — its own times, title, reminders — sharing the
+    /// master's <see cref="Uid"/> and calendar, exactly like a VEVENT with a RECURRENCE-ID.
+    /// Null for masters and ordinary events.
+    /// </summary>
+    public Guid? SeriesMasterId { get; set; }
+
+    /// <summary>On an override row, the UTC start the occurrence had in the series before it was
+    /// edited (iCalendar RECURRENCE-ID). Null on everything else.</summary>
+    public DateTime? RecurrenceIdUtc { get; set; }
 
     /// <summary>iCalendar SEQUENCE — bumped whenever an update re-sends invitations, so
     /// guests' calendars know which version of the event is current.</summary>
@@ -82,4 +100,13 @@ public class CalendarEvent
     public ICollection<Reminder> Reminders { get; set; } = new List<Reminder>();
 
     public ICollection<Attendee> Attendees { get; set; } = new List<Attendee>();
+
+    /// <summary>The series this override belongs to (see <see cref="SeriesMasterId"/>).</summary>
+    public CalendarEvent? SeriesMaster { get; set; }
+
+    /// <summary>On a master: its edited occurrences. Deleted with the master.</summary>
+    public ICollection<CalendarEvent> Overrides { get; set; } = new List<CalendarEvent>();
+
+    /// <summary>True for a row that stands in for one occurrence of a series.</summary>
+    public bool IsOverride => SeriesMasterId is not null;
 }

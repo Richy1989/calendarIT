@@ -60,7 +60,27 @@ system ships as Docker containers and runs behind an operator-supplied reverse p
 | Notifications | **Email (SMTP)** + **Web Push (VAPID)** |
 | Packaging | **Docker** (backend, frontend, Postgres); operator brings their own reverse proxy |
 | TLS | Terminated by the **operator's reverse proxy**; app serves HTTP + honors `X-Forwarded-*` |
-| Logging | **Serilog behind `ILogger<T>`** — console-only themed sink to stdout (sink+theme in code), levels from the `"Serilog"` config section |
+| Logging | **Serilog behind `ILogger<T>`** — console only, to stdout, in `ConsoleLogFormatter`'s short coloured lines (format in code), levels from the `"Serilog"` config section |
+
+**Logging.** Serilog, written by `calendarITCore/Logging/ConsoleLogFormatter.cs`: one short,
+aligned, coloured line per event (`18:31:06 INF  POST   /api/events   201  157 ms`), meant to be
+read as an overview in `docker logs` and in Unraid's log view (a web terminal, so ANSI colour
+shows). The formatter writes the colour itself, because Serilog's console themes apply only when
+the output is a terminal, which in a container it never is; `NO_COLOR` turns it off and keeps the
+layout. A request line is the method, the path as requested (every GUID — dashed, or the bare 32
+hex digits of a CalDAV href — cut to 8 characters), the status coloured by class, and the time
+taken; never the query string or the referer, because a URL can carry a token (a password-reset
+link does). Everything that came from outside is written with its control characters as `\xNN`:
+the log goes to terminals, and an escape sequence in a request path would otherwise recolour or
+rewrite it. Start-up is `CalendarIT <version> starting · <database> · data in <folder>`, then
+`Database created` / `Database upgraded: <migrations>` when that happened, then `CalendarIT is
+ready`; the host's, Quartz's and EF's own start-up chatter is set to Warning, a successful
+healthcheck probe is logged at Debug, and warnings nobody can act on (Data Protection's
+unencrypted key ring, EF's SQLite table-rebuild PRAGMA) are dropped. In the bundled image nginx
+logs only what never reached the API — an error it answered itself, or a 502/504 from the API —
+in the same layout and colours, path only, to stdout (`deploy/nginx.conf`); the entrypoint picks
+its plain formats under `NO_COLOR`. The release workflow sends a token in a URL and an escape in
+a path through the built image and fails if either reaches its log raw.
 
 ---
 
@@ -154,9 +174,10 @@ pin package versions, expect occasional preview edges), Node **v22**, Docker **2
 (`calendarITCore` host + Domain/Application/Infrastructure/CalDav/Tests, wired with the
 reference graph above). Template cleanup done: WeatherForecast removed, `UseHttpsRedirection`
 dropped, `ForwardedHeaders` (X-Forwarded-For/Proto) enabled for the proxy. **Serilog**
-logging is live — console-only themed ANSI sink (sink + theme in code via
-`AddSerilogLogging`; one `Serilog.AspNetCore` package), levels from the `"Serilog"`
-config section, request summary lines via `UseSerilogRequestLogging`. Health endpoints `**/health**` (liveness) and `**/ready**`
+logging is live — console-only (one `Serilog.AspNetCore` package), levels from the
+`"Serilog"` config section, request summary lines via `UseSerilogRequestLogging`. (The
+themed sink of this first version was later replaced by `ConsoleLogFormatter`; see
+**Logging** above.) Health endpoints `**/health**` (liveness) and `**/ready**`
 (readiness; picks up checks tagged `ready`) return 200. Solution builds warning-free.
 **Security TODO — resolved:** the `Microsoft.OpenApi` NU1903 advisory is cleared by
 pinning `Microsoft.OpenApi 2.11.0` (and `Microsoft.AspNetCore.OpenApi 10.0.10`).
@@ -314,7 +335,8 @@ didn't, which is what made the gap easy to miss.
   - `PUBLIC_BASE_URL` (for links, CalDAV principal URLs, push). Required for password-reset
     links, which are never built from the request host — see §4.7
   - Log levels via the `Serilog` config section (`Serilog__MinimumLevel__Default`,
-    `Serilog__MinimumLevel__Override__<Namespace>`); console-only sink to stdout
+    `Serilog__MinimumLevel__Override__<Namespace>`); console-only to stdout; `NO_COLOR` turns
+    the colour off (see **Logging**)
 - Persistent data lives under the **`/appdata`** volume so the container is disposable.
 - EF Core **migrations** applied on startup (guarded) or via an init step.
 
@@ -466,7 +488,7 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
    - ✅ Reminders sync as **VALARM** both directions (see §4 phase 4 note).
    - ⬜ *Deferred:* RFC 6578 sync-collection.
 7. **Hardening & deploy** — sample compose, docs, env-var config, migrations on startup.
-   - ✅ *Done:* single-container image (`deploy/Dockerfile`: nginx serving the SPA + reverse
+   - ✅ *Done:* single-container image (`Dockerfile --target bundle`: nginx serving the SPA + reverse
      proxying the API, SQLite under `/data`), `docker-compose.yml` with Postgres, Unraid
      templates, `deploy/dev.*` and `seed.*` scripts, and a `v*`-tag release workflow pushing
      to Docker Hub. Image build + run verified 2026-07-24.

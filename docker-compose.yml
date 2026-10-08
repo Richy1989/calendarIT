@@ -51,7 +51,8 @@ services:
       # trusted when resolving the client IP the auth rate limit keys on.
       FORWARDED_PROXY_HOPS: ${FORWARDED_PROXY_HOPS:-1}   # optional (default 1)
       # optional (default Information). Log level (Serilog reads config; override per-namespace
-      # with Serilog__MinimumLevel__Override__<Namespace>). Console-only, to stdout.
+      # with Serilog__MinimumLevel__Override__<Namespace>). Console-only, to stdout, one short
+      # coloured line per request; set NO_COLOR=1 for plain text.
       Serilog__MinimumLevel__Default: Information        # optional (default Information)
       # optional — but required for self-service password-reset emails. The address reset links
       # point at; never derived from the request (Host is a header anyone can set), so without
@@ -64,7 +65,12 @@ services:
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}          # optional
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@calendarit.local}   # optional
       # No SMTP settings: email (invitations + reminders) is sent through each user's own
-      # mail account, connected in-app under Settings → Email.
+      # mail account, connected in-app under Settings → Email. MAIL_HOST_POLICY limits where
+      # those mail servers may point: private (default: internet + LAN), public, or any.
+      MAIL_HOST_POLICY: ${MAIL_HOST_POLICY:-private}   # optional (default private)
+      # The app runs as this unprivileged user; on start it takes ownership of /appdata.
+      # PUID: ${PUID:-1654}                             # optional (default 1654)
+      # PGID: ${PGID:-1654}                             # optional (default 1654)
     networks:
       # backend: reach Postgres. edge: where your reverse proxy finds us.
       - backend

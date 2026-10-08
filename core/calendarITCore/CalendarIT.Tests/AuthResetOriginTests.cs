@@ -28,9 +28,12 @@ public sealed class AuthResetOriginTests
         }
 
         public AuthConfig GetConfig() => new(RegistrationEnabled: true);
-        public Task<AuthResult> RegisterAsync(RegisterRequest r, CancellationToken c = default) => throw new NotSupportedException();
-        public Task<AuthResult> LoginAsync(LoginRequest r, CancellationToken c = default) => throw new NotSupportedException();
-        public Task<AuthResult> RefreshAsync(RefreshTokenRequest r, CancellationToken c = default) => throw new NotSupportedException();
+        public Task<AuthResult> RegisterAsync(RegisterRequest r, AuthClient? a = null, CancellationToken c = default) => throw new NotSupportedException();
+        public Task<AuthResult> LoginAsync(LoginRequest r, AuthClient? a = null, CancellationToken c = default) => throw new NotSupportedException();
+        public Task<AuthResult> RefreshAsync(RefreshTokenRequest r, AuthClient? a = null, CancellationToken c = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SessionDto>> ListSessionsAsync(Guid u, Guid? s, CancellationToken c = default) => throw new NotSupportedException();
+        public Task<bool> RevokeSessionAsync(Guid u, Guid s, CancellationToken c = default) => throw new NotSupportedException();
+        public Task<int> RevokeSessionsAsync(Guid u, Guid? k, CancellationToken c = default) => throw new NotSupportedException();
         public Task LogoutAsync(LogoutRequest r, CancellationToken c = default) => throw new NotSupportedException();
         public Task<PasswordResult> ChangePasswordAsync(Guid u, ChangePasswordRequest r, CancellationToken c = default) => throw new NotSupportedException();
         public Task<PasswordResult> ResetPasswordAsync(ResetPasswordRequest r, CancellationToken c = default) => throw new NotSupportedException();

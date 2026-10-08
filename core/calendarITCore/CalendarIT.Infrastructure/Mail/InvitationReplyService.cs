@@ -26,7 +26,7 @@ public sealed class InvitationReplyService(AppDbContext db) : IInvitationReplySe
     {
         var evt = await db.Events
             .Include(e => e.Attendees)
-            .Where(e => e.Uid == reply.Uid && e.Calendar!.OwnerUserId == organizerUserId)
+            .Where(e => e.Uid == reply.Uid && e.Calendar!.OwnerUserId == organizerUserId && e.SeriesMasterId == null)
             .SingleOrDefaultAsync(cancellationToken);
         if (evt is null)
         {

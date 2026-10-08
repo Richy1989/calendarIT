@@ -65,6 +65,21 @@ export function formatTimeRange(start: Date, end: Date | null, hour12: boolean):
   return `${from} – ${to}`
 }
 
+/**
+ * "5 minutes ago", "in 2 hours", "yesterday" — for timestamps where the distance matters more
+ * than the clock. Beyond a month it gives the date instead.
+ */
+export function formatRelative(d: Date, now: Date = new Date()): string {
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+  const seconds = Math.round((d.getTime() - now.getTime()) / 1000)
+  const abs = Math.abs(seconds)
+  if (abs < 45) return rtf.format(0, 'second')
+  if (abs < 3600) return rtf.format(Math.round(seconds / 60), 'minute')
+  if (abs < 86_400) return rtf.format(Math.round(seconds / 3600), 'hour')
+  if (abs < 30 * 86_400) return rtf.format(Math.round(seconds / 86_400), 'day')
+  return formatDateMedium(d)
+}
+
 /** A compact, human date like "Mon, Sep 1 2026". */
 export function formatDateMedium(d: Date): string {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })

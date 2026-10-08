@@ -32,6 +32,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public DbSet<Attendee> Attendees => Set<Attendee>();
 
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -50,6 +52,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.HasIndex(t => t.TokenHash).IsUnique();
 
             entity.Property(t => t.ReplacedByTokenHash).HasMaxLength(128);
+            entity.Property(t => t.UserAgent).HasMaxLength(300);
+            entity.Property(t => t.IpAddress).HasMaxLength(64);
+            entity.HasIndex(t => t.SessionId);
 
             // One user has many refresh tokens; deleting the user clears them.
             entity.HasOne<ApplicationUser>()
@@ -67,6 +72,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(c => c.Color).HasMaxLength(32);
             entity.Property(c => c.TimeZoneId).HasMaxLength(64);
             entity.HasIndex(c => c.OwnerUserId);
+
+            // Deleting the category leaves the calendar without a default (its events uncategorized).
+            entity.HasOne(c => c.DefaultCategory)
+                .WithMany()
+                .HasForeignKey(c => c.DefaultCategoryId)
+                .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasOne<ApplicationUser>()
                 .WithMany()
@@ -87,8 +98,24 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(e => e.InvitationStatus).HasConversion<string>().HasMaxLength(16);
             entity.Property(e => e.OrganizerEmail).HasMaxLength(320);
 
-            entity.HasIndex(e => e.CalendarId);
             entity.HasIndex(e => new { e.CalendarId, e.StartUtc });
+
+            // A UID names one resource per calendar (a CalDAV href is built from it). Overrides
+            // share their master's UID, so they're left out of this index and kept unique per
+            // occurrence instead. Without it, two concurrent PUTs or imports of the same UID both
+            // inserted, and every UID lookup after that threw on the duplicate. The filter is
+            // plain SQL both providers accept.
+            entity.HasIndex(e => new { e.CalendarId, e.Uid })
+                .IsUnique()
+                .HasFilter("\"SeriesMasterId\" IS NULL");
+            entity.HasIndex(e => new { e.SeriesMasterId, e.RecurrenceIdUtc })
+                .IsUnique()
+                .HasFilter("\"SeriesMasterId\" IS NOT NULL");
+
+            entity.HasOne(e => e.SeriesMaster)
+                .WithMany(e => e.Overrides)
+                .HasForeignKey(e => e.SeriesMasterId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(e => e.Calendar)
                 .WithMany(c => c.Events)
@@ -168,6 +195,24 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.HasOne<ApplicationUser>()
                 .WithOne()
                 .HasForeignKey<MailAccount>(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<OutboxMessage>(entity =>
+        {
+            entity.HasKey(m => m.Id);
+            entity.Property(m => m.Kind).HasConversion<string>().HasMaxLength(32);
+            entity.Property(m => m.Status).HasConversion<string>().HasMaxLength(16);
+            entity.Property(m => m.Recipient).HasMaxLength(320).IsRequired();
+            entity.Property(m => m.Subject).HasMaxLength(500).IsRequired();
+            entity.Property(m => m.LastError).HasMaxLength(500);
+            // The dispatcher's scan: what's due, oldest first.
+            entity.HasIndex(m => new { m.Status, m.NextAttemptAtUtc });
+            entity.HasIndex(m => new { m.UserId, m.CreatedAtUtc });
+
+            entity.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(m => m.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

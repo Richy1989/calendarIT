@@ -40,7 +40,7 @@ try {
     $tagArgs = $tags | ForEach-Object { @('-t', $_) } | ForEach-Object { $_ }
 
     Write-Host "Building and pushing $($tags -join ', ') for linux/amd64 (Unraid)..." -ForegroundColor Cyan
-    docker buildx build --platform linux/amd64 -f deploy/Dockerfile @buildArgs @tagArgs --push .
+    docker buildx build --platform linux/amd64 -f Dockerfile --target bundle @buildArgs @tagArgs --push .
     if ($LASTEXITCODE -ne 0) { throw "docker buildx build failed with exit code $LASTEXITCODE" }
 
     Write-Host "Done. On Unraid, pull/refresh: ${Image}:$(if ($Tag) { $Tag } else { 'dev' })" -ForegroundColor Green

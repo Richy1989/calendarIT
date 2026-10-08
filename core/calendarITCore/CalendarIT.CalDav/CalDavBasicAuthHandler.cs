@@ -1,7 +1,9 @@
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
+using CalendarIT.Infrastructure.Auth;
 using CalendarIT.Infrastructure.Identity;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
@@ -20,10 +22,13 @@ public sealed class CalDavBasicAuthHandler(
     ILoggerFactory logger,
     UrlEncoder encoder,
     UserManager<ApplicationUser> userManager,
-    CalDavCredentialCache credentials)
+    CalDavCredentialCache credentials,
+    CalDavFailureThrottle throttle)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string SchemeName = "CalDavBasic";
+
+    private const string ThrottledKey = "caldav-throttled";
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -32,6 +37,18 @@ public sealed class CalDavBasicAuthHandler(
         {
             return AuthenticateResult.NoResult();
         }
+
+        var address = Context.Connection.RemoteIpAddress?.ToString();
+        var result = await AuthenticateBasicAsync(header);
+        if (!result.Succeeded && result.Failure is not null)
+        {
+            throttle.RecordFailure(address);
+        }
+        return result;
+    }
+
+    private async Task<AuthenticateResult> AuthenticateBasicAsync(string header)
+    {
 
         string decoded;
         try
@@ -60,9 +77,18 @@ public sealed class CalDavBasicAuthHandler(
             return Success(cached!.UserId, cached.UserName);
         }
 
+        // Past the cache, every attempt costs a password hash: an address that has failed too
+        // often is turned away before that work is done.
+        if (throttle.IsBlocked(Context.Connection.RemoteIpAddress?.ToString()))
+        {
+            Context.Items[ThrottledKey] = true;
+            return AuthenticateResult.Fail("Too many failed logins.");
+        }
+
         var user = await userManager.FindByEmailAsync(email) ?? await userManager.FindByNameAsync(email);
         if (user is null)
         {
+            PasswordTiming.Equalize(userManager.PasswordHasher, password); // no faster than a real account
             return AuthenticateResult.Fail("Invalid credentials.");
         }
 
@@ -73,6 +99,7 @@ public sealed class CalDavBasicAuthHandler(
         // for long.
         if (await userManager.IsLockedOutAsync(user))
         {
+            PasswordTiming.Equalize(userManager.PasswordHasher, password);
             return AuthenticateResult.Fail("Invalid credentials.");
         }
 
@@ -102,6 +129,13 @@ public sealed class CalDavBasicAuthHandler(
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
+        if (Context.Items.ContainsKey(ThrottledKey))
+        {
+            // Not a credentials prompt: the client should back off, not ask again.
+            Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            Response.Headers.RetryAfter = ((int)CalDavFailureThrottle.Window.TotalSeconds).ToString();
+            return Task.CompletedTask;
+        }
         // The realm prompt is what CalDAV clients show in their login dialog.
         Response.Headers.WWWAuthenticate = "Basic realm=\"CalendarIT\", charset=\"UTF-8\"";
         return base.HandleChallengeAsync(properties);

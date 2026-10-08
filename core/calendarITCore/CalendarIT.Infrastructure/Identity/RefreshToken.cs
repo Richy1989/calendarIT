@@ -24,5 +24,21 @@ public sealed class RefreshToken
     /// <summary>Hash of the token that superseded this one during rotation, if any.</summary>
     public string? ReplacedByTokenHash { get; set; }
 
+    /// <summary>
+    /// The sign-in this token belongs to. Constant across rotations, so the chain of tokens one
+    /// device holds over time is one session — the unit the user sees and revokes in Settings, and
+    /// the <c>sid</c> claim every access token from that chain carries.
+    /// </summary>
+    public Guid SessionId { get; set; }
+
+    /// <summary>When the session's first token was issued (the sign-in itself).</summary>
+    public DateTimeOffset SessionStartedAt { get; set; }
+
+    /// <summary>The client's User-Agent at the last refresh, for recognising the device.</summary>
+    public string? UserAgent { get; set; }
+
+    /// <summary>The client's address at the last refresh, for recognising the device.</summary>
+    public string? IpAddress { get; set; }
+
     public bool IsActive(DateTimeOffset now) => RevokedAt is null && now < ExpiresAt;
 }

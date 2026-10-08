@@ -4,6 +4,7 @@ import { listEvents, type EventDto } from './api/events'
 import { useHour12 } from './clock'
 import { dayKey, formatDateMedium, formatTimeRange, startOfToday } from './lib/dates'
 import { UNCATEGORIZED } from './prefs'
+import { describeRule } from './lib/rrule'
 
 /**
  * The "list" view: every upcoming appointment from today forward, in one scrollable
@@ -44,8 +45,9 @@ export default function AgendaView({
   onNew: () => void
   /** Leave the list for a grid view (month/week/day). */
   onExit: (view: 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay') => void
-  onEdit: (seriesId: string) => void
-  onEventContext: (x: number, y: number, e: { seriesId: string; recurring: boolean; occurrenceStart: string }) => void
+  /** Open the editor on this event (for an occurrence of a series: on that occurrence). */
+  onEdit: (dto: EventDto) => void
+  onEventContext: (x: number, y: number, dto: EventDto) => void
 }) {
   const hour12 = useHour12()
   // Windows are keyed off today so the list stays correct across midnight.
@@ -69,7 +71,7 @@ export default function AgendaView({
       seen.add(key)
       if (dto.invitationStatus === 'Declined') continue // a declined invitation drops off the list
       if (visibleCalendarIds && !visibleCalendarIds.includes(dto.calendarId)) continue
-      if (visibleCategoryIds && !visibleCategoryIds.includes(dto.categoryId ?? UNCATEGORIZED)) continue
+      if (visibleCategoryIds && !visibleCategoryIds.includes(dto.effectiveCategoryId ?? dto.categoryId ?? UNCATEGORIZED)) continue
       events.push(dto)
     }
   }
@@ -161,21 +163,21 @@ export default function AgendaView({
                 type="button"
                 className="agenda-row"
                 key={`${dto.id}__${dto.start}`}
-                onClick={() => onEdit(dto.id)}
+                onClick={() => onEdit(dto)}
                 onContextMenu={(e) => {
                   e.preventDefault()
-                  onEventContext(e.clientX, e.clientY, {
-                    seriesId: dto.id,
-                    recurring: dto.recurring,
-                    occurrenceStart: dto.start,
-                  })
+                  onEventContext(e.clientX, e.clientY, dto)
                 }}
               >
                 <span className="agenda-time">{timeLabel(dto)}</span>
                 <span className="agenda-dot" style={{ background: dto.color ?? DEFAULT_COLOR }} aria-hidden="true" />
                 <span className="agenda-row-title">
                   {dto.title}
-                  {dto.recurring && <span className="agenda-recurring" title="Repeats"> ⟳</span>}
+                  {dto.recurring && (
+                    <span className="agenda-recurring" title={dto.recurrence ? describeRule(dto.recurrence, new Date(dto.start)) : 'Repeats'}>
+                      {' '}⟳
+                    </span>
+                  )}
                 </span>
                 {dto.location && <span className="agenda-row-loc">{dto.location}</span>}
               </button>

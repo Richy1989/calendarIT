@@ -12,4 +12,8 @@ public static class ClaimsPrincipalExtensions
             ? guid
             : throw new InvalidOperationException("Authenticated user has no valid id claim.");
     }
+
+    /// <summary>The session (refresh-token chain) the access token was issued for, if it says.</summary>
+    public static Guid? GetSessionId(this ClaimsPrincipal user) =>
+        Guid.TryParse(user.FindFirstValue("sid") ?? user.FindFirstValue(ClaimTypes.Sid), out var sid) ? sid : null;
 }

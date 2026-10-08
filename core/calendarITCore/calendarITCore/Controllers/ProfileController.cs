@@ -45,10 +45,27 @@ public sealed class ProfileController(IProfileService profile) : ControllerBase
         {
             return BadRequest(new { error = "Empty image." });
         }
+        // The declared type is only a claim: the bytes must actually be that kind of image, so
+        // nothing else is ever stored and served back under an image content type.
+        if (!LooksLike(contentType, bytes))
+        {
+            return StatusCode(StatusCodes.Status415UnsupportedMediaType,
+                new { error = "That file isn't a PNG, JPEG, WebP, or GIF image." });
+        }
 
         await profile.SetAvatarAsync(User.GetUserId(), bytes, contentType, cancellationToken);
         return Ok(await profile.GetAsync(User.GetUserId(), cancellationToken));
     }
+
+    /// <summary>Whether <paramref name="bytes"/> start with the signature of <paramref name="contentType"/>.</summary>
+    private static bool LooksLike(string contentType, byte[] bytes) => contentType.ToLowerInvariant() switch
+    {
+        "image/png" => bytes.AsSpan().StartsWith((byte[])[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+        "image/jpeg" => bytes.AsSpan().StartsWith((byte[])[0xFF, 0xD8, 0xFF]),
+        "image/gif" => bytes.AsSpan().StartsWith("GIF87a"u8) || bytes.AsSpan().StartsWith("GIF89a"u8),
+        "image/webp" => bytes.Length >= 12 && bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) && bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8),
+        _ => false,
+    };
 
     [HttpDelete("avatar")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

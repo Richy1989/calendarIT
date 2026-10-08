@@ -49,15 +49,66 @@ jobs:
           images: richy1989/calendarit
           tags: |
             type=semver,pattern={{version}}
+      # Build the image once into the runner's Docker and check it before anything is pushed; the
+      # push below reuses this build from the cache.
+      - name: Build the image for checking
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: bundle
+          platforms: linux/amd64
+          load: true
+          tags: calendarit:ci
+          build-args: |
+            VERSION=${{ env.VERSION_NAME }}
+            COMMIT=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Start it
+        run: |
+          docker run -d --name calendarit -p 8080:80 calendarit:ci
+          for i in $(seq 1 60); do curl -sf http://localhost:8080/health >/dev/null && exit 0; sleep 1; done
+          echo "the container never became healthy"; exit 1
+      - name: The container log holds no token from a URL, and no escape a request sent
+        # A password-reset link carries its token in the page URL, and any query string could carry
+        # a secret. The API logs a request's path only, and nginx logs only what never reached the
+        # API, by path (deploy/nginx.conf), so no query string may appear. A path can also carry
+        # escape sequences, which a terminal showing the log would obey (Unraid's log view is one):
+        # both logs must show them escaped.
+        run: |
+          curl -s -o /dev/null "http://localhost:8080/reset-password?email=ci%40example.com&token=ci-reset-secret"
+          curl -s -o /dev/null "http://localhost:8080/api/events/export.ics?token=ci-api-secret"
+          curl -s -o /dev/null "http://localhost:8080/assets/ci-missing.js?token=ci-asset-secret"
+          curl -s -o /dev/null "http://localhost:8080/api/ci%1b%5b31minject"
+          curl -s -o /dev/null "http://localhost:8080/assets/ci%1b%5b31minject.js"
+          sleep 1
+          docker logs calendarit > container.log 2>&1
+          grep -q 'CalendarIT .* starting' container.log || { echo "the start-up line is missing"; exit 1; }
+          grep -q '/api/events/export.ics' container.log || { echo "the API did not log the export request"; exit 1; }
+          grep -q '/assets/ci-missing.js' container.log || { echo "nginx did not log the missing asset"; exit 1; }
+          if grep -E 'ci-(reset|api|asset)-secret' container.log; then
+            echo "a token from a URL reached the log"; exit 1
+          fi
+          [ "$(grep -ci 'x1b\[31minject' container.log)" -ge 2 ] \
+            || { echo "the API and nginx did not both log the escape in the path, escaped"; exit 1; }
+          if grep -q $'\e\[31minject' container.log; then
+            echo "an escape sequence from a request reached the log raw"; exit 1
+          fi
+      - name: Container log
+        if: failure()
+        run: docker logs calendarit
+
       - uses: docker/build-push-action@v7
         with:
           context: .
-          file: deploy/Dockerfile
+          file: Dockerfile
+          target: bundle
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Baked into the API's assembly version (deploy/Dockerfile ARGs).
+          # Baked into the API's assembly version (Dockerfile ARGs).
           build-args: |
             VERSION=${{ env.VERSION_NAME }}
             COMMIT=${{ github.sha }}

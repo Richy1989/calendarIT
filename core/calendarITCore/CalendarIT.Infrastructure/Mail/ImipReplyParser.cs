@@ -38,15 +38,17 @@ public static class ImipReplyParser
             return null; // only replies update attendee status
         }
 
-        var ve = calendar.Events.FirstOrDefault();
-        if (ve is null || string.IsNullOrWhiteSpace(ve.Uid))
+        // A reply may name a single instance (RECURRENCE-ID); the RSVP still belongs to the guest
+        // on the series, which is what we track.
+        var ve = calendar.Events.FirstOrDefault(e => e.RecurrenceIdentifier is null) ?? calendar.Events.FirstOrDefault();
+        if (ve is null || string.IsNullOrWhiteSpace(ve.Uid) || ve.Uid.Length > 255)
         {
             return null;
         }
 
         var attendee = ve.Attendees.FirstOrDefault();
         var email = ImipMime.ExtractEmail(attendee?.Value);
-        if (email is null)
+        if (email is null or { Length: > 320 })
         {
             return null; // a REPLY without an attendee can't be matched to a guest
         }

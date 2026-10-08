@@ -59,6 +59,24 @@ public sealed class SaveMailAccountRequest
 /// <summary>Outcome of a connection test.</summary>
 public sealed record MailTestResult(bool Ok, string? Error);
 
+/// <summary>
+/// One message in the user's outbox, for Settings: what it is, where it's going, and how sending
+/// went. <paramref name="Status"/> is "Pending", "Sent" or "Failed"; <paramref name="LastError"/>
+/// is a user-facing reason, never a raw server response.
+/// </summary>
+public sealed record OutboxItemDto(
+    Guid Id,
+    string Kind,
+    string Status,
+    string Recipient,
+    string Subject,
+    int Attempts,
+    string? LastError,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? NextAttemptAt,
+    DateTimeOffset? SentAt,
+    bool CanRetry);
+
 /// <summary>Per-user mail account: the identity used to send (and later receive) invitations.</summary>
 public interface IMailAccountService
 {
@@ -71,4 +89,14 @@ public interface IMailAccountService
 
     /// <summary>Connects and authenticates against SMTP (and IMAP when configured).</summary>
     Task<MailTestResult> TestAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>The user's most recent outgoing messages, newest first.</summary>
+    Task<IReadOnlyList<OutboxItemDto>> ListOutboxAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>Queues a failed message for another try. False when there's no such message, or
+    /// it can't be retried (already sent, or no longer worth sending).</summary>
+    Task<bool> RetryOutboxAsync(Guid userId, Guid messageId, CancellationToken cancellationToken = default);
+
+    /// <summary>Removes a message from the outbox (unsent ones are then never sent).</summary>
+    Task<bool> DiscardOutboxAsync(Guid userId, Guid messageId, CancellationToken cancellationToken = default);
 }

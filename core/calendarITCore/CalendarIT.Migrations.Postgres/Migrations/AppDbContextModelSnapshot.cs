@@ -17,7 +17,7 @@ namespace CalendarIT.Migrations.Postgres.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.10")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -65,6 +65,9 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("DefaultCategoryId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -81,6 +84,8 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DefaultCategoryId");
 
                     b.HasIndex("OwnerUserId");
 
@@ -135,8 +140,14 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<DateTime?>("RecurrenceIdUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("Sequence")
                         .HasColumnType("integer");
+
+                    b.Property<Guid?>("SeriesMasterId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("SourceOrganizerUserId")
                         .HasColumnType("uuid");
@@ -163,11 +174,17 @@ namespace CalendarIT.Migrations.Postgres.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CalendarId");
-
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("CalendarId", "StartUtc");
+
+                    b.HasIndex("CalendarId", "Uid")
+                        .IsUnique()
+                        .HasFilter("\"SeriesMasterId\" IS NULL");
+
+                    b.HasIndex("SeriesMasterId", "RecurrenceIdUtc")
+                        .IsUnique()
+                        .HasFilter("\"SeriesMasterId\" IS NOT NULL");
 
                     b.ToTable("Events");
                 });
@@ -298,6 +315,66 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                         .IsUnique();
 
                     b.ToTable("NotificationLogs");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.OutboxMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<byte[]>("Mime")
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Recipient")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "NextAttemptAtUtc");
+
+                    b.HasIndex("UserId", "CreatedAtUtc");
+
+                    b.ToTable("OutboxMessages");
                 });
 
             modelBuilder.Entity("CalendarIT.Domain.PushSubscription", b =>
@@ -459,6 +536,10 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("ReplacedByTokenHash")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
@@ -466,15 +547,27 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("SessionStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SessionId");
 
                     b.HasIndex("TokenHash")
                         .IsUnique();
@@ -627,11 +720,18 @@ namespace CalendarIT.Migrations.Postgres.Migrations
 
             modelBuilder.Entity("CalendarIT.Domain.Calendar", b =>
                 {
+                    b.HasOne("CalendarIT.Domain.Category", "DefaultCategory")
+                        .WithMany()
+                        .HasForeignKey("DefaultCategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("CalendarIT.Infrastructure.Identity.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("OwnerUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("DefaultCategory");
                 });
 
             modelBuilder.Entity("CalendarIT.Domain.CalendarEvent", b =>
@@ -647,9 +747,16 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                         .HasForeignKey("CategoryId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("CalendarIT.Domain.CalendarEvent", "SeriesMaster")
+                        .WithMany("Overrides")
+                        .HasForeignKey("SeriesMasterId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.Navigation("Calendar");
 
                     b.Navigation("Category");
+
+                    b.Navigation("SeriesMaster");
                 });
 
             modelBuilder.Entity("CalendarIT.Domain.Category", b =>
@@ -666,6 +773,15 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.HasOne("CalendarIT.Infrastructure.Identity.ApplicationUser", null)
                         .WithOne()
                         .HasForeignKey("CalendarIT.Domain.MailAccount", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.OutboxMessage", b =>
+                {
+                    b.HasOne("CalendarIT.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -758,6 +874,8 @@ namespace CalendarIT.Migrations.Postgres.Migrations
             modelBuilder.Entity("CalendarIT.Domain.CalendarEvent", b =>
                 {
                     b.Navigation("Attendees");
+
+                    b.Navigation("Overrides");
 
                     b.Navigation("Reminders");
                 });

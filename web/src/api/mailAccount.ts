@@ -29,3 +29,22 @@ export async function testMailAccount(): Promise<MailTestResult> {
   if (error || !data) throw new Error('Connection test failed to run')
   return data
 }
+
+export type OutboxItemDto = components['schemas']['OutboxItemDto']
+
+/** Recent outgoing mail (invitations, replies, reminders), newest first. */
+export async function listOutbox(): Promise<OutboxItemDto[]> {
+  const { data, error } = await api.GET('/api/mail-account/outbox')
+  if (error || !data) throw new Error('Failed to load outgoing mail')
+  return data
+}
+
+export async function retryOutbox(id: string): Promise<void> {
+  const { error } = await api.POST('/api/mail-account/outbox/{id}/retry', { params: { path: { id } } })
+  if (error) throw new Error('That message can no longer be retried')
+}
+
+export async function discardOutbox(id: string): Promise<void> {
+  const { error, response } = await api.DELETE('/api/mail-account/outbox/{id}', { params: { path: { id } } })
+  if (error && response?.status !== 404) throw new Error('Failed to remove that message')
+}

@@ -13,6 +13,7 @@ using CalendarIT.Infrastructure.Profile;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -78,6 +79,8 @@ public static class DependencyInjection
         services.Configure<DataProtectionTokenProviderOptions>(o => o.TokenLifespan = TimeSpan.FromHours(2));
 
         services.AddScoped<ITokenService, TokenService>();
+        services.AddScoped<SessionValidator>();
+        services.AddSingleton<CredentialEpochs>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IEventService, EventService>();
         services.AddScoped<IInternalInvitationDelivery, InternalInvitationDelivery>();
@@ -95,8 +98,21 @@ public static class DependencyInjection
         services.AddScoped<IInvitationMailer, InvitationMailer>();
         services.AddScoped<IInvitationReplyService, InvitationReplyService>();
         services.AddScoped<IIncomingInvitationService, IncomingInvitationService>();
-        services.AddScoped<IUserMailSender, UserMailSender>();
         services.AddScoped<IPasswordResetMailer, PasswordResetMailer>();
+
+        // Outgoing mail is queued (IMailOutbox) and sent by OutboxDispatchJob — never inline.
+        // MAIL_HOST_POLICY bounds where users' mail servers may point: "private" (default: public
+        // internet + LAN, never this host or link-local), "public", or "any".
+        services.AddSingleton(new MailConnectionOptions
+        {
+            HostScope = Enum.TryParse<Net.OutboundHostScope>(configuration["MAIL_HOST_POLICY"], ignoreCase: true, out var scope)
+                ? scope
+                : Net.OutboundHostScope.Private,
+        });
+        services.AddScoped<IMailOutbox, MailOutbox>();
+        services.AddSingleton<IOutboxSignal>(sp => new QuartzOutboxSignal(
+            sp.GetService<ISchedulerFactory>(), sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<QuartzOutboxSignal>>()));
+        services.AddMemoryCache();
 
         // Browser Web Push: a reusable, thread-safe sender (singleton) and a per-request store.
         services.AddSingleton<IWebPushSender, WebPushSender>();
@@ -123,6 +139,20 @@ public static class DependencyInjection
                 .WithIdentity("reminder-dispatch-trigger")
                 .WithCronSchedule("0 * * * * ?")); // every minute
 
+            // The outbox ticks every 30 seconds, and is also triggered right after mail is queued.
+            q.AddJob<OutboxDispatchJob>(o => o.WithIdentity(OutboxDispatchJob.Key));
+            q.AddTrigger(t => t
+                .ForJob(OutboxDispatchJob.Key)
+                .WithIdentity("outbox-dispatch-trigger")
+                .WithCronSchedule("0/30 * * * * ?"));
+
+            // Nightly housekeeping of tables that only grow (tokens, dispatch log, sent mail).
+            q.AddJob<MaintenanceJob>(o => o.WithIdentity(MaintenanceJob.Key));
+            q.AddTrigger(t => t
+                .ForJob(MaintenanceJob.Key)
+                .WithIdentity("maintenance-trigger")
+                .WithCronSchedule("0 17 3 * * ?")); // 03:17 daily
+
             var inboxKey = new JobKey("invitation-inbox");
             q.AddJob<InvitationInboxJob>(o => o.WithIdentity(inboxKey));
             q.AddTrigger(t => t
@@ -143,16 +173,25 @@ public static class DependencyInjection
                     throw new InvalidOperationException(
                         "POSTGRES_CONNECTION must be set when DATABASE_PROVIDER=Postgres.");
                 }
-                builder.UseNpgsql(options.PostgresConnection, o =>
-                    o.MigrationsAssembly(DatabaseOptions.PostgresMigrationsAssembly));
+                builder.UseNpgsql(options.PostgresConnection, o => o
+                    .MigrationsAssembly(DatabaseOptions.PostgresMigrationsAssembly)
+                    // Events load several collections at once (reminders, guests, overrides); one
+                    // joined query multiplies their rows into each other.
+                    .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
                 break;
 
             case DatabaseProvider.Sqlite:
             default:
                 Directory.CreateDirectory(options.AppDataPath);
                 var dbPath = Path.Combine(options.AppDataPath, options.SqliteFileName);
-                builder.UseSqlite($"Data Source={dbPath}", o =>
-                    o.MigrationsAssembly(DatabaseOptions.SqliteMigrationsAssembly));
+                builder.UseSqlite($"Data Source={dbPath}", o => o
+                    .MigrationsAssembly(DatabaseOptions.SqliteMigrationsAssembly)
+                    .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
+                // SQLite can't alter a table, so EF rebuilds one inside a migration with foreign keys
+                // switched off for the copy — a PRAGMA that can't run in a transaction, which EF
+                // warns about every time it runs one. It's how every such migration has to work, and
+                // nobody reading the log can do anything about it.
+                builder.ConfigureWarnings(w => w.Ignore(RelationalEventId.NonTransactionalMigrationOperationWarning));
                 break;
         }
     }

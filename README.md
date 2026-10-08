@@ -39,14 +39,18 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
   drag to move or resize — with undo/redo for every change.
 - 🗂️ **Multiple calendars** — split Personal from Work, toggle which are shown, move
   events between them; each syncs as its own calendar over CalDAV.
-- 🔁 **Recurring events** — repeat rules with exceptions (RRULE).
+- 🔁 **Recurring events** — daily, weekly, monthly, yearly, or custom: every N days/weeks/months
+  (shift patterns like "every 4 weeks on Mon and Tue"), monthly on "the second Tuesday", ending on
+  a date or after N times. Edit or move a single occurrence without touching the rest of the
+  series, and it syncs to your phone that way too.
 - ⏰ **Reminders** — by email or browser notification (Web Push), set per appointment; they
   also sync to your phone as calendar alarms (VALARM) over CalDAV.
 - 📱 **Made for phones too** — a responsive layout with a thumb-reachable toolbar, and swipe
   left/right to page between views.
 - 🌍 **Time zones** — stored correctly, displayed in yours, DST-safe.
 - 🎨 **Categories** — named colors (Work, Family, …) managed in Settings; recolor a
-  category and every appointment in it follows. Syncs via the iCalendar `CATEGORIES` +
+  category and every appointment in it follows. Give a whole calendar a category (say, an
+  imported holiday calendar) and everything in it without one of its own takes that color. Syncs via the iCalendar `CATEGORIES` +
   `COLOR` properties; a color picked on the phone maps back to the nearest category.
 - 🔎 **Search** — find any appointment by title or location, keyboard-first.
 - 📲 **Phone sync** — a built-in **CalDAV** server, so any CalDAV-capable app can
@@ -54,7 +58,11 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
 - 📄 **iCal import / export** — pick which calendars to export; import into any
   calendar or a new one.
 - 🔐 **Accounts** — email + password, JWT sessions with rotating refresh tokens, password change
-  and self-service reset by email, and a switch to close sign-up.
+  and self-service reset by email, and a switch to close sign-up. See every signed-in device in
+  Settings and sign any of them out — instantly.
+- 📮 **Reliable mail** — invitations, replies and reminders are queued and sent in the background
+  through your own mail account, retried while your mail server is down, and listed in Settings
+  with what happened to each.
 
 <table>
   <tr>
@@ -138,7 +146,7 @@ Everything is set through environment variables:
 
 | Variable                                  | Purpose                                          |
 | ----------------------------------------- | ------------------------------------------------ |
-| `DATABASE_PROVIDER`                       | `Postgres` (default in Docker) or `Sqlite`       |
+| `DATABASE_PROVIDER`                       | `Sqlite` (default) or `Postgres` — the shipped `docker-compose.yml` sets `Postgres` |
 | `POSTGRES_CONNECTION`                     | Npgsql connection string (Postgres only)         |
 | `APPDATA_PATH`                            | Writable data dir (SQLite file, etc.) — `/appdata`|
 | `JWT_SIGNING_KEY`                         | **Required.** ≥ 32 chars                         |
@@ -148,8 +156,11 @@ Everything is set through environment variables:
 | `AUTH_RATE_LIMIT_PER_MINUTE`              | Auth requests allowed per client IP per minute. Default `20` |
 | `FORWARDED_PROXY_HOPS`                    | How many `X-Forwarded-For` hops to trust. Default `1` — see below |
 | `Serilog__MinimumLevel__Default`          | Log level (console-only, to stdout). Default `Information` |
+| `NO_COLOR`                                | Set to anything to turn the log's colour off (the layout stays). Unset by default: `docker logs` and Unraid's log view show the colours |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`  | Web Push signing keys. **Optional** — auto-generated and persisted under `APPDATA_PATH` if unset. Set both to pin them across deployments |
 | `VAPID_SUBJECT`                           | Contact URI in push messages, e.g. `mailto:admin@example.com`. Default `mailto:admin@calendarit.local` |
+| `MAIL_HOST_POLICY`                        | Where users' mail servers may point: `private` (default — internet + LAN, never the server itself or link-local/cloud-metadata addresses), `public` (internet only; use when strangers can sign up), or `any` |
+| `PUID` / `PGID`                           | User/group the app runs as inside the container. Default `1654` (the image's `app` user); the Unraid templates use `99`/`100` |
 
 > **Set `PUBLIC_BASE_URL` if you want self-service password reset.** The address in a reset
 > link is deliberately never read from the request: `Host` is just a header, and the
@@ -168,6 +179,10 @@ Everything is set through environment variables:
 > the web login and CalDAV alike, since both check the same credentials. Worth knowing if you
 > change your password: a phone still syncing with the old one will keep retrying and can lock
 > you out, so update it in your CalDAV client too. (Completing a password reset lifts a lockout.)
+
+> **The containers run the app as an unprivileged user.** They start as root only long enough
+> to take ownership of the data directory — including volumes written by older, root-run
+> images — then drop to `PUID`/`PGID`. Nothing to do when upgrading.
 
 > **Close sign-up once everyone has an account.** Set `DISABLE_REGISTRATION=true` — your instance
 > is reachable by anyone who knows the address, because that is what makes phone sync work.
@@ -193,8 +208,10 @@ read your database, so it grants no new access, but it is worth knowing.
 
 > **Email needs no environment variables.** Invitations and reminders are sent through each
 > user's own mail account, connected in-app under **Settings → Email** (SMTP + IMAP, password
-> stored encrypted). Users without a connected account simply get their reminders logged
-> instead of emailed.
+> stored encrypted). Mail is queued and sent in the background — saving an event never waits on
+> a mail server — and retried with backoff for a while if the server can't be reached; **Settings →
+> Email → Outgoing mail** shows what was sent, what's waiting, and why anything failed. Users
+> without a connected account simply get their reminders logged instead of emailed.
 
 > **Browser notifications are opt-in per browser.** Choose **Browser** on an appointment's
 > reminder (or flip the toggle in **Settings → General**) and allow the permission prompt. They
@@ -207,7 +224,7 @@ read your database, so it grants no new access, but it is worth knowing.
 ```
 core/calendarITCore/   ASP.NET Core solution (API host + Domain/Application/Infrastructure/CalDav)
 web/                   React + Vite frontend
-Dockerfile             Builds the SPA and serves it from the API
+Dockerfile             Two images: the API serving the SPA (default), and nginx + API (--target bundle)
 docker-compose.yml     App + PostgreSQL
 ARCHITECTURE.md        Design decisions and roadmap
 ```
@@ -217,16 +234,20 @@ ARCHITECTURE.md        Design decisions and roadmap
 Under active development — built in phases (see `ARCHITECTURE.md` §10).
 
 - ✅ Foundations: solution, logging, health checks, Docker skeleton
-- ✅ Accounts & auth: Identity + JWT with rotating refresh tokens
+- ✅ Accounts & auth: Identity + JWT with rotating refresh tokens; per-device sessions you can
+  review and sign out (effective immediately), throttled and timing-safe logins
 - ✅ Web UI shell: calendar views, event editor (title, time, color, location, description)
 - ✅ Events persist to the database — create / edit / delete / drag, scoped per user, with
   undo/redo
-- ✅ Recurring events (RRULE) with timezone/DST-correct expansion; delete a single
-  occurrence or the whole series (editing a single occurrence is still on the list)
+- ✅ Recurring events (RRULE) with timezone/DST-correct expansion; edit, move or delete a single
+  occurrence (or put it back), or change the whole series. Edited occurrences round-trip as
+  `RECURRENCE-ID` overrides over CalDAV, `.ics` and email invitations
 - ✅ iCal (.ics) import / export — round-trips title, time + zone, all-day, color, RRULE;
   export a selection of calendars, import into a chosen or new calendar
 - ✅ Reminders — **email** and **browser notifications (Web Push)** via a Quartz.NET job
   (recurrence-aware, timezone-correct, dedup); the channel is chosen per reminder on the event
+- ✅ Mail outbox — all outgoing mail is queued and sent in the background with retries; its
+  status is visible (and retryable) in Settings → Email
 - ✅ CalDAV server — two-way sync with standard clients: discovery, ETags/CTag,
   calendar-query/multiget, create/edit/delete, reminders as VALARM both ways (no RFC 6578
   sync-tokens yet — clients fall back to CTag polling)

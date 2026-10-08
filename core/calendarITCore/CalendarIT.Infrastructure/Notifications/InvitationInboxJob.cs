@@ -2,9 +2,7 @@ using CalendarIT.Domain;
 using CalendarIT.Infrastructure.Mail;
 using CalendarIT.Infrastructure.Persistence;
 using MailKit;
-using MailKit.Net.Imap;
 using MailKit.Search;
-using MailKit.Security;
 using Microsoft.EntityFrameworkCore;
 using MimeKit;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +24,8 @@ public sealed class InvitationInboxJob(
     TimeProvider timeProvider,
     ILogger<InvitationInboxJob> logger) : IJob
 {
+    private MailConnectionOptions connectionOptions = new();
+
     public async Task Execute(IJobExecutionContext context)
     {
         var cancellationToken = context.CancellationToken;
@@ -36,6 +36,7 @@ public sealed class InvitationInboxJob(
         var accounts = scope.ServiceProvider.GetRequiredService<MailAccountService>();
         var replies = scope.ServiceProvider.GetRequiredService<IInvitationReplyService>();
         var invitations = scope.ServiceProvider.GetRequiredService<IIncomingInvitationService>();
+        connectionOptions = scope.ServiceProvider.GetService<MailConnectionOptions>() ?? new MailConnectionOptions();
 
         // Only accounts with an IMAP server and scanning enabled are candidates.
         var candidates = await db.MailAccounts
@@ -56,7 +57,8 @@ public sealed class InvitationInboxJob(
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // A broken account (bad password, host down) must not stall the others.
-                logger.LogWarning(ex, "Inbox scan failed for user {UserId}", account.UserId);
+                logger.LogWarning(ex, "Inbox scan failed for user {UserId}: {Reason}",
+                    account.UserId, MailConnections.Describe(ex));
             }
 
             // Record the attempt even on failure so a failing account isn't retried every tick.
@@ -75,10 +77,8 @@ public sealed class InvitationInboxJob(
             return; // no usable password (never set, or protection keys lost)
         }
 
-        using var client = new ImapClient();
         // ImapHost is non-null here — candidates are filtered on ImapHost != null in Execute.
-        await client.ConnectAsync(account.ImapHost!, account.ImapPort, MailSecurity.For(account.ImapUseSsl), cancellationToken);
-        await client.AuthenticateAsync(account.Username, password, cancellationToken);
+        using var client = await MailConnections.OpenImapAsync(account, password, connectionOptions, cancellationToken);
 
         var inbox = client.Inbox;
         await inbox.OpenAsync(FolderAccess.ReadOnly, cancellationToken);

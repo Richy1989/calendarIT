@@ -1,6 +1,7 @@
 import { api } from './client'
 import type { components } from './schema'
 import { authHeaders } from '../auth/session'
+import { problemMessage } from './errors'
 
 export type EventDto = components['schemas']['EventDto']
 export type SaveEventRequest = components['schemas']['SaveEventRequest']
@@ -22,25 +23,31 @@ export async function exportEventIcs(id: string): Promise<string> {
   return res.text()
 }
 
-/** Where an import lands: an existing calendar, or a brand-new one with this name. */
-export type ImportTarget = { calendarId?: string; newCalendarName?: string }
+/** Where an import lands: an existing calendar, or a brand-new one with this name (and, optionally,
+ *  a default category for its events). */
+export type ImportTarget = { calendarId?: string; newCalendarName?: string; newCalendarCategoryId?: string | null }
 
 /** Uploads an .ics document; returns how many events were imported / skipped. */
 export async function importIcs(ics: string, target?: ImportTarget): Promise<ImportResult> {
   const params = new URLSearchParams()
-  if (target?.newCalendarName) params.set('newCalendarName', target.newCalendarName)
-  else if (target?.calendarId) params.set('calendarId', target.calendarId)
+  if (target?.newCalendarName) {
+    params.set('newCalendarName', target.newCalendarName)
+    if (target.newCalendarCategoryId) params.set('newCalendarCategoryId', target.newCalendarCategoryId)
+  } else if (target?.calendarId) {
+    params.set('calendarId', target.calendarId)
+  }
   const qs = params.toString()
   const res = await fetch(`/api/events/import${qs ? `?${qs}` : ''}`, {
     method: 'POST',
     headers: { ...(await authHeaders()), 'Content-Type': 'text/calendar' },
     body: ics,
   })
-  if (!res.ok) throw new Error('Import failed')
+  if (!res.ok) throw new Error(problemMessage(await res.json().catch(() => null), 'Import failed'))
   return res.json()
 }
 
-export async function listEvents(from?: string, to?: string): Promise<EventDto[]> {
+/** Events overlapping [from, to) — recurring series expanded into occurrences. */
+export async function listEvents(from: string, to: string): Promise<EventDto[]> {
   const { data, error } = await api.GET('/api/events', { params: { query: { from, to } } })
   if (error || !data) throw new Error('Failed to load events')
   return data
@@ -73,14 +80,32 @@ export async function getEvent(id: string): Promise<EventDto> {
 
 export async function createEvent(body: SaveEventRequest): Promise<EventDto> {
   const { data, error } = await api.POST('/api/events', { body })
-  if (error || !data) throw new Error('Failed to create event')
+  if (error || !data) throw new Error(problemMessage(error, 'Failed to create event'))
   return data
 }
 
 export async function updateEvent(id: string, body: SaveEventRequest): Promise<EventDto> {
   const { data, error } = await api.PUT('/api/events/{id}', { params: { path: { id } }, body })
-  if (error || !data) throw new Error('Failed to update event')
+  if (error || !data) throw new Error(problemMessage(error, 'Failed to update event'))
   return data
+}
+
+/** Edits one occurrence of a series — the one that starts at `occurrence` in the series' rule. */
+export async function updateOccurrence(seriesId: string, occurrence: string, body: SaveEventRequest): Promise<EventDto> {
+  const { data, error } = await api.PUT('/api/events/{id}/occurrence', {
+    params: { path: { id: seriesId }, query: { occurrence } },
+    body,
+  })
+  if (error || !data) throw new Error(problemMessage(error, 'Failed to update this occurrence'))
+  return data
+}
+
+/** Puts one occurrence back to what the series says (undoes an edit or a delete of it). */
+export async function resetOccurrence(seriesId: string, occurrence: string): Promise<void> {
+  const { error } = await api.POST('/api/events/{id}/occurrence/reset', {
+    params: { path: { id: seriesId }, query: { occurrence } },
+  })
+  if (error) throw new Error('Failed to restore this occurrence')
 }
 
 /** Our RSVP to a received invitation. */

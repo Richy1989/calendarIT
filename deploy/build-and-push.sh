@@ -48,6 +48,6 @@ fi
 
 pushed="${tags[*]}"; pushed="${pushed//-t /}"
 echo "Building and pushing ${pushed} for linux/amd64 (Unraid)..."
-docker buildx build --platform linux/amd64 -f deploy/Dockerfile "${build_args[@]}" "${tags[@]}" --push .
+docker buildx build --platform linux/amd64 -f Dockerfile --target bundle "${build_args[@]}" "${tags[@]}" --push .
 
 echo "Done. On Unraid, pull/refresh: ${IMAGE}:${TAG:-dev}"

@@ -20,7 +20,7 @@ public sealed class ReminderDispatchTests : IDisposable
     private readonly SqliteConnection _connection;
     private readonly AppDbContext _db;
     private readonly FixedTimeProvider _clock = new(new DateTimeOffset(2026, 9, 1, 8, 0, 0, TimeSpan.Zero));
-    private readonly FakeUserMailSender _mail = new();
+    private readonly FakeMailOutbox _mail = new();
     private readonly FakeWebPushSender _push = new();
     private readonly Guid _userId = Guid.NewGuid();
     private Guid _calendarId;

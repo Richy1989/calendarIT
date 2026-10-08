@@ -103,7 +103,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
 
     public async Task<IResult> PropfindCalendar(Guid calendarId, HttpContext ctx)
     {
-        var cal = await GetOwnedCalendarAsync(ctx.User, calendarId);
+        var cal = await GetOwnedCalendarAsync(ctx.User, calendarId, ctx.RequestAborted);
         if (cal is null)
         {
             return Results.NotFound();
@@ -115,7 +115,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         if (Depth(ctx) >= 1)
         {
             var events = await db.Events.AsNoTracking()
-                .Where(e => e.CalendarId == cal.Id)
+                .Where(e => e.CalendarId == cal.Id && e.SeriesMasterId == null) // overrides live inside their master's resource
                 .Select(e => new { e.Uid, e.UpdatedAt })
                 .ToListAsync(ctx.RequestAborted);
             foreach (var e in events)
@@ -152,7 +152,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
 
     public async Task<IResult> Report(Guid calendarId, HttpContext ctx)
     {
-        var cal = await GetOwnedCalendarAsync(ctx.User, calendarId);
+        var cal = await GetOwnedCalendarAsync(ctx.User, calendarId, ctx.RequestAborted);
         if (cal is null)
         {
             return Results.NotFound();
@@ -178,8 +178,8 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
                 .Where(u => u is not null)
                 .Cast<string>()
                 .ToList();
-            events = await db.Events.AsNoTracking().Include(e => e.Category).Include(e => e.Reminders)
-                .Where(e => e.CalendarId == cal.Id && uids.Contains(e.Uid))
+            events = await WithSeries(db.Events.AsNoTracking())
+                .Where(e => e.CalendarId == cal.Id && e.SeriesMasterId == null && uids.Contains(e.Uid))
                 .ToListAsync(ctx.RequestAborted);
 
             var found = new HashSet<string>(events.Select(e => e.Uid), StringComparer.OrdinalIgnoreCase);
@@ -198,8 +198,8 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             // meant the response grew with the account's whole history rather than the window.
             var (rangeStart, rangeEnd) = ReadTimeRange(body);
 
-            var query = db.Events.AsNoTracking().Include(e => e.Category).Include(e => e.Reminders)
-                .Where(e => e.CalendarId == cal.Id);
+            var query = WithSeries(db.Events.AsNoTracking())
+                .Where(e => e.CalendarId == cal.Id && e.SeriesMasterId == null);
             if (rangeEnd is { } end)
             {
                 // Nothing that begins after the window can appear in it, series included.
@@ -254,16 +254,16 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
 
     public async Task<IResult> PutEvent(Guid calendarId, string resource, HttpContext ctx)
     {
-        var cal = await GetOwnedCalendarAsync(ctx.User, calendarId);
+        var cal = await GetOwnedCalendarAsync(ctx.User, calendarId, ctx.RequestAborted);
         if (cal is null || !resource.EndsWith(".ics", StringComparison.OrdinalIgnoreCase))
         {
             return Results.NotFound();
         }
 
-        string ics;
-        using (var reader = new StreamReader(ctx.Request.Body))
+        var ics = await ReadBodyAsync(ctx, MaxResourceBytes);
+        if (ics is null)
         {
-            ics = await reader.ReadToEndAsync(ctx.RequestAborted);
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
         }
 
         ICalCalendar? parsed;
@@ -275,22 +275,47 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         {
             parsed = null;
         }
-        var ve = parsed?.Events.FirstOrDefault();
-        if (ve?.Start is null)
+
+        // One resource is one series: the master plus any overrides (RECURRENCE-ID) of the same
+        // UID. A resource of overrides alone (an invitation to one instance) is kept as a one-off.
+        var (masterVe, overrideVes) = SeriesWriter.Split(parsed?.Events.ToList() ?? []);
+        var primary = masterVe ?? overrideVes.FirstOrDefault();
+        if (primary is null)
         {
             return Results.BadRequest();
+        }
+        if (masterVe is null)
+        {
+            overrideVes = [];
         }
 
         // DAVx⁵ (our target client) names resources {UID}.ics, so the body's UID and the
         // resource name agree; the body's UID wins when present because it is what a later
         // export/import round-trip preserves.
-        var uid = string.IsNullOrWhiteSpace(ve.Uid) ? Uri.UnescapeDataString(resource[..^4]) : ve.Uid;
+        var uid = string.IsNullOrWhiteSpace(primary.Uid) ? Uri.UnescapeDataString(resource[..^4]) : primary.Uid;
+        if (uid.Length > ICalEventMapper.MaxUidLength)
+        {
+            return Results.BadRequest();
+        }
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var ifMatch = ctx.Request.Headers.IfMatch.ToString();
         var ifNoneMatch = ctx.Request.Headers.IfNoneMatch.ToString();
 
-        var existing = await db.Events.Include(e => e.Reminders).FirstOrDefaultAsync(
-            e => e.CalendarId == cal.Id && e.Uid == uid, ctx.RequestAborted);
+        var existing = await db.Events
+            .Include(e => e.Reminders)
+            .Include(e => e.Overrides).ThenInclude(o => o.Reminders)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(e => e.CalendarId == cal.Id && e.Uid == uid && e.SeriesMasterId == null, ctx.RequestAborted);
+
+        if (existing is null && !string.IsNullOrEmpty(ifMatch))
+        {
+            return Results.StatusCode(StatusCodes.Status412PreconditionFailed);
+        }
+        if (existing is not null &&
+            (ifNoneMatch == "*" || (!string.IsNullOrEmpty(ifMatch) && ifMatch != ETagOf(existing.UpdatedAt))))
+        {
+            return Results.StatusCode(StatusCodes.Status412PreconditionFailed);
+        }
 
         // For category resolution: an incoming CATEGORIES/COLOR is matched against the
         // user's categories (by name, else nearest color) inside the mapper.
@@ -298,42 +323,26 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             .Where(c => c.OwnerUserId == cal.OwnerUserId)
             .ToListAsync(ctx.RequestAborted);
 
-        if (existing is null)
-        {
-            if (!string.IsNullOrEmpty(ifMatch))
-            {
-                return Results.StatusCode(StatusCodes.Status412PreconditionFailed);
-            }
-            var created = ICalEventMapper.FromICalEvent(ve, cal.Id, uid, now, categories);
-            created.Reminders = ICalEventMapper.ReadReminders(ve); // sync the client's VALARMs in
-            db.Events.Add(created);
-            await db.SaveChangesAsync(ctx.RequestAborted);
-            ctx.Response.Headers.ETag = ETagOf(created.UpdatedAt);
-            return Results.StatusCode(StatusCodes.Status201Created);
-        }
+        // Two-way reminder sync: VALARMs a client sends become the reminder set; a VEVENT with
+        // none keeps what's there (many clients drop alarms they don't manage, and wiping the
+        // web-set reminders on every poll would be worse than missing a phone-side delete).
+        var series = new SeriesWriter(db).Write(
+            existing, primary, overrideVes, cal.Id, uid, now, categories, replaceAlarms: true,
+            inheritedCategoryId: cal.DefaultCategoryId);
 
-        if (ifNoneMatch == "*" || (!string.IsNullOrEmpty(ifMatch) && ifMatch != ETagOf(existing.UpdatedAt)))
+        try
         {
+            await db.SaveChangesAsync(ctx.RequestAborted);
+        }
+        catch (DbUpdateException) when (existing is null)
+        {
+            // Another request created the same UID between our lookup and this insert (the
+            // unique index caught it). The client's view is stale either way.
             return Results.StatusCode(StatusCodes.Status412PreconditionFailed);
         }
 
-        ICalEventMapper.Apply(ve, existing, now, categories);
-        // Two-way reminder sync: when the client sends VALARMs, they become the reminder set.
-        // When it sends none, keep what's there — many clients drop alarms they don't manage, and
-        // wiping the user's web-set reminders on every poll would be worse than not honouring a
-        // phone-side "delete last alarm". (Same caution the EXDATE handling takes.)
-        if (ve.Alarms.Count > 0)
-        {
-            db.Reminders.RemoveRange(existing.Reminders); // delete the old set outright…
-            foreach (var reminder in ICalEventMapper.ReadReminders(ve))
-            {
-                reminder.EventId = existing.Id; // …and insert the client's current alarms
-                db.Reminders.Add(reminder);
-            }
-        }
-        await db.SaveChangesAsync(ctx.RequestAborted);
-        ctx.Response.Headers.ETag = ETagOf(existing.UpdatedAt);
-        return Results.StatusCode(StatusCodes.Status204NoContent);
+        ctx.Response.Headers.ETag = ETagOf(series.UpdatedAt);
+        return Results.StatusCode(existing is null ? StatusCodes.Status201Created : StatusCodes.Status204NoContent);
     }
 
     public async Task<IResult> DeleteEvent(Guid calendarId, string resource, HttpContext ctx)
@@ -365,11 +374,47 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             : throw new InvalidOperationException("Authenticated CalDAV user has no valid id claim.");
     }
 
-    private async Task<Calendar?> GetOwnedCalendarAsync(ClaimsPrincipal user, Guid calendarId)
+    private async Task<Calendar?> GetOwnedCalendarAsync(ClaimsPrincipal user, Guid calendarId, CancellationToken ct = default)
     {
         var userId = GetUserId(user);
         return await db.Calendars.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.Id == calendarId && c.OwnerUserId == userId);
+            .FirstOrDefaultAsync(c => c.Id == calendarId && c.OwnerUserId == userId, ct);
+    }
+
+    /// <summary>A query for whole resources: the master with what serializing it needs, its
+    /// overrides included.</summary>
+    private static IQueryable<DomainEvent> WithSeries(IQueryable<DomainEvent> events) =>
+        events
+            .Include(e => e.Calendar).ThenInclude(c => c!.DefaultCategory)
+            .Include(e => e.Category)
+            .Include(e => e.Reminders)
+            .Include(e => e.Overrides).ThenInclude(o => o.Category)
+            .Include(e => e.Overrides).ThenInclude(o => o.Reminders)
+            .AsSplitQuery();
+
+    /// <summary>
+    /// The request body as text, or null once it passes <paramref name="maxBytes"/>. A single
+    /// event is a few kilobytes; anything near the limit is not a calendar object, and parsing it
+    /// would only spend memory on the attempt.
+    /// </summary>
+    private static async Task<string?> ReadBodyAsync(HttpContext ctx, int maxBytes)
+    {
+        if (ctx.Request.ContentLength > maxBytes)
+        {
+            return null;
+        }
+        using var buffer = new MemoryStream();
+        var chunk = new byte[16 * 1024];
+        int read;
+        while ((read = await ctx.Request.Body.ReadAsync(chunk, ctx.RequestAborted)) > 0)
+        {
+            if (buffer.Length + read > maxBytes)
+            {
+                return null;
+            }
+            buffer.Write(chunk, 0, read);
+        }
+        return System.Text.Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
     }
 
     private async Task<List<Calendar>> GetOrCreateCalendarsAsync(Guid userId)
@@ -397,15 +442,15 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         {
             return null;
         }
-        var cal = await GetOwnedCalendarAsync(user, calendarId);
+        var cal = await GetOwnedCalendarAsync(user, calendarId, ct);
         if (cal is null)
         {
             return null;
         }
         var uid = Uri.UnescapeDataString(resource[..^4]);
         var query = track ? db.Events : db.Events.AsNoTracking();
-        return await query.Include(e => e.Category).Include(e => e.Reminders)
-            .FirstOrDefaultAsync(e => e.CalendarId == cal.Id && e.Uid == uid, ct);
+        return await WithSeries(query)
+            .FirstOrDefaultAsync(e => e.CalendarId == cal.Id && e.Uid == uid && e.SeriesMasterId == null, ct);
     }
 
     private async Task<Dictionary<XName, object?>> CalendarPropsAsync(Calendar cal)
@@ -417,7 +462,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             .GroupBy(_ => 1)
             .Select(g => new { Count = g.Count(), Max = g.Max(e => (DateTime?)e.UpdatedAt) })
             .FirstOrDefaultAsync();
-        var ctag = $"{agg?.Max?.Ticks ?? 0:x}-{agg?.Count ?? 0}";
+        var ctag = $"{(agg?.Max?.Ticks ?? 0) / 10:x}-{agg?.Count ?? 0}";
 
         return new Dictionary<XName, object?>
         {
@@ -444,12 +489,24 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             : null;
     }
 
-    private static string ETagOf(DateTime updatedAt) => $"\"{updatedAt.Ticks:x}\"";
+    /// <summary>
+    /// The resource's ETag, from its last-modified time at microsecond precision — the finest
+    /// both databases keep. Postgres stores microseconds, so a tick-precise tag handed out after a
+    /// write never matched the one read back, and every following edit from a phone was refused
+    /// with 412.
+    /// </summary>
+    private static string ETagOf(DateTime updatedAt) => $"\"{updatedAt.Ticks / 10:x}\"";
+
+    /// <summary>Largest calendar object a PUT may carry.</summary>
+    private const int MaxResourceBytes = 1024 * 1024;
 
     private static string Serialize(DomainEvent e)
     {
         var cal = new ICalCalendar { ProductId = "-//CalendarIT//EN" };
-        cal.Events.Add(ICalEventMapper.ToICalEvent(e));
+        foreach (var ve in ICalEventMapper.ToICalEvents(e, e.Overrides, e.Calendar?.DefaultCategory))
+        {
+            cal.Events.Add(ve);
+        }
         return new CalendarSerializer().SerializeToString(cal)!;
     }
 

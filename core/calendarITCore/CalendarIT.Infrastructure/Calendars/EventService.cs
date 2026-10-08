@@ -1,3 +1,4 @@
+using CalendarIT.Application;
 using CalendarIT.Application.Calendars;
 using CalendarIT.Domain;
 using CalendarIT.Infrastructure.Mail;
@@ -17,8 +18,9 @@ public sealed class EventService(
         var toUtc = to?.UtcDateTime;
         var results = new List<EventDto>();
 
-        // Single (non-recurring) events: filter by range in SQL.
-        var singles = db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees).Include(e => e.Category)
+        // Single (non-recurring) events — and edited occurrences, which are one-offs standing in
+        // for an instant their series suppresses: filter by range in SQL.
+        var singles = db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees).Include(e => e.Category).Include(e => e.Calendar!.DefaultCategory)
             .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule == null);
         if (toUtc is not null)
         {
@@ -36,24 +38,33 @@ public sealed class EventService(
             // A series starting after the window can't have an occurrence inside it, so it never
             // needs expanding. (The other direction can't be filtered here: whether an old series
             // still runs is encoded in its RRULE, which SQL can't read.)
-            var masters = await db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees).Include(e => e.Category)
+            var masters = await db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees).Include(e => e.Category).Include(e => e.Calendar!.DefaultCategory)
                 .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule != null && e.StartUtc < toUtc)
                 .ToListAsync(cancellationToken);
 
+            // Bounded twice over: per series (an hourly rule over a long window) and per response
+            // (many series at once), so no single request can be made to build an unbounded list.
+            var budget = MaxOccurrencesPerResponse;
             foreach (var m in masters)
             {
                 var end = m.EndUtc ?? m.StartUtc.AddHours(1);
                 var exDates = ExDates.Parse(m.ExDates);
                 var reminders = MapReminders(m.Reminders);
                 var attendees = MapAttendees(m.Attendees);
-                foreach (var occ in RecurrenceExpander.Expand(m.StartUtc, end, m.TimeZoneId, m.RRule!, exDates, fromUtc.Value, toUtc.Value))
+                var occurrences = RecurrenceExpander
+                    .Expand(m.StartUtc, end, m.TimeZoneId, m.RRule!, exDates, fromUtc.Value, toUtc.Value, m.IsAllDay)
+                    .Take(Math.Min(MaxOccurrencesPerSeries, budget));
+                foreach (var occ in occurrences)
                 {
+                    budget--;
                     results.Add(new EventDto(
                         m.Id, m.CalendarId, m.Title, m.Description, m.Location, m.CategoryId, DisplayColor(m),
                         new DateTimeOffset(occ.StartUtc, TimeSpan.Zero),
                         new DateTimeOffset(occ.EndUtc, TimeSpan.Zero),
                         m.IsAllDay, Recurring: true, Recurrence: m.RRule, Reminders: reminders, Attendees: attendees,
-                        InvitationStatus: m.InvitationStatus?.ToString(), OrganizerEmail: m.OrganizerEmail));
+                        InvitationStatus: m.InvitationStatus?.ToString(), OrganizerEmail: m.OrganizerEmail,
+                        RecurrenceId: new DateTimeOffset(occ.StartUtc, TimeSpan.Zero),
+                        EffectiveCategoryId: EffectiveCategoryId(m)));
                 }
             }
         }
@@ -75,7 +86,7 @@ public sealed class EventService(
         // `lower(col) LIKE '%q%'` on both SQLite and Npgsql, so this stays provider-agnostic.
         var needle = q.ToLowerInvariant();
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var matching = db.Events.AsNoTracking().Include(e => e.Category)
+        var matching = db.Events.AsNoTracking().Include(e => e.Category).Include(e => e.Calendar!.DefaultCategory)
             .Where(e => e.Calendar!.OwnerUserId == userId
                 && (e.Title.ToLower().Contains(needle)
                     || (e.Location != null && e.Location.ToLower().Contains(needle))));
@@ -101,6 +112,7 @@ public sealed class EventService(
         // series than events, and the cap stops a pathological calendar from making search crawl.
         var recurring = await matching
             .Where(e => e.RRule != null)
+            .OrderByDescending(e => e.StartUtc) // a stable pick when there are more than the cap
             .Take(MaxRecurringSearchCandidates)
             .ToListAsync(cancellationToken);
 
@@ -122,6 +134,13 @@ public sealed class EventService(
             .ToList();
     }
 
+    /// <summary>Occurrences one series contributes to a range query: an hourly series over the
+    /// agenda's three-month window, with room to spare.</summary>
+    private const int MaxOccurrencesPerSeries = 3_000;
+
+    /// <summary>Occurrences across all series in one range query.</summary>
+    private const int MaxOccurrencesPerResponse = 20_000;
+
     /// <summary>How many series a single search will expand. Bounds the work when a short query
     /// matches a large calendar.</summary>
     private const int MaxRecurringSearchCandidates = 200;
@@ -139,7 +158,7 @@ public sealed class EventService(
 
         // Cheap: expansion is lazy, so this stops at the first hit.
         var upcoming = RecurrenceExpander
-            .Expand(e.StartUtc, end, e.TimeZoneId, e.RRule!, exDates, now, now.AddYears(2))
+            .Expand(e.StartUtc, end, e.TimeZoneId, e.RRule!, exDates, now, now.AddYears(2), e.IsAllDay)
             .FirstOrDefault();
         if (upcoming.StartUtc != default)
         {
@@ -148,7 +167,7 @@ public sealed class EventService(
 
         // Finding the *last* one has to walk them all, hence the cap.
         var past = RecurrenceExpander
-            .Expand(e.StartUtc, end, e.TimeZoneId, e.RRule!, exDates, now.AddYears(-5), now)
+            .Expand(e.StartUtc, end, e.TimeZoneId, e.RRule!, exDates, now.AddYears(-5), now, e.IsAllDay)
             .Take(MaxOccurrenceScan)
             .LastOrDefault();
         return past.StartUtc != default ? past.StartUtc : e.StartUtc;
@@ -156,7 +175,8 @@ public sealed class EventService(
 
     public async Task<EventDto?> GetByIdAsync(Guid userId, Guid eventId, CancellationToken cancellationToken = default)
     {
-        var entity = await db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees).Include(e => e.Category)
+        var entity = await db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees).Include(e => e.Category).Include(e => e.Calendar!.DefaultCategory)
+            .AsSplitQuery()
             .Where(e => e.Id == eventId && e.Calendar!.OwnerUserId == userId)
             .SingleOrDefaultAsync(cancellationToken);
         return entity is null ? null : ToDto(entity);
@@ -181,7 +201,7 @@ public sealed class EventService(
 
         db.Events.Add(entity);
         await db.SaveChangesAsync(cancellationToken);
-        await db.Entry(entity).Reference(e => e.Category).LoadAsync(cancellationToken);
+        await LoadDisplayAsync(entity, cancellationToken);
 
         // Invite the guests (no-op without a configured mail account; failures only log).
         await mailer.SendRequestAsync(userId, entity, [.. entity.Attendees], cancellationToken);
@@ -192,13 +212,23 @@ public sealed class EventService(
 
     public async Task<EventDto?> UpdateAsync(Guid userId, Guid eventId, SaveEventRequest request, CancellationToken cancellationToken = default)
     {
-        var entity = await db.Events.Include(e => e.Reminders).Include(e => e.Attendees)
+        var entity = await SeriesQuery()
             .Where(e => e.Id == eventId && e.Calendar!.OwnerUserId == userId)
             .SingleOrDefaultAsync(cancellationToken);
         if (entity is null)
         {
             return null;
         }
+
+        // An edited occurrence saved from its own editor: it's still one occurrence of its series.
+        if (entity.SeriesMasterId is { } masterId)
+        {
+            return await UpsertOccurrenceAsync(
+                userId, masterId, new DateTimeOffset(DateTime.SpecifyKind(entity.RecurrenceIdUtc!.Value, DateTimeKind.Utc)),
+                request, cancellationToken);
+        }
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
 
         // A provided CalendarId moves the event; null leaves it where it is. Only calendars
         // the user owns are accepted — anything else keeps the current one.
@@ -212,17 +242,23 @@ public sealed class EventService(
             }
         }
 
-        Apply(entity, request, timeProvider.GetUtcNow().UtcDateTime);
+        var recurrenceMoved = Apply(entity, request, now);
         entity.CategoryId = await ResolveCategoryIdAsync(userId, request.CategoryId, fallback: entity.CategoryId, cancellationToken);
-        // Replace the reminder set; orphaned rows are deleted (required FK). The new rows
-        // must be marked Added explicitly: they carry pre-set Guid keys, and EF assumes
-        // navigation-discovered entities with a set store-generated key already exist
-        // (it would issue an UPDATE for a row that was never inserted).
-        entity.Reminders.Clear();
-        foreach (var reminder in MapReminders(request.Reminders))
+        ReplaceReminders(entity, request.Reminders);
+
+        // Edited occurrences follow their series: into its new calendar, and out when the series
+        // moved or stopped repeating — their original instants no longer exist.
+        foreach (var o in entity.Overrides.ToList())
         {
-            entity.Reminders.Add(reminder);
-            db.Entry(reminder).State = EntityState.Added;
+            if (recurrenceMoved || entity.RRule is null)
+            {
+                entity.Overrides.Remove(o);
+                db.Events.Remove(o);
+            }
+            else
+            {
+                o.CalendarId = entity.CalendarId;
+            }
         }
 
         // Attendees: null leaves the set untouched (e.g. drag edits that don't send it);
@@ -243,8 +279,8 @@ public sealed class EventService(
                          .Where(n => !entity.Attendees.Any(a => a.Email.Equals(n.Email, StringComparison.OrdinalIgnoreCase)))
                          .ToList())
             {
-                entity.Attendees.Add(added);
-                db.Entry(added).State = EntityState.Added; // see reminder note above
+                db.Entry(added).State = EntityState.Added; // see ReplaceReminders
+                AddOnce(entity.Attendees, added);
             }
         }
         if (entity.Attendees.Count > 0 || removed.Count > 0)
@@ -253,7 +289,7 @@ public sealed class EventService(
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        await db.Entry(entity).Reference(e => e.Category).LoadAsync(cancellationToken);
+        await LoadDisplayAsync(entity, cancellationToken);
 
         // Everyone still invited gets the updated event; the removed get a cancellation.
         await mailer.SendRequestAsync(userId, entity, [.. entity.Attendees], cancellationToken);
@@ -261,6 +297,87 @@ public sealed class EventService(
         // Mirror the change onto local guests' calendars (new copies, edits, and withdrawals).
         await delivery.SyncAsync(entity, userId, removed, cancellationToken);
         return ToDto(entity);
+    }
+
+    public async Task<EventDto?> UpsertOccurrenceAsync(
+        Guid userId, Guid seriesId, DateTimeOffset occurrence, SaveEventRequest request, CancellationToken cancellationToken = default)
+    {
+        var master = await SeriesQuery()
+            .Where(e => e.Id == seriesId && e.Calendar!.OwnerUserId == userId && e.SeriesMasterId == null && e.RRule != null)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (master is null)
+        {
+            return null;
+        }
+
+        var rid = ExDates.TruncateToSeconds(occurrence.UtcDateTime);
+        var row = master.Overrides.FirstOrDefault(o => o.RecurrenceIdUtc is { } r && ExDates.TruncateToSeconds(r) == rid);
+        if (row is null && !IsLiveOccurrence(master, rid))
+        {
+            return null; // not an instant this series produces, or one already deleted
+        }
+        if (request.End is { } requestedEnd && requestedEnd < request.Start)
+        {
+            throw new InvalidInputException("The end can't be before the start.");
+        }
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        if (row is null)
+        {
+            row = new CalendarEvent
+            {
+                Id = Guid.NewGuid(),
+                SeriesMasterId = master.Id,
+                RecurrenceIdUtc = rid,
+                CreatedAt = now,
+            };
+            db.Events.Add(row); // before joining the navigation — see ReplaceReminders
+            AddOnce(master.Overrides, row);
+            var suppressed = ExDates.Parse(master.ExDates);
+            suppressed.Add(rid);
+            master.ExDates = ExDates.Format(suppressed.Order());
+        }
+
+        row.Title = request.Title.Trim();
+        row.Description = request.Description;
+        row.Location = request.Location;
+        row.StartUtc = request.Start.UtcDateTime;
+        row.EndUtc = request.End?.UtcDateTime;
+        row.IsAllDay = request.AllDay;
+        row.TimeZoneId = TimeZones.Normalize(request.TimeZone);
+        row.CategoryId = await ResolveCategoryIdAsync(userId, request.CategoryId, fallback: row.CategoryId ?? master.CategoryId, cancellationToken);
+        row.UpdatedAt = now;
+        SeriesWriter.InheritFromMaster(row, master);
+        ReplaceReminders(row, request.Reminders);
+
+        await TouchSeriesAsync(userId, master, now, cancellationToken);
+        await LoadDisplayAsync(row, cancellationToken);
+        return ToDto(row);
+    }
+
+    public async Task<bool> ResetOccurrenceAsync(
+        Guid userId, Guid seriesId, DateTimeOffset occurrence, CancellationToken cancellationToken = default)
+    {
+        var master = await SeriesQuery()
+            .Where(e => e.Id == seriesId && e.Calendar!.OwnerUserId == userId && e.SeriesMasterId == null && e.RRule != null)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (master is null)
+        {
+            return false;
+        }
+
+        var rid = ExDates.TruncateToSeconds(occurrence.UtcDateTime);
+        foreach (var o in master.Overrides.Where(o => o.RecurrenceIdUtc is { } r && ExDates.TruncateToSeconds(r) == rid).ToList())
+        {
+            master.Overrides.Remove(o);
+            db.Events.Remove(o);
+        }
+        var suppressed = ExDates.Parse(master.ExDates);
+        suppressed.Remove(rid);
+        master.ExDates = suppressed.Count == 0 ? null : ExDates.Format(suppressed.Order());
+
+        await TouchSeriesAsync(userId, master, timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
+        return true;
     }
 
     public async Task<EventDto?> RespondToInvitationAsync(
@@ -273,20 +390,35 @@ public sealed class EventService(
             return null;
         }
 
-        var entity = await db.Events
-            .Include(e => e.Reminders).Include(e => e.Attendees).Include(e => e.Category)
+        var target = await db.Events.AsNoTracking()
             .Where(e => e.Id == eventId && e.Calendar!.OwnerUserId == userId)
+            .Select(e => new { e.Id, e.SeriesMasterId })
             .SingleOrDefaultAsync(cancellationToken);
+        if (target is null)
+        {
+            return null;
+        }
+
+        // An RSVP answers the whole invitation, so it is recorded on the series and its
+        // occurrences alike, whichever of them it was given on.
+        var entity = await SeriesQuery().Include(e => e.Category).Include(e => e.Calendar!.DefaultCategory)
+            .SingleAsync(e => e.Id == (target.SeriesMasterId ?? target.Id), cancellationToken);
         // Only a received invitation (non-null status) can be responded to — never the user's own event.
-        if (entity is null || entity.InvitationStatus is null)
+        if (entity.InvitationStatus is null)
         {
             return null;
         }
 
         if (entity.InvitationStatus != parsed)
         {
+            var now = timeProvider.GetUtcNow().UtcDateTime;
             entity.InvitationStatus = parsed;
-            entity.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
+            entity.UpdatedAt = now;
+            foreach (var o in entity.Overrides)
+            {
+                o.InvitationStatus = parsed;
+                o.UpdatedAt = now;
+            }
             await db.SaveChangesAsync(cancellationToken);
         }
 
@@ -298,7 +430,7 @@ public sealed class EventService(
 
     public async Task<bool> DeleteAsync(Guid userId, Guid eventId, DateTimeOffset? occurrence, CancellationToken cancellationToken = default)
     {
-        var entity = await db.Events.Include(e => e.Attendees)
+        var entity = await SeriesQuery()
             .Where(e => e.Id == eventId && e.Calendar!.OwnerUserId == userId)
             .SingleOrDefaultAsync(cancellationToken);
         if (entity is null)
@@ -306,22 +438,40 @@ public sealed class EventService(
             return false;
         }
 
-        // Exclude a single occurrence of a series (EXDATE) rather than deleting everything.
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+
+        // An edited occurrence's own row: deleting it deletes that occurrence. Its instant is
+        // already suppressed on the series, so removing the row is all it takes.
+        if (entity.SeriesMasterId is { } masterId)
+        {
+            var series = await SeriesQuery().SingleAsync(e => e.Id == masterId, cancellationToken);
+            var row = series.Overrides.Single(o => o.Id == entity.Id);
+            series.Overrides.Remove(row);
+            db.Events.Remove(row);
+            await TouchSeriesAsync(userId, series, now, cancellationToken);
+            return true;
+        }
+
+        // Exclude a single occurrence of a series (EXDATE) rather than deleting everything —
+        // along with its edited version, if it has one.
         if (occurrence is not null && entity.RRule is not null)
         {
+            var rid = ExDates.TruncateToSeconds(occurrence.Value.UtcDateTime);
+            foreach (var o in entity.Overrides.Where(o => o.RecurrenceIdUtc is { } r && ExDates.TruncateToSeconds(r) == rid).ToList())
+            {
+                entity.Overrides.Remove(o);
+                db.Events.Remove(o);
+            }
             var exDates = ExDates.Parse(entity.ExDates);
-            exDates.Add(ExDates.TruncateToSeconds(occurrence.Value.UtcDateTime));
-            entity.ExDates = ExDates.Format(exDates);
-            entity.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
-            await db.SaveChangesAsync(cancellationToken);
-            // Propagate the excluded occurrence to local guests' copies.
-            await delivery.SyncAsync(entity, userId, [], cancellationToken);
+            exDates.Add(rid);
+            entity.ExDates = ExDates.Format(exDates.Order());
+            await TouchSeriesAsync(userId, entity, now, cancellationToken);
             return true;
         }
 
         var invited = entity.Attendees.ToList();
         entity.Sequence++; // the cancellation must outrank the last invite
-        db.Events.Remove(entity);
+        db.Events.Remove(entity); // its overrides go with it (cascade)
         await db.SaveChangesAsync(cancellationToken);
         await mailer.SendCancelAsync(userId, entity, invited, cancellationToken);
         // Withdraw the event from local guests' calendars too.
@@ -329,9 +479,86 @@ public sealed class EventService(
         return true;
     }
 
-    private static void Apply(CalendarEvent entity, SaveEventRequest request, DateTime now)
+    /// <summary>An event with everything a series write touches: reminders, guests, and its
+    /// edited occurrences with their reminders.</summary>
+    private IQueryable<CalendarEvent> SeriesQuery() =>
+        db.Events
+            .Include(e => e.Reminders)
+            .Include(e => e.Attendees)
+            .Include(e => e.Overrides).ThenInclude(o => o.Reminders)
+            .AsSplitQuery();
+
+    /// <summary>Whether <paramref name="rid"/> is an occurrence the series currently shows.</summary>
+    private static bool IsLiveOccurrence(CalendarEvent master, DateTime rid)
     {
-        var rrule = string.IsNullOrWhiteSpace(request.Recurrence) ? null : request.Recurrence.Trim();
+        var end = master.EndUtc ?? master.StartUtc.AddHours(1);
+        return RecurrenceExpander
+            .Expand(master.StartUtc, end, master.TimeZoneId, master.RRule!, ExDates.Parse(master.ExDates),
+                rid.AddSeconds(-1), rid.AddSeconds(1), master.IsAllDay)
+            .Any(o => ExDates.TruncateToSeconds(o.StartUtc) == rid);
+    }
+
+    /// <summary>
+    /// Saves a change made to one occurrence and lets everyone holding the series know: the
+    /// series' modification time moves (a CalDAV client sees a new ETag on the one resource that
+    /// carries every occurrence), guests get the updated series, and local guests' copies follow.
+    /// </summary>
+    private async Task TouchSeriesAsync(Guid userId, CalendarEvent master, DateTime now, CancellationToken cancellationToken)
+    {
+        master.UpdatedAt = now;
+        if (master.Attendees.Count > 0)
+        {
+            master.Sequence++;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        await mailer.SendRequestAsync(userId, master, [.. master.Attendees], cancellationToken);
+        await delivery.SyncAsync(master, userId, [], cancellationToken);
+    }
+
+    /// <summary>
+    /// Replaces a row's reminders with the request's; orphaned rows are deleted (required FK).
+    /// New rows are marked Added explicitly before they join the navigation: they carry preset
+    /// Guid keys, and EF takes a navigation-discovered entity with a set key for an existing row
+    /// (it would issue an UPDATE for a row that was never inserted).
+    /// </summary>
+    private void ReplaceReminders(CalendarEvent entity, IReadOnlyList<ReminderInput>? inputs)
+    {
+        entity.Reminders.Clear();
+        foreach (var reminder in MapReminders(inputs))
+        {
+            reminder.EventId = entity.Id;
+            db.Entry(reminder).State = EntityState.Added;
+            AddOnce(entity.Reminders, reminder); // tracking it may already have linked it
+        }
+    }
+
+    /// <summary>
+    /// Adds <paramref name="item"/> unless it is already there. Tracking a new row with its
+    /// foreign key set makes EF link it into the parent's collection by itself; adding it again
+    /// would list it twice in memory (one row in the database, two in the response).
+    /// </summary>
+    internal static void AddOnce<T>(ICollection<T> collection, T item)
+    {
+        if (!collection.Contains(item))
+        {
+            collection.Add(item);
+        }
+    }
+
+    /// <summary>Copies the request onto the entity; returns whether the series moved (its rule,
+    /// anchor or all-day-ness changed), which invalidates its exclusions and edited occurrences.</summary>
+    private static bool Apply(CalendarEvent entity, SaveEventRequest request, DateTime now)
+    {
+        // Every stored rule is re-parsed on every read — by this user's calendar and by the
+        // reminder job that serves everyone — so one that doesn't parse is refused here.
+        if (!RecurrenceRules.TryNormalize(request.Recurrence, out var rrule, out var ruleError))
+        {
+            throw new InvalidInputException(ruleError!);
+        }
+        if (request.End is { } requestedEnd && requestedEnd < request.Start)
+        {
+            throw new InvalidInputException("The end can't be before the start.");
+        }
         // Exclusions are stored as absolute instants, so they only stop lining up with the
         // series when the rule or its anchor moves — a rename or a new location must leave
         // them alone, or deleting one occurrence and later editing the series brings it back.
@@ -354,19 +581,39 @@ public sealed class EventService(
             entity.ExDates = null; // the old exclusions no longer refer to real occurrences
         }
         entity.UpdatedAt = now;
+        return recurrenceMoved;
     }
 
-    /// <summary>Display color: the category's color, else the legacy per-event fallback.</summary>
-    private static string? DisplayColor(CalendarEvent e) => e.Category?.Color ?? e.Color;
+    /// <summary>Display color: the event's own category, else its calendar's default category, else
+    /// the legacy per-event color. Needs Category and Calendar.DefaultCategory loaded.</summary>
+    private static string? DisplayColor(CalendarEvent e) =>
+        e.Category?.Color ?? (e.CategoryId is null ? e.Calendar?.DefaultCategory?.Color : null) ?? e.Color;
+
+    /// <summary>The category the event shows as: its own, else its calendar's default.</summary>
+    private static Guid? EffectiveCategoryId(CalendarEvent e) => e.CategoryId ?? e.Calendar?.DefaultCategoryId;
+
+    /// <summary>Loads what <see cref="ToDto"/> needs for color after a write.</summary>
+    private async Task LoadDisplayAsync(CalendarEvent entity, CancellationToken cancellationToken)
+    {
+        await db.Entry(entity).Reference(e => e.Category).LoadAsync(cancellationToken);
+        await db.Entry(entity).Reference(e => e.Calendar).LoadAsync(cancellationToken);
+        if (entity.Calendar is { } calendar)
+        {
+            await db.Entry(calendar).Reference(c => c.DefaultCategory).LoadAsync(cancellationToken);
+        }
+    }
 
     private static EventDto ToDto(CalendarEvent e) =>
         new(
             e.Id, e.CalendarId, e.Title, e.Description, e.Location, e.CategoryId, DisplayColor(e),
             new DateTimeOffset(DateTime.SpecifyKind(e.StartUtc, DateTimeKind.Utc)),
             e.EndUtc is null ? null : new DateTimeOffset(DateTime.SpecifyKind(e.EndUtc.Value, DateTimeKind.Utc)),
-            e.IsAllDay, Recurring: e.RRule is not null, Recurrence: e.RRule,
+            e.IsAllDay, Recurring: e.RRule is not null || e.SeriesMasterId is not null, Recurrence: e.RRule,
             Reminders: MapReminders(e.Reminders), Attendees: MapAttendees(e.Attendees),
-            InvitationStatus: e.InvitationStatus?.ToString(), OrganizerEmail: e.OrganizerEmail);
+            InvitationStatus: e.InvitationStatus?.ToString(), OrganizerEmail: e.OrganizerEmail,
+            SeriesMasterId: e.SeriesMasterId,
+            RecurrenceId: e.RecurrenceIdUtc is { } rid ? new DateTimeOffset(DateTime.SpecifyKind(rid, DateTimeKind.Utc)) : null,
+            EffectiveCategoryId: EffectiveCategoryId(e));
 
     private static IReadOnlyList<AttendeeDto> MapAttendees(IEnumerable<Attendee> attendees) =>
         attendees

@@ -29,5 +29,6 @@ public interface ICalendarIoService
         string ics,
         Guid? calendarId = null,
         string? newCalendarName = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        Guid? newCalendarCategoryId = null);
 }

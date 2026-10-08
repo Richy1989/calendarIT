@@ -15,9 +15,22 @@ import type {
   EventChangeArg,
   EventInput,
 } from '@fullcalendar/core'
-import EventModal, { type EventDraft } from './EventModal'
+import EventModal, { type EditScope, type EventDraft } from './EventModal'
 import AgendaView from './AgendaView'
-import { createEvent, deleteEvent, exportEventIcs, getEvent, listEvents, respondToInvitation, updateEvent, type EventDto, type RsvpStatus, type SaveEventRequest } from './api/events'
+import {
+  createEvent,
+  deleteEvent,
+  exportEventIcs,
+  getEvent,
+  listEvents,
+  resetOccurrence,
+  respondToInvitation,
+  updateEvent,
+  updateOccurrence,
+  type EventDto,
+  type RsvpStatus,
+  type SaveEventRequest,
+} from './api/events'
 import { listCalendars } from './api/calendars'
 import { listCategories } from './api/categories'
 import { saveDefaultView } from './api/profile'
@@ -25,6 +38,7 @@ import { useHour12 } from './clock'
 import { useFirstDay } from './weekStart'
 import { Popover } from './components/Popover'
 import { addDays, dayKey, toLocalInput } from './lib/dates'
+import { occurrenceOf, type OccurrenceRef } from './lib/occurrences'
 import { useUndoStack } from './lib/useUndoStack'
 import { getSavedView, saveView, UNCATEGORIZED } from './prefs'
 import {
@@ -67,25 +81,26 @@ function useMediaQuery(query: string): boolean {
   return matches
 }
 
-// API DTO → FullCalendar input. Recurring occurrences get a unique render id but carry
-// the master id (seriesId) for edit/delete, and are not drag-editable in this phase.
+// API DTO → FullCalendar input. Occurrences of a series get a render id unique per occurrence
+// (series + its instant in the rule, stable even after the occurrence is moved) and carry what
+// the occurrence endpoints need; dragging one moves just that occurrence.
 function dtoToInput(dto: EventDto): EventInput {
   const color = dto.color ?? DEFAULT_COLOR
+  const occurrence = occurrenceOf(dto)
   return {
-    id: dto.recurring ? `${dto.id}__${dto.start}` : dto.id,
+    id: occurrence ? `${occurrence.seriesId}__${occurrence.occurrence}` : dto.id,
     title: dto.title,
     start: dto.allDay ? dto.start.slice(0, 10) : dto.start,
     // Stored all-day ends are inclusive; FullCalendar's are exclusive, so shift by a day
     // (otherwise multi-day all-day events render one day short).
     end: dto.end ? (dto.allDay ? addDays(dto.end.slice(0, 10), 1) : dto.end) : undefined,
     allDay: dto.allDay,
-    editable: !dto.recurring,
     backgroundColor: hexToRgba(color, 0.18),
     borderColor: color,
     extendedProps: {
-      seriesId: dto.id,
+      seriesId: occurrence?.seriesId ?? dto.id,
       recurring: dto.recurring,
-      occurrenceStart: dto.start,
+      occurrence,
       categoryId: dto.categoryId ?? null,
       location: dto.location ?? '',
       description: dto.description ?? '',
@@ -142,7 +157,33 @@ function dtoToRequest(dto: EventDto): SaveEventRequest {
 
 type ContextMenu =
   | { kind: 'date'; x: number; y: number; date: Date }
-  | { kind: 'event'; x: number; y: number; seriesId: string; recurring: boolean; occurrenceStart: string }
+  | { kind: 'event'; x: number; y: number; seriesId: string; occurrence: OccurrenceRef | null }
+
+/** The API instant (ISO) or day (all-day) → the editor's local field value. */
+function toFieldValue(iso: string, allDay: boolean): string {
+  return allDay ? iso.slice(0, 10) : toLocalInput(new Date(iso))
+}
+
+/** A server event → the editor's draft. */
+function dtoToDraft(dto: EventDto): EventDraft {
+  const startLocal = toFieldValue(dto.start, dto.allDay)
+  return {
+    id: dto.id,
+    calendarId: dto.calendarId,
+    title: dto.title,
+    allDay: dto.allDay,
+    start: startLocal,
+    end: dto.end ? toFieldValue(dto.end, dto.allDay) : startLocal,
+    categoryId: dto.categoryId ?? null,
+    location: dto.location ?? '',
+    description: dto.description ?? '',
+    recurrence: dto.recurrence ?? '',
+    reminders: dto.reminders.map((r) => ({ minutesBefore: Number(r.minutesBefore), channel: r.channel })),
+    attendees: dto.attendees.map((a) => ({ email: a.email, name: a.name, status: a.status })),
+    invitationStatus: dto.invitationStatus ?? null,
+    organizerEmail: dto.organizerEmail ?? null,
+  }
+}
 
 const DOUBLE_CLICK_MS = 350
 
@@ -206,7 +247,8 @@ export default function CalendarView({
       dtos
         .filter((d) => d.invitationStatus !== 'Declined') // a declined invitation drops off the calendar
         .filter((d) => !visibleCalendarIds || visibleCalendarIds.includes(d.calendarId))
-        .filter((d) => !effectiveCategoryIds || effectiveCategoryIds.includes(d.categoryId ?? UNCATEGORIZED))
+        // By the category an event shows as: its own, else its calendar's default.
+        .filter((d) => !effectiveCategoryIds || effectiveCategoryIds.includes(d.effectiveCategoryId ?? d.categoryId ?? UNCATEGORIZED))
         .map(dtoToInput),
     [dtos, visibleCalendarIds, effectiveCategoryIds],
   )
@@ -303,7 +345,7 @@ export default function CalendarView({
   // what the keyboard copy/cut act on. We keep the render id (to re-apply the highlight after paging
   // re-mounts the element), the master series id (for copy/cut), and the live DOM element so the
   // highlight can move without a full React re-render.
-  const [selectedEvent, setSelectedEvent] = useState<{ id: string; seriesId: string } | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<{ id: string; seriesId: string; occurrence: OccurrenceRef | null } | null>(null)
   const selectedEventIdRef = useRef<string | null>(null)
   // A single event can render as several DOM segments (a multi-week bar in month view, or a
   // multi-day event split across day columns). We track every mounted segment by render id so the
@@ -497,14 +539,30 @@ export default function CalendarView({
   }
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['events'] })
-  const createMut = useMutation({ mutationFn: createEvent, onSuccess: invalidate })
+  // A failed save used to vanish without a word; the server's reason (an unparseable repeat
+  // rule, an end before the start) now reaches the user.
+  const failed = (e: Error) => showToast(e.message || 'That didn’t work')
+  const createMut = useMutation({ mutationFn: createEvent, onSuccess: invalidate, onError: failed })
   const updateMut = useMutation({
     mutationFn: (v: { id: string; body: SaveEventRequest }) => updateEvent(v.id, v.body),
     onSuccess: invalidate,
+    onError: failed,
   })
   const deleteMut = useMutation({
     mutationFn: (v: { id: string; occurrence?: string }) => deleteEvent(v.id, v.occurrence),
     onSuccess: invalidate,
+    onError: failed,
+  })
+  const occurrenceMut = useMutation({
+    mutationFn: (v: { seriesId: string; occurrence: string; body: SaveEventRequest }) =>
+      updateOccurrence(v.seriesId, v.occurrence, { ...v.body, recurrence: null }),
+    onSuccess: invalidate,
+    onError: failed,
+  })
+  const resetMut = useMutation({
+    mutationFn: (v: { seriesId: string; occurrence: string }) => resetOccurrence(v.seriesId, v.occurrence),
+    onSuccess: invalidate,
+    onError: failed,
   })
   const rsvpMut = useMutation({
     mutationFn: (v: { id: string; status: RsvpStatus }) => respondToInvitation(v.id, v.status),
@@ -577,8 +635,10 @@ export default function CalendarView({
     openNewOn(start, false)
   }
 
-  // New events start in the first category (so they get a color without extra clicks).
-  const defaultCategoryId = () => categories[0]?.id ?? null
+  // New events start in the first category (so they get a color without extra clicks) — unless
+  // the calendar they land in has a category of its own, which they then simply inherit.
+  const defaultCategoryId = () =>
+    calendars.find((c) => c.id === defaultCalendarId())?.defaultCategoryId ? null : (categories[0]?.id ?? null)
 
   const openNewOn = (date: Date, allDay: boolean) => {
     const blank = { title: '', categoryId: defaultCategoryId(), location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
@@ -637,12 +697,13 @@ export default function CalendarView({
     }
     selectedEventIdRef.current = ev.id
     markSegments(ev.id, true)
-    setSelectedEvent({ id: ev.id, seriesId: ev.extendedProps.seriesId as string })
+    setSelectedEvent({ id: ev.id, seriesId: ev.extendedProps.seriesId as string, occurrence: ev.extendedProps.occurrence ?? null })
   }
 
   const handleEventClick = (info: EventClickArg) => {
     if (isCoarsePointer()) {
-      openForEdit(info.event.extendedProps.seriesId) // touch: a tap opens, as before
+      // touch: a tap opens, as before
+      void openForEdit(info.event.extendedProps.seriesId, info.event.extendedProps.occurrence ?? null)
       return
     }
     setSelectedDate(dayKey(info.event.start ?? new Date()))
@@ -662,30 +723,42 @@ export default function CalendarView({
     }
   }
 
-  // Always load the master (unexpanded) event so editing a recurring occurrence edits the series.
-  const openForEdit = async (masterId: string) => {
-    const dto = await getEvent(masterId)
-    const allDay = dto.allDay
-    const startLocal = allDay ? dto.start.slice(0, 10) : toLocalInput(new Date(dto.start))
-    const endLocal = dto.end ? (allDay ? dto.end.slice(0, 10) : toLocalInput(new Date(dto.end))) : startLocal
-    const loaded: EventDraft = {
-      id: dto.id,
-      calendarId: dto.calendarId,
-      title: dto.title,
-      allDay,
-      start: startLocal,
-      end: endLocal,
-      categoryId: dto.categoryId ?? null,
-      location: dto.location ?? '',
-      description: dto.description ?? '',
-      recurrence: dto.recurrence ?? '',
-      reminders: dto.reminders.map((r) => ({ minutesBefore: Number(r.minutesBefore), channel: r.channel })),
-      attendees: dto.attendees.map((a) => ({ email: a.email, name: a.name, status: a.status })),
-      invitationStatus: dto.invitationStatus ?? null,
-      organizerEmail: dto.organizerEmail ?? null,
+  // The occurrence the open editor was opened on (null for a one-off) — kept so the editor can
+  // switch between "this occurrence" and "all occurrences" without losing its place.
+  const [draftOccurrence, setDraftOccurrence] = useState<OccurrenceRef | null>(null)
+
+  /**
+   * Opens the editor. A one-off event loads as itself. An occurrence of a series opens on just
+   * that occurrence by default — its own edits if it has some, else the series' details at this
+   * occurrence's times — or on the whole series (the master, unexpanded) with scope 'series'.
+   */
+  const openForEdit = async (id: string, occurrence: OccurrenceRef | null = null, scope: EditScope = 'occurrence') => {
+    try {
+      let loaded: EventDraft
+      if (!occurrence) {
+        loaded = dtoToDraft(await getEvent(id))
+      } else if (scope === 'series') {
+        loaded = { ...dtoToDraft(await getEvent(occurrence.seriesId)), seriesId: occurrence.seriesId, occurrence: occurrence.occurrence, scope }
+      } else if (occurrence.overrideId) {
+        loaded = { ...dtoToDraft(await getEvent(occurrence.overrideId)), seriesId: occurrence.seriesId, occurrence: occurrence.occurrence, scope, isOverride: true }
+      } else {
+        const series = dtoToDraft(await getEvent(occurrence.seriesId))
+        loaded = {
+          ...series,
+          seriesId: occurrence.seriesId,
+          occurrence: occurrence.occurrence,
+          scope,
+          recurrence: '',
+          start: toFieldValue(occurrence.start, occurrence.allDay),
+          end: toFieldValue(occurrence.end ?? occurrence.start, occurrence.allDay),
+        }
+      }
+      setDraftOccurrence(occurrence)
+      originalEdit.current = loaded // snapshot: an edit's undo restores this state
+      setDraft(loaded)
+    } catch {
+      showToast('Couldn’t open that appointment')
     }
-    originalEdit.current = loaded // snapshot: an edit's undo restores this state
-    setDraft(loaded)
   }
 
   const respond = (id: string, status: RsvpStatus) => {
@@ -696,7 +769,28 @@ export default function CalendarView({
   const save = (d: EventDraft) => {
     const body = draftToRequest(d)
     const label = d.title.trim() || 'event'
-    if (d.id) {
+    if (d.seriesId && d.scope === 'occurrence' && d.occurrence) {
+      const seriesId = d.seriesId
+      const occurrence = d.occurrence
+      const prev = originalEdit.current
+      const prevBody = prev?.seriesId === seriesId && prev.occurrence === occurrence ? draftToRequest(prev) : null
+      // Undo puts the occurrence back as it was: its earlier edits, or plain series again.
+      const restore = () =>
+        d.isOverride && prevBody
+          ? occurrenceMut.mutateAsync({ seriesId, occurrence, body: prevBody })
+          : resetMut.mutateAsync({ seriesId, occurrence })
+      occurrenceMut.mutate(
+        { seriesId, occurrence, body },
+        {
+          onSuccess: () =>
+            record({
+              label: `edited “${label}” (this occurrence)`,
+              undo: restore,
+              redo: () => occurrenceMut.mutateAsync({ seriesId, occurrence, body }),
+            }),
+        },
+      )
+    } else if (d.id) {
       const id = d.id
       // The state as it was opened — restore it on undo (only when it's the event we edited).
       const prev = originalEdit.current
@@ -731,14 +825,8 @@ export default function CalendarView({
     closeDraft()
   }
 
-  const remove = async (id: string, occurrence?: string) => {
-    // Deleting one occurrence of a series only adds an EXDATE, which no endpoint can lift —
-    // so it isn't undoable and stays off the stack. Whole-event deletes are recreated on undo.
-    if (occurrence) {
-      deleteMut.mutate({ id, occurrence })
-      closeDraft()
-      return
-    }
+  // Deletes a whole event (a series with all its occurrences). Undo recreates it.
+  const remove = async (id: string) => {
     // Capture the event before it's gone, so undo can recreate it.
     const snapshot = await getEvent(id).catch(() => null)
     deleteMut.mutate(
@@ -757,6 +845,48 @@ export default function CalendarView({
       },
     )
     closeDraft()
+  }
+
+  // Deletes one occurrence of a series. Undo brings it back — with its own edits, if it had some.
+  const removeOccurrence = async (ref: OccurrenceRef) => {
+    const { seriesId, occurrence } = ref
+    const edited = ref.overrideId ? await getEvent(ref.overrideId).catch(() => null) : null
+    deleteMut.mutate(
+      { id: seriesId, occurrence },
+      {
+        onSuccess: () =>
+          record({
+            label: 'deleted an occurrence',
+            undo: async () => {
+              await resetMut.mutateAsync({ seriesId, occurrence })
+              if (edited) await occurrenceMut.mutateAsync({ seriesId, occurrence, body: dtoToRequest(edited) })
+            },
+            redo: () => deleteMut.mutateAsync({ id: seriesId, occurrence }),
+          }),
+      },
+    )
+    closeDraft()
+  }
+
+  // Drops an occurrence's own edits, so it follows the series again. Undo re-applies them.
+  const resetToSeries = async (ref: OccurrenceRef) => {
+    if (!ref.overrideId) return
+    const edited = await getEvent(ref.overrideId).catch(() => null)
+    const { seriesId, occurrence } = ref
+    resetMut.mutate(
+      { seriesId, occurrence },
+      {
+        onSuccess: () => {
+          if (!edited) return
+          const body = dtoToRequest(edited)
+          record({
+            label: `reset “${edited.title || 'occurrence'}” to the series`,
+            undo: () => occurrenceMut.mutateAsync({ seriesId, occurrence, body }),
+            redo: () => resetMut.mutateAsync({ seriesId, occurrence }),
+          })
+        },
+      },
+    )
   }
 
   // Copy an event to the clipboard. Always copies the master series (so copying a recurring
@@ -835,8 +965,9 @@ export default function CalendarView({
   copyRef.current = copyEvent
   const cutRef = useRef(cutEvent)
   cutRef.current = cutEvent
-  const removeSelRef = useRef((id: string) => remove(id))
-  removeSelRef.current = (id: string) => remove(id)
+  const removeSelRef = useRef((sel: { seriesId: string; occurrence: OccurrenceRef | null }) =>
+    sel.occurrence ? removeOccurrence(sel.occurrence) : remove(sel.seriesId))
+  removeSelRef.current = (sel) => (sel.occurrence ? removeOccurrence(sel.occurrence) : remove(sel.seriesId))
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (draft || menu || yearPop || calPop || catPop) return
@@ -845,13 +976,14 @@ export default function CalendarView({
       const tag = target?.tagName
       if (target?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
 
-      // Delete / Backspace removes the selected appointment (whole series, like Cut; undoable).
+      // Delete / Backspace removes the selected appointment — for a series, just the selected
+      // occurrence (undoable).
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (!selectedEvent) return
         e.preventDefault()
-        const id = selectedEvent.seriesId
+        const sel = selectedEvent
         clearEventSelection()
-        void removeSelRef.current(id)
+        void removeSelRef.current(sel)
         return
       }
 
@@ -868,9 +1000,9 @@ export default function CalendarView({
     return () => window.removeEventListener('keydown', onKey)
   }, [draft, menu, yearPop, calPop, catPop, selectedEvent])
 
-  // Fires after a drag or an edge-resize, for single events only (recurring occurrences are
-  // not drag-editable). Sends just the fields a grid edit can touch: the API leaves attendees
-  // and the owning calendar alone when they're absent, so guests survive a resize untouched.
+  // Fires after a drag or an edge-resize. Sends just the fields a grid edit can touch: the API
+  // leaves attendees and the owning calendar alone when they're absent, so guests survive a
+  // resize untouched. On an occurrence of a series it moves only that occurrence.
   // A grid event (its current or pre-drag snapshot) → the save request a move/resize sends.
   const eventToBody = (ev: EventApi): SaveEventRequest => ({
     title: ev.title,
@@ -893,6 +1025,27 @@ export default function CalendarView({
     const id = info.event.extendedProps.seriesId as string
     const newBody = eventToBody(info.event)
     const oldBody = eventToBody(info.oldEvent) // position before the drag — the undo target
+    const ref = info.event.extendedProps.occurrence as OccurrenceRef | null
+    if (ref) {
+      const { seriesId, occurrence } = ref
+      occurrenceMut.mutate(
+        { seriesId, occurrence, body: newBody },
+        {
+          onError: () => info.revert(),
+          onSuccess: () =>
+            record({
+              label: `moved “${info.event.title || 'event'}” (this occurrence)`,
+              // Back where it was: its earlier edits, or plain series again.
+              undo: () =>
+                ref.overrideId
+                  ? occurrenceMut.mutateAsync({ seriesId, occurrence, body: oldBody })
+                  : resetMut.mutateAsync({ seriesId, occurrence }),
+              redo: () => occurrenceMut.mutateAsync({ seriesId, occurrence, body: newBody }),
+            }),
+        },
+      )
+      return
+    }
     updateMut.mutate(
       { id, body: newBody },
       {
@@ -944,7 +1097,7 @@ export default function CalendarView({
     // Double click opens the editor (a single click only selects — see handleEventClick).
     arg.el.addEventListener('dblclick', (e) => {
       e.preventDefault()
-      openForEdit(arg.event.extendedProps.seriesId)
+      void openForEdit(arg.event.extendedProps.seriesId, arg.event.extendedProps.occurrence ?? null)
     })
     arg.el.addEventListener('contextmenu', (e) => {
       e.preventDefault()
@@ -954,8 +1107,7 @@ export default function CalendarView({
         x: e.clientX,
         y: e.clientY,
         seriesId: arg.event.extendedProps.seriesId,
-        recurring: arg.event.extendedProps.recurring,
-        occurrenceStart: arg.event.extendedProps.occurrenceStart,
+        occurrence: arg.event.extendedProps.occurrence ?? null,
       })
     })
   }
@@ -1058,10 +1210,11 @@ export default function CalendarView({
           onOpenCatPicker={openCatPop}
           onNew={openNew}
           onExit={exitAgenda}
-          onEdit={openForEdit}
-          onEventContext={(x, y, e) =>
-            setMenu({ kind: 'event', x, y, seriesId: e.seriesId, recurring: e.recurring, occurrenceStart: e.occurrenceStart })
-          }
+          onEdit={(dto) => void openForEdit(dto.id, occurrenceOf(dto))}
+          onEventContext={(x, y, dto) => {
+            const occurrence = occurrenceOf(dto)
+            setMenu({ kind: 'event', x, y, seriesId: occurrence?.seriesId ?? dto.id, occurrence })
+          }}
         />
       )}
 
@@ -1095,23 +1248,39 @@ export default function CalendarView({
               </>
             ) : (
               <>
-                <button className="ctx-item" onClick={() => { openForEdit(menu.seriesId); setMenu(null) }}>
-                  {menu.recurring ? 'Edit series' : 'Edit'}
-                </button>
+                {menu.occurrence ? (
+                  <>
+                    <button className="ctx-item" onClick={() => { void openForEdit(menu.seriesId, menu.occurrence, 'occurrence'); setMenu(null) }}>
+                      Edit this occurrence
+                    </button>
+                    <button className="ctx-item" onClick={() => { void openForEdit(menu.seriesId, menu.occurrence, 'series'); setMenu(null) }}>
+                      Edit series
+                    </button>
+                  </>
+                ) : (
+                  <button className="ctx-item" onClick={() => { void openForEdit(menu.seriesId); setMenu(null) }}>
+                    Edit
+                  </button>
+                )}
                 <button className="ctx-item" onClick={() => { copyEvent(menu.seriesId); setMenu(null) }}>
                   Copy
                 </button>
-                {menu.recurring ? (
+                {menu.occurrence ? (
                   <>
-                    <button className="ctx-item" onClick={() => { remove(menu.seriesId, menu.occurrenceStart); setMenu(null) }}>
+                    {menu.occurrence.overrideId && (
+                      <button className="ctx-item" onClick={() => { void resetToSeries(menu.occurrence!); setMenu(null) }}>
+                        Reset to series
+                      </button>
+                    )}
+                    <button className="ctx-item" onClick={() => { void removeOccurrence(menu.occurrence!); setMenu(null) }}>
                       Delete this occurrence
                     </button>
-                    <button className="ctx-item danger" onClick={() => { remove(menu.seriesId); setMenu(null) }}>
+                    <button className="ctx-item danger" onClick={() => { void remove(menu.seriesId); setMenu(null) }}>
                       Delete series
                     </button>
                   </>
                 ) : (
-                  <button className="ctx-item danger" onClick={() => { remove(menu.seriesId); setMenu(null) }}>
+                  <button className="ctx-item danger" onClick={() => { void remove(menu.seriesId); setMenu(null) }}>
                     Delete
                   </button>
                 )}
@@ -1241,12 +1410,21 @@ export default function CalendarView({
 
       {draft && (
         <EventModal
+          // A scope switch loads a different draft; remount so the fields start from it.
+          key={`${draft.id ?? 'new'}:${draft.scope ?? ''}`}
           draft={draft}
           calendars={calendars}
           onSave={save}
-          onDelete={draft.id ? (id) => remove(id) : undefined}
-          onCopy={draft.id ? (id) => copyEvent(id) : undefined}
-          onRespond={draft.id && draft.invitationStatus ? (status) => respond(draft.id!, status) : undefined}
+          onDelete={
+            !draft.id
+              ? undefined
+              : draft.scope === 'occurrence' && draftOccurrence
+                ? () => void removeOccurrence(draftOccurrence)
+                : () => void remove(draft.seriesId ?? draft.id!)
+          }
+          onCopy={draft.id ? () => copyEvent(draft.seriesId ?? draft.id!) : undefined}
+          onRespond={draft.id && draft.invitationStatus ? (status) => respond(draft.seriesId ?? draft.id!, status) : undefined}
+          onScopeChange={draftOccurrence ? (scope) => void openForEdit(draftOccurrence.seriesId, draftOccurrence, scope) : undefined}
           onClose={closeDraft}
         />
       )}

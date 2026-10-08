@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteAvatar, getProfile, uploadAvatar } from './api/profile'
 import { exportIcs, importIcs } from './api/events'
-import { createCalendar, deleteCalendar, listCalendars, renameCalendar, type CalendarDto } from './api/calendars'
+import { createCalendar, deleteCalendar, listCalendars, renameCalendar, setCalendarCategory, type CalendarDto } from './api/calendars'
 import { createCategory, deleteCategory, listCategories, updateCategory, type CategoryDto } from './api/categories'
 import { deleteMailAccount, getMailAccount, saveMailAccount, testMailAccount } from './api/mailAccount'
 import { changePassword } from './api/password'
@@ -14,6 +14,11 @@ import {
 } from './push/webPush'
 import { startLocalReminderPoller, stopLocalReminderPoller } from './push/localReminders'
 import Logo from './Logo'
+import ConfirmDialog from './components/ConfirmDialog'
+import CategoryPicker from './components/CategoryPicker'
+import { nextCategoryColor } from './lib/categoryColors'
+import SessionsCard from './SessionsCard'
+import OutboxCard from './OutboxCard'
 
 type Section = 'general' | 'calendars' | 'categories' | 'sync' | 'security' | 'email' | 'about'
 
@@ -82,7 +87,10 @@ export default function SettingsPage({
           ) : section === 'about' ? (
             <AboutSection />
           ) : (
-            <SecuritySection onLogout={onLogout} />
+            <>
+              <SecuritySection onLogout={onLogout} />
+              <SessionsCard onSignedOutEverywhere={onLogout} />
+            </>
           )}
         </div>
       </div>
@@ -296,6 +304,7 @@ function GeneralSection() {
 
   const [dataNotice, setDataNotice] = useState<string | null>(null)
   const { data: calendars = [] } = useQuery({ queryKey: ['calendars'], queryFn: listCalendars })
+  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: listCategories })
 
   // Export: with several calendars, pick which ones go into the file first.
   const [exportSel, setExportSel] = useState<string[] | null>(null) // null = picker closed
@@ -303,6 +312,9 @@ function GeneralSection() {
   const [pendingImport, setPendingImport] = useState<{ name: string; ics: string } | null>(null)
   const [importTarget, setImportTarget] = useState<string>('') // calendar id, or 'new'
   const [importNewName, setImportNewName] = useState('')
+  // A new calendar's default category: every imported event without its own takes it (a holiday
+  // file colors in one go).
+  const [importCategoryId, setImportCategoryId] = useState<string | null>(null)
 
   const download = (blob: Blob) => {
     const url = URL.createObjectURL(blob)
@@ -350,6 +362,7 @@ function GeneralSection() {
       setPendingImport({ name: chosen.name, ics: await chosen.text() })
       setImportTarget(calendars[0]?.id ?? 'new')
       setImportNewName(chosen.name.replace(/\.ics$/i, ''))
+      setImportCategoryId(null)
     }
     input.click()
   }
@@ -358,14 +371,17 @@ function GeneralSection() {
     if (!pendingImport) return
     try {
       const target =
-        importTarget === 'new' ? { newCalendarName: importNewName.trim() || 'Imported' } : { calendarId: importTarget }
+        importTarget === 'new'
+          ? { newCalendarName: importNewName.trim() || 'Imported', newCalendarCategoryId: importCategoryId }
+          : { calendarId: importTarget }
       const result = await importIcs(pendingImport.ics, target)
       await queryClient.invalidateQueries({ queryKey: ['events'] })
       await queryClient.invalidateQueries({ queryKey: ['calendars'] })
+      await queryClient.invalidateQueries({ queryKey: ['categories'] })
       setPendingImport(null)
       setDataNotice(`Imported ${result.imported}, skipped ${result.skipped}.`)
-    } catch {
-      setDataNotice('Import failed — is it a valid .ics file?')
+    } catch (e) {
+      setDataNotice((e as Error).message || 'Import failed — is it a valid .ics file?')
     }
   }
 
@@ -535,7 +551,29 @@ function GeneralSection() {
                 />
               </div>
             )}
+            {importTarget === 'new' && (
+              <div className="field">
+                <label htmlFor="io-new-category">Category</label>
+                <CategoryPicker
+                  id="io-new-category"
+                  value={importCategoryId}
+                  onChange={setImportCategoryId}
+                  suggestedName={importNewName}
+                />
+              </div>
+            )}
           </div>
+          {importTarget === 'new' ? (
+            <p className="field-hint">Imported appointments without a category of their own take this one.</p>
+          ) : (
+            (() => {
+              const target = calendars.find((c) => c.id === importTarget)
+              const inherited = categories.find((c) => c.id === target?.defaultCategoryId)
+              return inherited ? (
+                <p className="field-hint">Appointments without a category of their own will show as “{inherited.name}”.</p>
+              ) : null
+            })()
+          )}
           <div className="io-actions">
             <button
               type="button"
@@ -558,51 +596,6 @@ function GeneralSection() {
   )
 }
 
-/** App-styled replacement for window.confirm, matching the event modal's look. */
-function ConfirmDialog({
-  title,
-  message,
-  confirmLabel = 'Delete',
-  onConfirm,
-  onClose,
-}: {
-  title: string
-  message: string
-  confirmLabel?: string
-  onConfirm: () => void
-  onClose: () => void
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  return (
-    <div className="modal-overlay" onMouseDown={onClose}>
-      <div className="modal" role="alertdialog" aria-modal="true" aria-label={title} onMouseDown={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <span className="eyebrow">{title}</span>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
-        </div>
-        <p className="confirm-text">{message}</p>
-        <div className="modal-actions">
-          <span className="spacer" />
-          <button type="button" className="btn-ghost" onClick={onClose}>
-            Cancel
-          </button>
-          {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
-          <button type="button" className="btn-danger" autoFocus onClick={onConfirm}>
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 /** Manage the user's calendars: rename inline, create new ones, delete (with their events). */
 function CalendarsSection() {
   const queryClient = useQueryClient()
@@ -615,9 +608,19 @@ function CalendarsSection() {
     queryClient.invalidateQueries({ queryKey: ['calendars'] })
     queryClient.invalidateQueries({ queryKey: ['events'] })
   }
+  const [newCategoryId, setNewCategoryId] = useState<string | null>(null)
   const createMut = useMutation({
-    mutationFn: (name: string) => createCalendar(name),
-    onSuccess: () => { setNewName(''); setAdding(false); setNotice(null); refresh() },
+    mutationFn: (name: string) => createCalendar(name, newCategoryId),
+    onSuccess: () => { setNewName(''); setNewCategoryId(null); setAdding(false); setNotice(null); refresh() },
+    onError: (e) => setNotice((e as Error).message),
+  })
+  const categoryMut = useMutation({
+    mutationFn: (v: { id: string; categoryId: string | null }) => setCalendarCategory(v.id, v.categoryId),
+    onSuccess: () => {
+      setNotice(null)
+      refresh()
+      queryClient.invalidateQueries({ queryKey: ['categories'] }) // their counts include inherited events
+    },
     onError: (e) => setNotice((e as Error).message),
   })
   const renameMut = useMutation({
@@ -642,7 +645,8 @@ function CalendarsSection() {
       <h2>Calendars</h2>
       <p className="settings-sub">
         Split your schedule into separate calendars — say, Personal and Work — and toggle them from the
-        heading above the calendar. Each one syncs as its own calendar over CalDAV.
+        heading above the calendar. Each one syncs as its own calendar over CalDAV. Give a calendar a
+        category and every appointment in it without one of its own takes that color.
       </p>
 
       <ul className="cal-list">
@@ -651,6 +655,7 @@ function CalendarsSection() {
             key={c.id}
             calendar={c}
             onRename={(name) => renameMut.mutate({ id: c.id, name })}
+            onCategory={(categoryId) => categoryMut.mutate({ id: c.id, categoryId })}
             onDelete={() => setConfirmDelete(c)}
             canDelete={calendars.length > 1}
           />
@@ -695,10 +700,17 @@ function CalendarsSection() {
               }
             }}
           />
+          <CategoryPicker
+            value={newCategoryId}
+            onChange={setNewCategoryId}
+            suggestedName={newName}
+            emptyLabel="No default category"
+            ariaLabel="Default category"
+          />
           <button type="submit" className="btn-primary" disabled={!newName.trim() || createMut.isPending}>
             Add
           </button>
-          <button type="button" className="btn-ghost" onClick={() => { setAdding(false); setNewName('') }}>
+          <button type="button" className="btn-ghost" onClick={() => { setAdding(false); setNewName(''); setNewCategoryId(null) }}>
             Cancel
           </button>
         </form>
@@ -717,11 +729,14 @@ function CalendarsSection() {
 function CalendarRow({
   calendar,
   onRename,
+  onCategory,
   onDelete,
   canDelete,
 }: {
   calendar: CalendarDto
   onRename: (name: string) => void
+  /** Sets the category this calendar's events take when they have none of their own. */
+  onCategory: (categoryId: string | null) => void
   onDelete: () => void
   canDelete: boolean
 }) {
@@ -768,6 +783,13 @@ function CalendarRow({
           <span className="cal-item-name">{calendar.name}</span>
         )}
         <span className="cal-item-meta">{count}</span>
+        <CategoryPicker
+          value={calendar.defaultCategoryId ?? null}
+          onChange={onCategory}
+          suggestedName={calendar.name}
+          emptyLabel="No default category"
+          ariaLabel={`Default category for ${calendar.name}`}
+        />
       </span>
 
       <span className="cal-item-actions">
@@ -791,9 +813,6 @@ function CalendarRow({
   )
 }
 
-// New categories cycle through these starter colors (exact CSS3-named hexes, so they
-// round-trip losslessly through the iCalendar COLOR property).
-const CATEGORY_COLORS = ['#7B68EE', '#6495ED', '#40E0D0', '#3CB371', '#DAA520', '#DB7093', '#FF6347', '#708090']
 
 /** Manage the user's categories: the named colors appointments take their color from. */
 function CategoriesSection() {
@@ -804,7 +823,7 @@ function CategoriesSection() {
   const [newColor, setNewColor] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  const nextColor = () => CATEGORY_COLORS[categories.length % CATEGORY_COLORS.length]
+  const nextColor = () => nextCategoryColor(categories.length)
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['categories'] })
@@ -1071,6 +1090,7 @@ function EmailSection() {
   }
 
   return (
+    <>
     <form className="settings-card" onSubmit={submit}>
       <h2>Email account</h2>
       <p className="settings-sub">
@@ -1192,6 +1212,8 @@ function EmailSection() {
 
       {notice && <p className={notice.ok ? 'mail-notice-ok' : 'error'}>{notice.text}</p>}
     </form>
+    {account && <OutboxCard />}
+    </>
   )
 }
 

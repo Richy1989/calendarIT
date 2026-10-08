@@ -1,7 +1,5 @@
-using System.Globalization;
 using CalendarIT.Domain;
 using Ical.Net.DataTypes;
-using Ical.Net.Serialization.DataTypes;
 using DomainEvent = CalendarIT.Domain.CalendarEvent;
 using ICalAlarm = Ical.Net.CalendarComponents.Alarm;
 using ICalEvent = Ical.Net.CalendarComponents.CalendarEvent;
@@ -10,9 +8,14 @@ namespace CalendarIT.Infrastructure.Calendars;
 
 /// <summary>
 /// Maps between domain events and iCalendar VEVENTs. Shared by .ics import/export
-/// (<see cref="CalendarIoService"/>) and the CalDAV endpoints so both sides agree on one
+/// (<see cref="CalendarIoService"/>), the CalDAV endpoints, and iMIP so all sides agree on one
 /// convention: stored all-day ends are the inclusive last day, while iCalendar's DTEND
 /// is exclusive.
+///
+/// <para>Everything read here arrived from outside (a phone, a file, someone's email), so the
+/// reading side never trusts a size or a shape: text is clipped to the column widths — Postgres
+/// enforces them, and one long SUMMARY used to fail the whole import — and an RRULE we won't
+/// store turns the event into a one-off rather than rejecting it.</para>
 /// </summary>
 public static class ICalEventMapper
 {
@@ -20,7 +23,41 @@ public static class ICalEventMapper
     /// round-trip, so a reminder synced out and back keeps its Email/WebPush choice.</summary>
     private const string ChannelProperty = "X-CALENDARIT-CHANNEL";
 
-    public static ICalEvent ToICalEvent(DomainEvent e)
+    /// <summary>Column widths (see <c>AppDbContext</c>).</summary>
+    public const int MaxUidLength = 255;
+    private const int MaxTitleLength = 500;
+    private const int MaxLocationLength = 500;
+    private const int MaxDescriptionLength = 8000;
+
+    /// <summary>VALARMs read per VEVENT; matches the API's own limit.</summary>
+    private const int MaxReminders = 20;
+
+    /// <summary>
+    /// The series as VEVENTs: the master, then one VEVENT per override carrying its RECURRENCE-ID.
+    /// The master's EXDATE lists only real deletions — the overridden instants stored alongside
+    /// them in <see cref="DomainEvent.ExDates"/> are taken out again, since a client that saw them
+    /// in EXDATE would drop the override too.
+    /// </summary>
+    /// <param name="inherited">The calendar's default category: written as the category of events
+    /// without one of their own, so other clients see what the web UI shows.</param>
+    public static List<ICalEvent> ToICalEvents(DomainEvent master, IEnumerable<DomainEvent>? overrides, Category? inherited = null)
+    {
+        var list = overrides?.Where(o => o.RecurrenceIdUtc is not null).OrderBy(o => o.RecurrenceIdUtc).ToList() ?? [];
+        var overridden = list.Select(o => ExDates.TruncateToSeconds(o.RecurrenceIdUtc!.Value)).ToHashSet();
+
+        var result = new List<ICalEvent> { ToICalEvent(master, overridden, inherited) };
+        foreach (var o in list)
+        {
+            var ve = ToICalEvent(o, null, inherited);
+            ve.RecurrenceIdentifier = new RecurrenceIdentifier(AsSeriesDateTime(o.RecurrenceIdUtc!.Value, master), null);
+            result.Add(ve);
+        }
+        return result;
+    }
+
+    public static ICalEvent ToICalEvent(DomainEvent e, Category? inherited = null) => ToICalEvent(e, null, inherited);
+
+    private static ICalEvent ToICalEvent(DomainEvent e, IReadOnlySet<DateTime>? overridden, Category? inherited)
     {
         var ve = new ICalEvent
         {
@@ -53,23 +90,35 @@ public static class ICalEventMapper
 
         if (!string.IsNullOrWhiteSpace(e.RRule))
         {
-            ve.RecurrenceRule = new RecurrenceRule(e.RRule);
-        }
-        foreach (var ex in ParseExDates(e.ExDates))
-        {
-            ve.ExceptionDates.Add(new CalDateTime(DateTime.SpecifyKind(ex, DateTimeKind.Utc)));
+            try
+            {
+                ve.RecurrenceRule = new RecurrenceRule(e.RRule);
+            }
+            catch (Exception)
+            {
+                // A rule stored before rules were validated on save. Exporting the event without
+                // it beats failing the whole export (or CalDAV listing) over one row.
+            }
+            // EXDATE takes DTSTART's form: DATE for an all-day series, the series' zone otherwise —
+            // some clients ignore an exclusion whose form doesn't match the start.
+            foreach (var ex in ExDates.Parse(e.ExDates).Where(x => overridden is null || !overridden.Contains(x)).Order())
+            {
+                ve.ExceptionDates.Add(AsSeriesDateTime(ex, e));
+            }
         }
 
         // The category rides along as CATEGORIES (RFC 5545); its color as COLOR (RFC 7986).
-        // Callers must have the Category navigation loaded for categorized events.
-        var colorName = CssColorMap.ToNearestName(e.Category?.Color ?? e.Color);
+        // Callers must have the Category navigation loaded for categorized events. An event
+        // without its own category goes out with its calendar's default, as the web UI shows it.
+        var category = e.Category ?? (e.CategoryId is null ? inherited : null);
+        var colorName = CssColorMap.ToNearestName(category?.Color ?? e.Color);
         if (colorName is not null)
         {
             ve.AddProperty("COLOR", colorName);
         }
-        if (e.Category is not null)
+        if (category is not null)
         {
-            ve.AddProperty("CATEGORIES", e.Category.Name);
+            ve.AddProperty("CATEGORIES", category.Name);
         }
 
         // Reminders ride along as VALARMs so a synced client (a phone, say) shows them too.
@@ -89,6 +138,21 @@ public static class ICalEventMapper
             ve.Alarms.Add(alarm);
         }
         return ve;
+    }
+
+    /// <summary>A UTC instant of the series written the way the series' DTSTART is written: a DATE
+    /// for an all-day series, local time with the series' TZID, or UTC.</summary>
+    private static CalDateTime AsSeriesDateTime(DateTime utc, DomainEvent series)
+    {
+        if (series.IsAllDay)
+        {
+            return new CalDateTime(DateOnly.FromDateTime(utc));
+        }
+        if (TimeZones.TryFind(series.TimeZoneId, out var tz))
+        {
+            return new CalDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), tz), series.TimeZoneId!);
+        }
+        return new CalDateTime(DateTime.SpecifyKind(utc, DateTimeKind.Utc));
     }
 
     /// <summary>
@@ -113,6 +177,10 @@ public static class ICalEventMapper
                 MinutesBefore = minutes,
                 Channel = ParseChannel(alarm.Properties[ChannelProperty]?.Value?.ToString()),
             });
+            if (reminders.Count == MaxReminders)
+            {
+                break;
+            }
         }
         return reminders;
     }
@@ -130,7 +198,8 @@ public static class ICalEventMapper
             return null; // relative to the event end, which we don't model
         }
         var signed = DurationToMinutes(d);
-        return signed > 0 ? null : -signed; // after-start is unrepresentable; before/at start → 0..N
+        // After-start is unrepresentable; before/at start → 0..N, capped like the API's own input.
+        return signed > 0 || signed < -40_320 ? null : -signed;
     }
 
     /// <summary>Total minutes of an iCalendar duration, sign preserved. Robust to whichever way
@@ -138,19 +207,21 @@ public static class ICalEventMapper
     private static int DurationToMinutes(Duration d)
     {
         var magnitude =
-            Math.Abs(d.Weeks ?? 0) * 7 * 24 * 60 +
-            Math.Abs(d.Days ?? 0) * 24 * 60 +
-            Math.Abs(d.Hours ?? 0) * 60 +
-            Math.Abs(d.Minutes ?? 0) +
-            (int)Math.Round(Math.Abs(d.Seconds ?? 0) / 60.0);
-        return d.Sign < 0 ? -magnitude : magnitude;
+            Math.Abs((long)(d.Weeks ?? 0)) * 7 * 24 * 60 +
+            Math.Abs((long)(d.Days ?? 0)) * 24 * 60 +
+            Math.Abs((long)(d.Hours ?? 0)) * 60 +
+            Math.Abs((long)(d.Minutes ?? 0)) +
+            (long)Math.Round(Math.Abs((long)(d.Seconds ?? 0)) / 60.0);
+        var clamped = (int)Math.Min(magnitude, int.MaxValue);
+        return d.Sign < 0 ? -clamped : clamped;
     }
 
     private static ReminderChannel ParseChannel(string? raw) =>
         Enum.TryParse<ReminderChannel>(raw, ignoreCase: true, out var c) ? c : ReminderChannel.Email;
 
     public static DomainEvent FromICalEvent(
-        ICalEvent ve, Guid calendarId, string uid, DateTime now, IReadOnlyList<Category>? categories = null)
+        ICalEvent ve, Guid calendarId, string uid, DateTime now, IReadOnlyList<Category>? categories = null,
+        Guid? inheritedCategoryId = null)
     {
         var e = new DomainEvent
         {
@@ -159,19 +230,26 @@ public static class ICalEventMapper
             Uid = uid,
             CreatedAt = now,
         };
-        Apply(ve, e, now, categories);
+        Apply(ve, e, now, categories, inheritedCategoryId);
         return e;
     }
 
     /// <summary>
-    /// Copies a VEVENT's fields onto an entity (used for CalDAV PUT-updates as well as
-    /// fresh imports). Existing <c>ExDates</c> are kept: EXDATE parsing is deferred
-    /// (Ical.Net v5's ExceptionDates shape needs extra plumbing), and dropping them here
-    /// would resurrect occurrences the user deleted in the web UI.
+    /// Copies a VEVENT's fields onto an entity (used for CalDAV PUT-updates as well as fresh
+    /// imports). EXDATEs are taken from the VEVENT only when it carries some: a client that
+    /// doesn't manage exclusions sends none, and dropping the stored ones then would resurrect
+    /// occurrences the user deleted in the web UI. When the series itself moved, though, the old
+    /// exclusions no longer name real occurrences and are dropped. (Override instants are folded
+    /// in afterwards by <see cref="SeriesWriter"/>.)
     /// </summary>
     /// <param name="categories">The owner's categories, for resolving the event's category
     /// from CATEGORIES (by name) or COLOR (nearest color). Null skips category resolution.</param>
-    public static void Apply(ICalEvent ve, DomainEvent e, DateTime now, IReadOnlyList<Category>? categories = null)
+    /// <param name="inheritedCategoryId">The calendar's default category, if it has one. An incoming
+    /// category equal to it leaves the event inheriting (so changing the calendar's category later
+    /// still recolors it), and a bare COLOR isn't snapped to a category at all — in a calendar with a
+    /// default, the default is the better guess than the nearest color.</param>
+    public static void Apply(
+        ICalEvent ve, DomainEvent e, DateTime now, IReadOnlyList<Category>? categories = null, Guid? inheritedCategoryId = null)
     {
         var isAllDay = !ve.Start!.HasTime;
         var startUtc = AsUtcLenient(ve.Start);
@@ -182,13 +260,16 @@ public static class ICalEventMapper
         // event (DTEND = DTSTART + 1 day) would span two days in the calendar.
         if (isAllDay && endUtc is not null)
         {
-            var inclusive = endUtc.Value.AddDays(-1);
-            endUtc = inclusive < startUtc ? startUtc : inclusive;
+            endUtc = endUtc.Value.AddDays(-1);
+        }
+        if (endUtc < startUtc)
+        {
+            endUtc = startUtc; // a DTEND before DTSTART is malformed; read it as zero-length
         }
 
-        var rrule = ve.RecurrenceRule is not null
-            ? new RecurrenceRuleSerializer().SerializeToString(ve.RecurrenceRule)
-            : null;
+        // An override never recurs itself, whatever it carries.
+        var rrule = ve.RecurrenceIdentifier is null ? RecurrenceRules.FromExternal(ve.RecurrenceRule) : null;
+        var recurrenceMoved = rrule != e.RRule || startUtc != e.StartUtc || isAllDay != e.IsAllDay;
 
         // Category resolution, most-specific first: a CATEGORIES name matching one of the
         // user's categories wins; else an incoming COLOR snaps to the category with the
@@ -198,18 +279,18 @@ public static class ICalEventMapper
         var colorHex = ReadColorHex(ve);
         var categoryName = ReadCategoryName(ve);
 
-        e.Title = string.IsNullOrWhiteSpace(ve.Summary) ? "(untitled)" : ve.Summary;
-        e.Description = ve.Description;
-        e.Location = ve.Location;
+        e.Title = string.IsNullOrWhiteSpace(ve.Summary) ? "(untitled)" : Clip(ve.Summary.Trim(), MaxTitleLength)!;
+        e.Description = Clip(ve.Description, MaxDescriptionLength);
+        e.Location = Clip(ve.Location, MaxLocationLength);
         if (categories is { Count: > 0 })
         {
             var resolved = (string.IsNullOrWhiteSpace(categoryName)
                     ? null
                     : categories.FirstOrDefault(c => string.Equals(c.Name, categoryName, StringComparison.OrdinalIgnoreCase)))
-                ?? NearestByColor(categories, colorHex);
+                ?? (inheritedCategoryId is null ? NearestByColor(categories, colorHex) : null);
             if (resolved is not null)
             {
-                e.CategoryId = resolved.Id;
+                e.CategoryId = resolved.Id == inheritedCategoryId ? null : resolved.Id;
             }
         }
         else if (colorHex is not null)
@@ -223,7 +304,56 @@ public static class ICalEventMapper
         // rather than a row that throws on every later read.
         e.TimeZoneId = TimeZones.Normalize(ve.Start.TzId);
         e.RRule = rrule;
+
+        var incomingExDates = ReadExDates(ve);
+        if (rrule is null)
+        {
+            e.ExDates = null;
+        }
+        else if (incomingExDates.Count > 0)
+        {
+            e.ExDates = ExDates.Format(incomingExDates);
+        }
+        else if (recurrenceMoved)
+        {
+            e.ExDates = null;
+        }
         e.UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// The VEVENT's EXDATEs as UTC instants (whole seconds). An all-day series' DATE exclusions
+    /// become midnight UTC — the same instant an all-day start is stored at — and are matched by
+    /// date on expansion anyway. Unreadable values are skipped, never fatal.
+    /// </summary>
+    public static List<DateTime> ReadExDates(ICalEvent ve)
+    {
+        var result = new List<DateTime>();
+        try
+        {
+            foreach (var d in ve.ExceptionDates.GetAllDates())
+            {
+                result.Add(ExDates.TruncateToSeconds(AsUtcLenient(d)));
+                if (result.Count >= 5_000)
+                {
+                    break; // a bounded list: each one is re-parsed on every expansion
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // An EXDATE Ical.Net can't evaluate leaves the series without exclusions rather
+            // than failing the event.
+        }
+        return result.Distinct().ToList();
+    }
+
+    /// <summary>The RECURRENCE-ID of an override VEVENT as a UTC instant (whole seconds), or null
+    /// for a master or a plain event.</summary>
+    public static DateTime? ReadRecurrenceIdUtc(ICalEvent ve)
+    {
+        var rid = ve.RecurrenceIdentifier?.StartTime;
+        return rid is null ? null : ExDates.TruncateToSeconds(AsUtcLenient(rid));
     }
 
     /// <summary>
@@ -237,13 +367,16 @@ public static class ICalEventMapper
     {
         try
         {
-            return value.AsUtc;
+            return DateTime.SpecifyKind(value.AsUtc, DateTimeKind.Utc);
         }
         catch (Exception ex) when (ex is ArgumentException or TimeZoneNotFoundException)
         {
             return DateTime.SpecifyKind(value.Value, DateTimeKind.Utc);
         }
     }
+
+    private static string? Clip(string? value, int max) =>
+        value is null || value.Length <= max ? value : value[..max];
 
     /// <summary>The VEVENT's COLOR as hex, or null when absent/unresolvable.</summary>
     public static string? ReadColorHex(ICalEvent ve)
@@ -274,19 +407,5 @@ public static class ICalEventMapper
     }
 
     /// <summary>Parses newline-separated ISO UTC EXDATEs (the stored format) into UTC instants.</summary>
-    public static IEnumerable<DateTime> ParseExDates(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            yield break;
-        }
-        foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (DateTime.TryParse(line, CultureInfo.InvariantCulture,
-                    DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var dt))
-            {
-                yield return DateTime.SpecifyKind(dt, DateTimeKind.Utc);
-            }
-        }
-    }
+    public static IEnumerable<DateTime> ParseExDates(string? raw) => ExDates.Parse(raw);
 }

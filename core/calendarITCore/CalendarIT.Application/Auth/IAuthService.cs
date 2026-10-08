@@ -7,11 +7,11 @@ namespace CalendarIT.Application.Auth;
 /// </summary>
 public interface IAuthService
 {
-    Task<AuthResult> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default);
+    Task<AuthResult> RegisterAsync(RegisterRequest request, AuthClient? client = null, CancellationToken cancellationToken = default);
 
-    Task<AuthResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default);
+    Task<AuthResult> LoginAsync(LoginRequest request, AuthClient? client = null, CancellationToken cancellationToken = default);
 
-    Task<AuthResult> RefreshAsync(RefreshTokenRequest request, CancellationToken cancellationToken = default);
+    Task<AuthResult> RefreshAsync(RefreshTokenRequest request, AuthClient? client = null, CancellationToken cancellationToken = default);
 
     Task LogoutAsync(LogoutRequest request, CancellationToken cancellationToken = default);
 
@@ -37,4 +37,15 @@ public interface IAuthService
 
     /// <summary>Completes a reset with the emailed token, revoking every existing session.</summary>
     Task<PasswordResult> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>The user's signed-in sessions, most recently active first.</summary>
+    Task<IReadOnlyList<SessionDto>> ListSessionsAsync(Guid userId, Guid? currentSessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>Signs one session out. Its refresh token stops working at once, and so do the
+    /// access tokens it already holds. False when the user has no such active session.</summary>
+    Task<bool> RevokeSessionAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>Signs out every session except <paramref name="keepSessionId"/> (null: all of
+    /// them — "sign out everywhere"). Returns how many were signed out.</summary>
+    Task<int> RevokeSessionsAsync(Guid userId, Guid? keepSessionId, CancellationToken cancellationToken = default);
 }

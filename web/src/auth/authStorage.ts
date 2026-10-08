@@ -26,3 +26,16 @@ export function setTokens(tokens: AuthTokens | null): void {
 export function getAccessToken(): string | null {
   return getTokens()?.accessToken ?? null
 }
+
+/**
+ * Calls `onChange` when another tab signs in or out (or refreshes the pair). Storage events only
+ * fire in the *other* tabs, which is exactly the point: a sign-out anywhere signs out everywhere,
+ * instead of leaving a tab that looks signed in until its next request fails.
+ */
+export function onTokensChangedElsewhere(onChange: (tokens: AuthTokens | null) => void): () => void {
+  const listener = (e: StorageEvent) => {
+    if (e.key === STORAGE_KEY || e.key === null) onChange(getTokens())
+  }
+  window.addEventListener('storage', listener)
+  return () => window.removeEventListener('storage', listener)
+}

@@ -79,7 +79,10 @@ public static class InvitationBuilder
         MailAccount organizer, DomainEvent evt, Attendee recipient, string method, string subject, string intro)
     {
         var cal = new ICalCalendar { ProductId = "-//CalendarIT//EN", Method = method };
-        cal.Events.Add(ToInviteEvent(organizer, evt, method, recipient));
+        foreach (var ve in ToInviteEvents(organizer, evt, method, recipient))
+        {
+            cal.Events.Add(ve);
+        }
         var ics = new CalendarSerializer().SerializeToString(cal)!;
 
         var when = evt.IsAllDay
@@ -111,10 +114,17 @@ public static class InvitationBuilder
         return message;
     }
 
-    /// <summary>The VEVENT as sent to guests: base mapping plus ORGANIZER/ATTENDEE/SEQUENCE.</summary>
-    private static ICalEvent ToInviteEvent(MailAccount organizer, DomainEvent evt, string method, Attendee recipient)
+    /// <summary>
+    /// The VEVENTs as sent to guests: the series with its edited occurrences (a REQUEST is the
+    /// whole current state; without the overrides a moved occurrence would just disappear from
+    /// the guest's calendar), or the bare event for a CANCEL. Each carries ORGANIZER/ATTENDEE/SEQUENCE.
+    /// </summary>
+    private static IEnumerable<ICalEvent> ToInviteEvents(MailAccount organizer, DomainEvent evt, string method, Attendee recipient) =>
+        (method == "CANCEL" ? [ICalEventMapper.ToICalEvent(evt)] : ICalEventMapper.ToICalEvents(evt, evt.Overrides))
+            .Select(ve => Decorate(ve, organizer, evt, method, recipient));
+
+    private static ICalEvent Decorate(ICalEvent ve, MailAccount organizer, DomainEvent evt, string method, Attendee recipient)
     {
-        var ve = ICalEventMapper.ToICalEvent(evt);
         ve.Sequence = evt.Sequence;
         ve.Organizer = new Organizer($"mailto:{organizer.Address}");
         if (method == "CANCEL")

@@ -20,7 +20,8 @@ namespace CalendarIT.Infrastructure.Notifications;
 public sealed class ReminderDispatchJob(
     IServiceScopeFactory scopeFactory,
     TimeProvider timeProvider,
-    ILogger<ReminderDispatchJob> logger) : IJob
+    ILogger<ReminderDispatchJob> logger,
+    IOutboxSignal? outboxSignal = null) : IJob
 {
     // Look back slightly further than the 1-minute cadence so a slow tick never drops a trigger.
     private static readonly TimeSpan Lookback = TimeSpan.FromSeconds(90);
@@ -30,7 +31,7 @@ public sealed class ReminderDispatchJob(
         await using var scope = scopeFactory.CreateAsyncScope();
         await RunAsync(
             scope.ServiceProvider.GetRequiredService<AppDbContext>(),
-            scope.ServiceProvider.GetRequiredService<IUserMailSender>(),
+            scope.ServiceProvider.GetRequiredService<IMailOutbox>(),
             scope.ServiceProvider.GetRequiredService<IWebPushSender>(),
             context.CancellationToken);
     }
@@ -39,7 +40,7 @@ public sealed class ReminderDispatchJob(
     /// One dispatch pass, against an already-resolved scope. Separate from <see cref="Execute"/>
     /// so the window arithmetic and the dedup can be tested without standing up Quartz.
     /// </summary>
-    public async Task RunAsync(AppDbContext db, IUserMailSender mail, IWebPushSender push, CancellationToken cancellationToken = default)
+    public async Task RunAsync(AppDbContext db, IMailOutbox mail, IWebPushSender push, CancellationToken cancellationToken = default)
     {
         var now = ReminderOccurrences.Truncate(timeProvider.GetUtcNow().UtcDateTime);
         var windowStart = now - Lookback;
@@ -65,14 +66,24 @@ public sealed class ReminderDispatchJob(
         }
 
         // Which (reminder, occurrence) pairs actually come due this tick.
+        // This job serves every user at once, so nothing about one user's data may stop it: a row
+        // that can't be evaluated is logged and skipped, and the rest still go out.
         var due = new List<(Reminder Reminder, DateTime OccurrenceStartUtc)>();
         foreach (var reminder in reminders)
         {
             var offset = TimeSpan.FromMinutes(reminder.MinutesBefore);
-            // trigger in (windowStart, now]  ⇔  occurrence start in (windowStart+offset, now+offset]
-            foreach (var occStart in ReminderOccurrences.InWindow(reminder.Event!, windowStart + offset, now + offset))
+            try
             {
-                due.Add((reminder, occStart));
+                // trigger in (windowStart, now]  ⇔  occurrence start in (windowStart+offset, now+offset]
+                foreach (var occStart in ReminderOccurrences.InWindow(reminder.Event!, windowStart + offset, now + offset))
+                {
+                    due.Add((reminder, occStart));
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Skipping reminder {ReminderId}: its event {EventId} could not be evaluated",
+                    reminder.Id, reminder.EventId);
             }
         }
         if (due.Count == 0)
@@ -102,6 +113,7 @@ public sealed class ReminderDispatchJob(
             .GroupBy(s => s.UserId)
             .ToDictionary(g => g.Key, g => g.ToList());
 
+        var queuedMail = false;
         foreach (var (reminder, occStart) in due)
         {
             if (!sent.Add((reminder.Id, occStart)))
@@ -111,9 +123,21 @@ public sealed class ReminderDispatchJob(
 
             var ev = reminder.Event!;
             var ownerUserId = ev.Calendar!.OwnerUserId;
-            await DispatchAsync(
-                reminder, ev, occStart, ownerUserId, emailByOwner.GetValueOrDefault(ownerUserId),
-                subsByOwner.GetValueOrDefault(ownerUserId), mail, push, db, cancellationToken);
+            try
+            {
+                await DispatchAsync(
+                    reminder, ev, occStart, ownerUserId, emailByOwner.GetValueOrDefault(ownerUserId),
+                    subsByOwner.GetValueOrDefault(ownerUserId), mail, push, db, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // One user's broken mailbox must not hold up everyone else's reminders. Not
+                // recorded as sent, so the next tick retries while the trigger is still in range.
+                logger.LogWarning(ex, "Reminder {ReminderId} for {EventId} @ {Occurrence:o} failed to send",
+                    reminder.Id, ev.Id, occStart);
+                sent.Remove((reminder.Id, occStart));
+                continue;
+            }
 
             // Recorded one at a time, right after sending: a failure later in the batch must not
             // roll back the record of what already went out, or those reminders send twice.
@@ -125,12 +149,18 @@ public sealed class ReminderDispatchJob(
                 SentAtUtc = now,
             });
             await db.SaveChangesAsync(cancellationToken);
+            queuedMail = true;
+        }
+
+        if (queuedMail)
+        {
+            outboxSignal?.Poke();
         }
     }
 
     private async Task DispatchAsync(
         Reminder reminder, CalendarEvent ev, DateTime occStartUtc, Guid ownerUserId, string? ownerEmail,
-        List<PushSubscription>? subscriptions, IUserMailSender mail, IWebPushSender push, AppDbContext db,
+        List<PushSubscription>? subscriptions, IMailOutbox mail, IWebPushSender push, AppDbContext db,
         CancellationToken cancellationToken)
     {
         if (reminder.Channel == ReminderChannel.WebPush)
@@ -155,20 +185,21 @@ public sealed class ReminderDispatchJob(
         message.Subject = subject;
         message.Body = new TextPart("plain") { Text = body };
 
-        // Sent through the owner's own connected mail account (From uses their FromAddress
-        // override when set). Without a configured account there's nothing to send from, so the
-        // reminder is logged instead — the same dev-friendly fallback the global SMTP path had.
-        var sent = await mail.TrySendAsync(ownerUserId, message, cancellationToken);
-        if (sent)
+        // Queued for the owner's own connected mail account (From uses their FromAddress override
+        // when set) — staged, not saved, so it commits together with the NotificationLog row below:
+        // a crash between the two can neither lose the reminder nor send it twice. Without a
+        // configured account there's nothing to send from, so the reminder is only logged.
+        var queued = await mail.QueueAsync(ownerUserId, message, OutboxKind.Reminder, cancellationToken, save: false);
+        if (queued)
         {
-            logger.LogInformation("Sent {Channel} reminder for {EventId} @ {Occurrence:o} to {Email}",
-                reminder.Channel, ev.Id, occStartUtc, ownerEmail);
+            logger.LogInformation("Queued {Channel} reminder for {EventId} @ {Occurrence:o}",
+                reminder.Channel, ev.Id, occStartUtc);
         }
         else
         {
             logger.LogInformation(
-                "[reminder:no-mail-account] user {UserId} has no connected mail account; reminder for {EventId} not sent. To={Email} Subject={Subject}",
-                ownerUserId, ev.Id, ownerEmail, subject);
+                "[reminder:no-mail-account] user {UserId} has no connected mail account; reminder for {EventId} not sent",
+                ownerUserId, ev.Id);
         }
     }
 

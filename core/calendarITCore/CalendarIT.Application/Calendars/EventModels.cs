@@ -6,7 +6,10 @@ namespace CalendarIT.Application.Calendars;
 /// An event as returned to the client. Times are UTC (ISO 8601 with offset). For a
 /// recurring series, the range query returns one DTO per expanded occurrence — all share
 /// the master <see cref="Id"/>, carry <see cref="Recurring"/> = true, and the series'
-/// <see cref="Recurrence"/> (RRULE).
+/// <see cref="Recurrence"/> (RRULE). An occurrence that was edited on its own comes back as
+/// its own row (its own <see cref="Id"/>), with <see cref="SeriesMasterId"/> naming the series.
+/// Either way <see cref="RecurrenceId"/> is the occurrence's original start: the key for editing,
+/// deleting or resetting just that occurrence.
 /// </summary>
 public sealed record EventDto(
     Guid Id,
@@ -27,7 +30,15 @@ public sealed record EventDto(
     /// user's own RSVP status ("NeedsAction"/"Accepted"/…). Null for the user's own events.</summary>
     string? InvitationStatus = null,
     /// <summary>The organizer's email for a received invitation; null for the user's own events.</summary>
-    string? OrganizerEmail = null);
+    string? OrganizerEmail = null,
+    /// <summary>Set when this is an edited occurrence: the series it belongs to.</summary>
+    Guid? SeriesMasterId = null,
+    /// <summary>For any occurrence of a series (edited or not), the start it has in the series'
+    /// rule. Null for one-off events and for a master read on its own.</summary>
+    DateTimeOffset? RecurrenceId = null,
+    /// <summary>The category the event shows as: its own <see cref="CategoryId"/>, else its
+    /// calendar's default category. <see cref="Color"/> already reflects it.</summary>
+    Guid? EffectiveCategoryId = null);
 
 /// <summary>A reminder: fire <paramref name="MinutesBefore"/> minutes before start, via <paramref name="Channel"/>.</summary>
 public sealed record ReminderDto(int MinutesBefore, string Channel);
@@ -49,8 +60,15 @@ public sealed record EventSearchResult(
     bool Recurring);
 
 /// <summary>Create/update payload for an event. Used for both POST and PUT.</summary>
-public sealed class SaveEventRequest
+public sealed class SaveEventRequest : IValidatableObject
 {
+    /// <summary>Guests per event. Each one is an email sent through the owner's mailbox and, for a
+    /// local user, a row written to their calendar — so the list can't be open-ended.</summary>
+    public const int MaxAttendees = 100;
+
+    /// <summary>Reminders per event; each is a delivery per occurrence.</summary>
+    public const int MaxReminders = 20;
+
     [Required, MaxLength(500)]
     public string Title { get; init; } = string.Empty;
 
@@ -79,6 +97,7 @@ public sealed class SaveEventRequest
     public string? TimeZone { get; init; }
 
     /// <summary>Reminders for this event; replaces the existing set on update.</summary>
+    [MaxLength(MaxReminders)]
     public IReadOnlyList<ReminderInput>? Reminders { get; init; }
 
     /// <summary>
@@ -88,7 +107,18 @@ public sealed class SaveEventRequest
     public Guid? CalendarId { get; init; }
 
     /// <summary>Guests to invite; replaces the existing set on update. Null keeps it unchanged.</summary>
+    [MaxLength(MaxAttendees)]
     public IReadOnlyList<AttendeeInput>? Attendees { get; init; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        // All-day ends are the inclusive last day, so equal dates are a one-day event; timed ends
+        // may equal the start (a zero-length marker) but never precede it.
+        if (End is { } end && end < Start)
+        {
+            yield return new ValidationResult("The end can't be before the start.", [nameof(End)]);
+        }
+    }
 }
 
 /// <summary>RSVP to a received invitation: the user's new participation status.</summary>

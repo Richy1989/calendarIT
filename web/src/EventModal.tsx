@@ -3,7 +3,10 @@ import { useQuery } from '@tanstack/react-query'
 import { getMailAccount } from './api/mailAccount'
 import { listCategories } from './api/categories'
 import DateTimeField from './components/DateTimeField'
+import RecurrenceEditor from './components/RecurrenceEditor'
 import { parseLocalValue, toLocalValue } from './lib/dates'
+import { buildRule, defaultSpec, describeRule, parseRule, weekdayOf, type RuleSpec } from './lib/rrule'
+import { useFirstDay } from './weekStart'
 import { enableNotifications } from './push/webPush'
 import { startLocalReminderPoller } from './push/localReminders'
 
@@ -31,7 +34,18 @@ export type EventDraft = {
   invitationStatus?: string | null
   /** The organizer of a received invitation, shown in the RSVP banner. */
   organizerEmail?: string | null
+  /** Set when the draft belongs to a repeating series: the series (master) id. */
+  seriesId?: string
+  /** With `seriesId`: the occurrence the editor was opened on — its start in the series' rule. */
+  occurrence?: string
+  /** What a save changes: just `occurrence`, or the whole series. */
+  scope?: EditScope
+  /** True when this occurrence already has its own edits. */
+  isOverride?: boolean
 }
+
+/** Which part of a repeating series an edit applies to. */
+export type EditScope = 'occurrence' | 'series'
 
 const REMINDER_PRESETS: { label: string; value: number }[] = [
   { label: 'At start of event', value: 0 },
@@ -54,6 +68,11 @@ const REPEATS: { label: string; value: string }[] = [
   { label: 'Yearly', value: 'FREQ=YEARLY' },
 ]
 
+/** The Repeats select's "Custom…" entry (opens the repeat editor). Not a valid RRULE on purpose. */
+const CUSTOM = '__custom__'
+
+const isPreset = (rule: string) => REPEATS.some((r) => r.value === rule)
+
 /** Friendly labels for RSVP / invitation statuses. */
 const RSVP_LABEL: Record<string, string> = {
   Accepted: 'Accept',
@@ -74,13 +93,17 @@ export default function EventModal({
   onDelete,
   onCopy,
   onRespond,
+  onScopeChange,
   onClose,
 }: {
   draft: EventDraft
   /** The user's calendars; the picker only shows when there is more than one. */
-  calendars?: { id: string; name: string }[]
+  calendars?: { id: string; name: string; defaultCategoryId?: string | null }[]
   onSave: (draft: EventDraft) => void
-  onDelete?: (id: string) => void
+  /** Deletes what the editor shows: the occurrence or the series, per `draft.scope`. */
+  onDelete?: () => void
+  /** Present for a repeating event: switches the editor between one occurrence and the series. */
+  onScopeChange?: (scope: EditScope) => void
   /** Copies this (saved) event to the clipboard. Present only for existing events. */
   onCopy?: (id: string) => void
   /** Present only for a received invitation: records the user's RSVP. */
@@ -96,12 +119,45 @@ export default function EventModal({
   const [recurrence, setRecurrence] = useState(draft.recurrence)
   const [reminders, setReminders] = useState(draft.reminders)
   const [location, setLocation] = useState(draft.location)
+  const firstDay = useFirstDay()
 
-  // Moving the start drags the end along by the same delta, keeping the duration fixed.
+  // The custom-repeat editor's state, when it's open: set for a rule the presets don't cover (and
+  // the editor can read), or once "Custom…" is picked. The RRULE text is only rebuilt from it when
+  // something changes — the server takes a changed rule for a moved series and drops its exceptions.
+  const [customSpec, setCustomSpec] = useState<RuleSpec | null>(() =>
+    draft.recurrence && !isPreset(draft.recurrence)
+      ? parseRule(draft.recurrence, parseLocalValue(draft.start, draft.allDay))
+      : null,
+  )
+  const startDate = parseLocalValue(start, allDay)
+  // A rule another app wrote, using parts the editor doesn't model: shown, kept, not editable here.
+  const foreignRule = recurrence !== '' && !isPreset(recurrence) && !customSpec
+
+  const applySpec = (spec: RuleSpec, at: Date = startDate, asAllDay: boolean = allDay) => {
+    setCustomSpec(spec)
+    setRecurrence(buildRule(spec, at, asAllDay))
+  }
+
+  const chooseRepeat = (value: string) => {
+    if (value === CUSTOM) {
+      applySpec((recurrence && parseRule(recurrence, startDate)) || defaultSpec(startDate))
+      return
+    }
+    setCustomSpec(null)
+    setRecurrence(value)
+  }
+
+  // Moving the start drags the end along by the same delta, keeping the duration fixed — and a
+  // custom rule along with it ("on day 13", "the second Tuesday", the weekday it started on).
   const changeStart = (next: string) => {
-    const delta = parseLocalValue(next, allDay).getTime() - parseLocalValue(start, allDay).getTime()
+    const nextDate = parseLocalValue(next, allDay)
+    const delta = nextDate.getTime() - startDate.getTime()
     setStart(next)
     if (delta) setEnd(toLocalValue(new Date(parseLocalValue(end, allDay).getTime() + delta), allDay))
+    if (customSpec && delta) {
+      const onlyOwnDay = customSpec.byDay.length === 1 && customSpec.byDay[0] === weekdayOf(startDate)
+      applySpec(onlyOwnDay ? { ...customSpec, byDay: [weekdayOf(nextDate)] } : customSpec, nextDate)
+    }
   }
 
   const [pushHint, setPushHint] = useState<string | null>(null)
@@ -140,12 +196,17 @@ export default function EventModal({
   const [guestInput, setGuestInput] = useState('')
   const [expanded, setExpanded] = useState(Boolean(draft.location || draft.description || draft.attendees.length))
   const isEdit = Boolean(draft.id)
+  // Repeat rule, calendar and guests belong to the series; editing one occurrence leaves them be.
+  const occurrenceOnly = draft.scope === 'occurrence'
 
   // Invitations are sent from the user's own mailbox; without one they're saved but not mailed.
   const { data: mailAccount } = useQuery({ queryKey: ['mail-account'], queryFn: getMailAccount, staleTime: 60_000 })
 
   // Categories (named colors, managed in Settings) — the event takes its color from one.
   const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: listCategories, staleTime: 60_000 })
+  // The category it takes when it has none of its own: its calendar's default.
+  const inheritedId = calendars.find((c) => c.id === calendarId)?.defaultCategoryId
+  const inherited = inheritedId ? categories.find((c) => c.id === inheritedId) : undefined
 
   const addGuest = () => {
     const email = guestInput.trim().replace(/[,;]$/, '')
@@ -190,19 +251,28 @@ export default function EventModal({
       setEnd((s) => (s.length <= 10 ? `${s}T10:00` : s))
     }
     setAllDay(checked)
+    // UNTIL is written differently for all-day series (a date) and timed ones (an instant).
+    if (customSpec) applySpec(customSpec, startDate, checked)
   }
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
-    onSave({ id: draft.id, calendarId, title: title.trim(), start, end, allDay, categoryId, location, description, recurrence, reminders, attendees })
+    onSave({
+      ...draft,
+      calendarId, title: title.trim(), start, end, allDay, categoryId, location, description,
+      recurrence: occurrenceOnly ? '' : recurrence,
+      reminders, attendees,
+    })
   }
 
   return (
     <div className="modal-overlay" onMouseDown={onClose}>
       <form className="modal" onMouseDown={(e) => e.stopPropagation()} onSubmit={submit}>
         <div className="modal-head">
-          <span className="eyebrow">{onRespond ? 'Invitation' : isEdit ? 'Edit appointment' : 'New appointment'}</span>
+          <span className="eyebrow">
+            {onRespond ? 'Invitation' : occurrenceOnly ? 'Edit occurrence' : isEdit ? 'Edit appointment' : 'New appointment'}
+          </span>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
             ✕
           </button>
@@ -235,6 +305,23 @@ export default function EventModal({
           </div>
         )}
 
+        {onScopeChange && draft.scope && (
+          <div className="scope-switch" role="radiogroup" aria-label="What to change">
+            {(['occurrence', 'series'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                role="radio"
+                aria-checked={draft.scope === s}
+                className={'scope-option' + (draft.scope === s ? ' active' : '')}
+                onClick={() => draft.scope !== s && onScopeChange(s)}
+              >
+                {s === 'occurrence' ? 'This occurrence' : 'All occurrences'}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="field">
           <label htmlFor="ev-title">Title</label>
           {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
@@ -263,7 +350,7 @@ export default function EventModal({
           </div>
         </div>
 
-        {calendars.length > 1 && (
+        {calendars.length > 1 && !occurrenceOnly && (
           <div className="field">
             <label htmlFor="ev-calendar">Calendar</label>
             <select id="ev-calendar" value={calendarId} onChange={(e) => setCalendarId(e.target.value)}>
@@ -276,20 +363,41 @@ export default function EventModal({
           </div>
         )}
 
+        {occurrenceOnly ? (
+          <p className="field-hint">
+            {draft.isOverride
+              ? 'This occurrence has its own changes. Saving updates only this one.'
+              : 'Saving changes only this occurrence; the rest of the series stays as it is.'}
+          </p>
+        ) : (
         <div className="field">
           <label htmlFor="ev-repeat">Repeats</label>
-          <select id="ev-repeat" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
+          <select id="ev-repeat" value={customSpec ? CUSTOM : recurrence} onChange={(e) => chooseRepeat(e.target.value)}>
             {REPEATS.map((r) => (
               <option key={r.value || 'none'} value={r.value}>
                 {r.label}
               </option>
             ))}
-            {recurrence !== '' && !REPEATS.some((r) => r.value === recurrence) && (
-              <option value={recurrence}>Custom rule</option>
-            )}
+            {foreignRule && <option value={recurrence}>Custom rule (from another app)</option>}
+            <option value={CUSTOM}>{customSpec ? describeRule(recurrence, startDate) : 'Custom…'}</option>
           </select>
-          {isEdit && recurrence !== '' && <p className="field-hint">Saving updates the whole series.</p>}
+          {customSpec && (
+            <RecurrenceEditor spec={customSpec} start={startDate} firstDay={firstDay} onChange={(spec) => applySpec(spec)} />
+          )}
+          {foreignRule && (
+            <p className="field-hint">
+              This rule ({recurrence}) was made in another app and can't be edited here. It's kept as
+              it is — pick another option to replace it.
+            </p>
+          )}
+          {isEdit && recurrence !== '' && (
+            <p className="field-hint">
+              Saving updates the whole series. Occurrences edited on their own keep their changes,
+              unless the repeat rule or the start changes.
+            </p>
+          )}
         </div>
+        )}
 
         <div className="field">
           <label>Reminders</label>
@@ -339,14 +447,16 @@ export default function EventModal({
                 {c.name}
               </button>
             ))}
+            {/* Without a category of its own, an event shows in its calendar's default — say so. */}
             <button
               type="button"
               className={'category-chip' + (categoryId === null ? ' active' : '')}
-              style={cssVar(NO_CATEGORY_COLOR)}
+              style={cssVar(inherited?.color ?? NO_CATEGORY_COLOR)}
+              title={inherited ? `Takes the category of its calendar (${inherited.name})` : undefined}
               onClick={() => setCategoryId(null)}
             >
-              <span className="category-chip-dot category-chip-dot-none" aria-hidden="true" />
-              None
+              <span className={'category-chip-dot' + (inherited ? '' : ' category-chip-dot-none')} aria-hidden="true" />
+              {inherited ? `From calendar · ${inherited.name}` : 'None'}
             </button>
           </div>
           {categories.length === 0 && (
@@ -387,6 +497,7 @@ export default function EventModal({
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
+            {!occurrenceOnly && (
             <div className="field">
               <label htmlFor="ev-guests">Guests</label>
               <div className="guest-chips">
@@ -418,13 +529,14 @@ export default function EventModal({
                 </p>
               )}
             </div>
+            )}
           </div>
         )}
 
         <div className="modal-actions">
           {isEdit && onDelete && (
-            <button type="button" className="btn-danger" onClick={() => onDelete(draft.id!)}>
-              Delete
+            <button type="button" className="btn-danger" onClick={onDelete}>
+              {occurrenceOnly ? 'Delete occurrence' : draft.scope === 'series' ? 'Delete series' : 'Delete'}
             </button>
           )}
           {isEdit && onCopy && (

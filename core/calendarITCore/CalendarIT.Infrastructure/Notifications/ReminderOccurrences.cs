@@ -23,7 +23,7 @@ public static class ReminderOccurrences
 
         var end = ev.EndUtc ?? ev.StartUtc.AddHours(1);
         var exDates = RecurrenceExpander.ParseExDates(ev.ExDates);
-        foreach (var occ in RecurrenceExpander.Expand(ev.StartUtc, end, ev.TimeZoneId, ev.RRule, exDates, occFrom, occTo.AddSeconds(1)))
+        foreach (var occ in RecurrenceExpander.Expand(ev.StartUtc, end, ev.TimeZoneId, ev.RRule, exDates, occFrom, occTo.AddSeconds(1), ev.IsAllDay))
         {
             if (occ.StartUtc > occFrom && occ.StartUtc <= occTo)
             {
