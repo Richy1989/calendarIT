@@ -134,7 +134,8 @@ public sealed class InvitationInboxJob(
 
     /// <summary>Routes one message: a guest's RSVP (REPLY), or an invitation aimed at us
     /// (REQUEST/CANCEL) — whichever parser recognises it. Unrecognised messages are ignored, and
-    /// so are ones whose iCalendar body claims a sender the message didn't come from.</summary>
+    /// so are a REPLY or CANCEL whose iCalendar body claims a sender the message didn't come
+    /// from; such a REQUEST (a forward) is delivered as pending.</summary>
     private async Task ProcessMessageAsync(
         MailAccount account, MimeMessage message, IInvitationReplyService replies,
         IIncomingInvitationService invitations, CancellationToken cancellationToken)
@@ -161,21 +162,32 @@ public sealed class InvitationInboxJob(
         }
         else if (ImipRequestParser.TryParse(message) is { } request)
         {
-            // Same for invitations: an unverified REQUEST is how a stranger writes to your
-            // calendar, and an unverified CANCEL is how they delete from it.
-            if (!ImipMime.IsFromClaimedSender(message, request.OrganizerEmail))
+            // An unverified CANCEL is how a stranger deletes from your calendar, so it's ignored.
+            // An unverified REQUEST is usually a forward (From is the forwarder): it's delivered,
+            // but only ever as a pending invitation the user accepts or declines.
+            var verified = ImipMime.IsFromClaimedSender(message, request.OrganizerEmail);
+            if (!verified && request.Method == ImipRequestMethod.Cancel)
             {
                 logger.LogWarning(
-                    "Ignoring {Method} for event {Uid}: body claims organizer {Organizer}, message is not from them",
-                    request.Method, request.Uid, request.OrganizerEmail);
+                    "Ignoring CANCEL for event {Uid}: body claims organizer {Organizer}, message is not from them",
+                    request.Uid, request.OrganizerEmail);
                 return;
             }
 
-            if (await invitations.ApplyRequestAsync(account.UserId, request, cancellationToken))
+            if (await invitations.ApplyRequestAsync(account.UserId, request, verified, cancellationToken))
             {
-                logger.LogInformation(
-                    "Applied incoming {Method} for event {Uid} from {Organizer} to user {UserId}",
-                    request.Method, request.Uid, request.OrganizerEmail, account.UserId);
+                if (verified)
+                {
+                    logger.LogInformation(
+                        "Applied incoming {Method} for event {Uid} from {Organizer} to user {UserId}",
+                        request.Method, request.Uid, request.OrganizerEmail, account.UserId);
+                }
+                else
+                {
+                    logger.LogInformation(
+                        "Added forwarded invitation {Uid} (organizer {Organizer}, sent by {From}) to user {UserId} as pending",
+                        request.Uid, request.OrganizerEmail, message.From.Mailboxes.FirstOrDefault()?.Address, account.UserId);
+                }
             }
         }
     }

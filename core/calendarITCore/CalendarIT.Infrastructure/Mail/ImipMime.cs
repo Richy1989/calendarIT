@@ -9,8 +9,33 @@ namespace CalendarIT.Infrastructure.Mail;
 /// </summary>
 public static class ImipMime
 {
-    /// <summary>The text/calendar body of the message, or an .ics attachment as a fallback.</summary>
-    public static string? FindCalendarText(MimeMessage message)
+    /// <summary>How many forwarded-as-attachment layers <see cref="FindCalendarText"/> unwraps.</summary>
+    private const int MaxAttachedMessageDepth = 3;
+
+    /// <summary>The text/calendar body of the message, or an .ics attachment as a fallback —
+    /// looking inside an attached email (a forward "as attachment") when the message itself
+    /// carries none.</summary>
+    public static string? FindCalendarText(MimeMessage message) => FindCalendarText(message, 0);
+
+    private static string? FindCalendarText(MimeMessage message, int depth)
+    {
+        // BodyParts doesn't descend into attached messages, so the message's own parts win.
+        var text = FindOwnCalendarText(message);
+        if (text is not null || depth >= MaxAttachedMessageDepth)
+        {
+            return text;
+        }
+        foreach (var attached in message.BodyParts.OfType<MessagePart>())
+        {
+            if (attached.Message is { } inner && FindCalendarText(inner, depth + 1) is { } found)
+            {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    private static string? FindOwnCalendarText(MimeMessage message)
     {
         foreach (var part in message.BodyParts)
         {
@@ -39,6 +64,11 @@ public static class ImipMime
     /// organizer's name, or mark a guest as having accepted. Comparing against the envelope
     /// headers is what a desktop client does, and it's the cheapest defence available here
     /// (short of verifying DKIM, which the transport layer should be doing anyway).
+    ///
+    /// <para>What hangs on it: a REPLY or CANCEL that fails it is ignored — those change the
+    /// calendar without asking. A REQUEST that fails it is still delivered (a forwarded invite
+    /// is From the forwarder, not the organizer), but only ever as a pending invitation the user
+    /// accepts or declines; see <c>IncomingInvitationService</c>.</para>
     ///
     /// <para>Only From counts. It is the one header the receiving mail server has already had an
     /// opinion about — DMARC aligns on From, so forging it has to survive the provider first.

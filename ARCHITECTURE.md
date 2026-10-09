@@ -413,7 +413,8 @@ Modern, structured logging is a first-class requirement — not `Console.WriteLi
    second, or an ORGANIZER line naming someone who didn't send it. Every ingest path (import,
    CalDAV PUT, the IMAP scan) must degrade rather than throw: an unresolvable zone becomes
    floating (`TimeZones`), expansion is capped, and the claimed sender is checked against the
-   message headers (`ImipMime.IsFromClaimedSender`) before anything touches a calendar.
+   message headers (`ImipMime.IsFromClaimedSender`): a REPLY or CANCEL that fails is ignored, a
+   REQUEST that fails (a forward) lands only as a pending invitation the user answers.
 
 ---
 

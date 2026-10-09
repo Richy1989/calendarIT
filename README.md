@@ -265,10 +265,13 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
     event (read-only, idempotent — messages are never modified).
   - **Receiving invitations** — the same scan picks up invitations others email you (iMIP
     REQUEST), adds them as pending (dashed outline + ✉), and removes them when the organizer cancels.
+    Forwarding an invitation to that address works too, inline or as an attachment.
   - **Responding** — open a received invitation and Accept / Maybe / Decline; your status is
     saved and an iMIP REPLY is emailed back to the organizer.
-  - Incoming messages must genuinely come from the organizer (or guest) the invitation names, so
-    nobody can put events on your calendar under someone else's name — mismatches are logged and ignored.
+  - An invitation not sent by its organizer (e.g. a forward) only ever lands as pending for you to
+    accept or decline. Cancellations and guest replies must genuinely come from the organizer (or
+    guest) they name, so nobody can delete your events or answer for a guest — mismatches are
+    logged and ignored.
 
 A few edges are still rough (noted above and in the roadmap), but the features listed here work
 end-to-end.

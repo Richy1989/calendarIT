@@ -136,6 +136,84 @@ public sealed class IncomingInvitationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ForwardedRequest_AddsAPendingInvitation()
+    {
+        // From is the forwarder, not the organizer: it still lands, for the user to answer.
+        var applied = await _service.ApplyRequestAsync(_recipientId, Request(), senderVerified: false);
+
+        Assert.True(applied);
+        var evt = await InviteRow();
+        Assert.Equal(AttendeeStatus.NeedsAction, evt!.InvitationStatus);
+        Assert.Equal("organizer@example.com", evt.OrganizerEmail);
+    }
+
+    [Fact]
+    public async Task ForwardedUpdate_PutsAnAnsweredInvitationBackToPending()
+    {
+        await _service.ApplyRequestAsync(_recipientId, Request(sequence: 0));
+        await Answer(AttendeeStatus.Accepted);
+
+        var applied = await _service.ApplyRequestAsync(_recipientId,
+            Request(sequence: 1, summary: "Moved"), senderVerified: false);
+
+        Assert.True(applied);
+        var evt = await InviteRow();
+        Assert.Equal("Moved", evt!.Title);
+        Assert.Equal(AttendeeStatus.NeedsAction, evt.InvitationStatus); // the user decides again
+    }
+
+    [Fact]
+    public async Task ForwardedSameVersion_KeepsTheUsersAnswer()
+    {
+        await _service.ApplyRequestAsync(_recipientId, Request(sequence: 2));
+        await Answer(AttendeeStatus.Accepted);
+
+        var applied = await _service.ApplyRequestAsync(_recipientId, Request(sequence: 2), senderVerified: false);
+
+        Assert.False(applied);
+        Assert.Equal(AttendeeStatus.Accepted, (await InviteRow())!.InvitationStatus);
+    }
+
+    [Fact]
+    public async Task ForwardedCancel_IsRefused()
+    {
+        // A CANCEL deletes without asking, so it has to come from the organizer.
+        await _service.ApplyRequestAsync(_recipientId, Request(sequence: 0));
+
+        var applied = await _service.ApplyRequestAsync(_recipientId,
+            Request(method: "CANCEL", sequence: 1), senderVerified: false);
+
+        Assert.False(applied);
+        Assert.NotNull(await InviteRow());
+    }
+
+    [Fact]
+    public async Task ForwardedRequest_NeverOverwritesAnEventTheUserOwns()
+    {
+        _db.Events.Add(new CalendarEvent
+        {
+            Id = Guid.NewGuid(),
+            CalendarId = _calendarId,
+            Uid = Uid,
+            Title = "My own event",
+            StartUtc = new DateTime(2026, 9, 1, 9, 0, 0, DateTimeKind.Utc),
+        });
+        await _db.SaveChangesAsync();
+
+        var applied = await _service.ApplyRequestAsync(_recipientId, Request(sequence: 9, summary: "Spoofed"), senderVerified: false);
+
+        Assert.False(applied);
+        Assert.Equal("My own event", (await InviteRow())!.Title);
+    }
+
+    private async Task Answer(AttendeeStatus status)
+    {
+        var row = await _db.Events.SingleAsync(e => e.Uid == Uid);
+        row.InvitationStatus = status;
+        await _db.SaveChangesAsync();
+    }
+
+    [Fact]
     public async Task Cancel_ForUnknownInvitation_DoesNothing()
     {
         var applied = await _service.ApplyRequestAsync(_recipientId, Request(method: "CANCEL"));

@@ -146,9 +146,11 @@ CalDAV logins.
 
 Anything arriving by email, .ics import, or CalDAV PUT is untrusted — `ICalEventMapper.Apply`
 clips text to the column widths (Postgres enforces them; SQLite doesn't, so tests won't notice).
-Inbound iMIP messages are verified against the sender (`ImipMime.IsFromClaimedSender`, From-only)
-so nobody can inject events as someone else. UIDs are caller-supplied, so internal invite copies
-are matched by a server-stamped `SourceOrganizerUserId`, never UID alone. Password-reset links come
+Inbound iMIP messages are verified against the sender (`ImipMime.IsFromClaimedSender`, From-only):
+an unverified REPLY/CANCEL is ignored, so nobody can answer for a guest or delete your events; an
+unverified REQUEST (a forwarded invite) is delivered, but only ever as pending (NeedsAction).
+UIDs are caller-supplied, so internal invite copies are matched by a server-stamped
+`SourceOrganizerUserId`, never UID alone. Password-reset links come
 only from `PUBLIC_BASE_URL` (never the request Host) to avoid an enumeration/token-exfil oracle.
 User-named hosts (mail servers, push endpoints) are SSRF-guarded on the address actually dialled (`OutboundHostPolicy`;
 `MAIL_HOST_POLICY`, push is always public-only). Security headers (CSP etc.) are set by the app

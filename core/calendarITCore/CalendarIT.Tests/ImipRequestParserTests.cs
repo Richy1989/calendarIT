@@ -77,4 +77,40 @@ public sealed class ImipRequestParserTests
         Assert.Equal(ImipRequestMethod.Request, request!.Method);
         Assert.Equal("invite-9@example.com", request.Uid);
     }
+
+    [Fact]
+    public void TryParse_FindsTheInvitationInsideAMessageForwardedAsAttachment()
+    {
+        var original = new MimeMessage();
+        original.From.Add(new MailboxAddress("Organizer", "organizer@example.com"));
+        original.Subject = "Invitation: Design review";
+        original.Body = new Multipart("mixed")
+        {
+            new TextPart("plain") { Text = "You are invited." },
+            new MimePart("application", "ics")
+            {
+                FileName = "invite.ics",
+                Content = new MimeContent(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(RequestIcs()))),
+                ContentTransferEncoding = ContentEncoding.Base64,
+            },
+        };
+        var forward = new MimeMessage();
+        forward.From.Add(new MailboxAddress("Me", "me@elsewhere.example"));
+        forward.Subject = "Fwd: Invitation: Design review";
+        forward.Body = new Multipart("mixed")
+        {
+            new TextPart("plain") { Text = "See attached." },
+            new MessagePart { Message = original },
+        };
+
+        // Round-trip through the wire format, the way the IMAP scan receives it.
+        using var wire = new MemoryStream();
+        forward.WriteTo(wire);
+        wire.Position = 0;
+        var request = ImipRequestParser.TryParse(MimeMessage.Load(wire));
+
+        Assert.NotNull(request);
+        Assert.Equal("invite-9@example.com", request!.Uid);
+        Assert.Equal("organizer@example.com", request.OrganizerEmail);
+    }
 }

@@ -12,8 +12,11 @@ public interface IIncomingInvitationService
     /// A REQUEST adds (or updates) the event on the recipient's default calendar as a received
     /// invitation (status NeedsAction); a CANCEL removes it. Returns true only when a row
     /// actually changed. Idempotent: a re-sent REQUEST with the same or older SEQUENCE is a no-op.
+    /// <paramref name="senderVerified"/> says whether the message came From the organizer it
+    /// names; when it didn't (a forward), a REQUEST still lands but always as pending, and a
+    /// CANCEL is refused.
     /// </summary>
-    Task<bool> ApplyRequestAsync(Guid recipientUserId, ImipRequest request, CancellationToken cancellationToken = default);
+    Task<bool> ApplyRequestAsync(Guid recipientUserId, ImipRequest request, bool senderVerified = true, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -27,12 +30,18 @@ public interface IIncomingInvitationService
 /// overwrite an event the user actually owns: a matching UID whose <c>InvitationStatus</c> is
 /// null (i.e. their own event) is left untouched, so a forged or colliding UID can't stomp it.
 ///
+/// <para>An invitation not sent by its organizer — typically one the user forwarded to
+/// themselves, so From is the forwarder — is delivered all the same, because all it can do is
+/// propose an event: it lands (or, when it moves an invitation forward, lands again) as
+/// NeedsAction, and the user accepts or declines it. It can't cancel: a CANCEL deletes without
+/// asking, so it has to come from the organizer.</para>
+///
 /// <para>A series arrives whole (master plus RECURRENCE-ID overrides) and is written whole; an
 /// update or cancellation of single instances carries only those, and touches only them.</para>
 /// </summary>
 public sealed class IncomingInvitationService(AppDbContext db, TimeProvider timeProvider) : IIncomingInvitationService
 {
-    public async Task<bool> ApplyRequestAsync(Guid recipientUserId, ImipRequest request, CancellationToken cancellationToken = default)
+    public async Task<bool> ApplyRequestAsync(Guid recipientUserId, ImipRequest request, bool senderVerified = true, CancellationToken cancellationToken = default)
     {
         var existing = await db.Events
             .Include(e => e.Reminders)
@@ -52,7 +61,7 @@ public sealed class IncomingInvitationService(AppDbContext db, TimeProvider time
 
         if (request.Method == ImipRequestMethod.Cancel)
         {
-            if (existing is null)
+            if (existing is null || !senderVerified)
             {
                 return false;
             }
@@ -85,6 +94,10 @@ public sealed class IncomingInvitationService(AppDbContext db, TimeProvider time
         {
             return false; // a stale re-send of an older version; the current copy already wins
         }
+        if (existing is not null && !senderVerified && request.Sequence == existing.Sequence)
+        {
+            return false; // the same version forwarded again; don't undo the user's answer to it
+        }
 
         var writer = new SeriesWriter(db);
         CalendarEvent evt;
@@ -104,10 +117,12 @@ public sealed class IncomingInvitationService(AppDbContext db, TimeProvider time
             evt = writer.Write(
                 existing, request.Event, request.IsInstanceOnly ? [] : request.Overrides ?? [],
                 calendarId, request.Uid, now, categories: null, replaceAlarms: false);
-            if (existing is null)
-            {
-                evt.InvitationStatus = AttendeeStatus.NeedsAction;
-            }
+        }
+
+        // New invitations are pending; so is any change the organizer didn't send themselves.
+        if (existing is null || !senderVerified)
+        {
+            evt.InvitationStatus = AttendeeStatus.NeedsAction;
         }
 
         // Uid, CreatedAt, InvitationStatus and OrganizerEmail are ours to own and are set here.
