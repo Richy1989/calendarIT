@@ -116,12 +116,25 @@ jobs:
           cache-to: type=gha,mode=max
 
       # ---- GitHub Release ----
+      # The release text: the hand-written notes for this tag (docs/releases/<tag>.md, committed
+      # before tagging) when there are some, then the Docker line. GitHub appends its generated
+      # notes and the "Full Changelog" link below that.
+      - name: Release notes
+        run: |
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          {
+            if [ -f "$notes" ]; then
+              cat "$notes"
+              echo
+            else
+              echo "::warning::No $notes — the release gets only the Docker line and GitHub's generated notes." >&2
+            fi
+            echo "**Docker:** \`docker pull richy1989/calendarit:${VERSION_NAME}\`"
+            echo "Single-container image (SPA + API + nginx on :80). Mount \`/data\` to persist the"
+            echo "SQLite db and uploads — see \`deploy/calendarit.unraid.xml\` for an Unraid template."
+          } > release-notes.md
       - uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           prerelease: ${{ env.PRERELEASE == 'true' }}
-          body: |
-            **Docker:** `docker pull richy1989/calendarit:${{ env.VERSION_NAME }}`
-
-            Single-container image (SPA + API + nginx on :80). Mount `/data` to persist the
-            SQLite db and uploads — see `deploy/calendarit.unraid.xml` for an Unraid template.
+          body_path: release-notes.md

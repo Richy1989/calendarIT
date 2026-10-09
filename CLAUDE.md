@@ -198,6 +198,14 @@ localStorage for first paint and reconcile to the server profile.
   go through migrations in *both* provider assemblies; existing rows are migrated, backfilled or
   renamed, never dropped (e.g. duplicate UIDs were renamed, not deleted). Verify the upgrade on a
   database created by the previous version (SQLite and Postgres), not just a fresh one.
+- **Releasing**: write the notes first as `docs/releases/vX.Y.Z.md` (layout as in the existing
+  files: `# CalendarIT X.Y.Z`, logo, "_Changes since `vPREV`._", ✨ New Features / 🔧
+  Improvements / 🔒 Security / 🐛 Fixes / 📦 Deployment & Docs, Buy-Me-A-Coffee link; user-facing
+  wording, issue numbers in brackets), commit them to `main`, then push a plain tag
+  `git tag vX.Y.Z && git push origin vX.Y.Z`. `release.yml` builds the bundle image, checks its
+  log, pushes `richy1989/calendarit:X.Y.Z` (+ `:latest` unless the tag has a `-suffix`), and creates
+  the GitHub Release from the notes file + Docker line + GitHub's changelog link. Versions are
+  `0.x` (the `v8.0.0` tag was a typo for 0.8.0; the next after 0.9.0 is 0.10.0, never 8.x).
 - **Keep the About page in sync**: when a library listed there (`FRONTEND_LIBRARIES` /
   `BACKEND_LIBRARIES` in `web/src/SettingsPage.tsx`) is added, removed, replaced, or changes its
   name/license/URL, update that list in the same change.
