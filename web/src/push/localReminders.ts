@@ -5,7 +5,8 @@
 
 import { getDueReminders } from '../api/reminders'
 import { getNotifyMode } from './webPush'
-import { RETENTION_MS, selectToShow, type ShownEntry } from './localReminderStore'
+import { allDayDate } from '../lib/dates'
+import { RETENTION_MS, selectToShow, type DueItem, type ShownEntry } from './localReminderStore'
 
 const POLL_MS = 30_000
 const SHOWN_STORAGE_KEY = 'calendarit.shownReminders'
@@ -26,9 +27,11 @@ function saveShown(entries: ShownEntry[]): void {
   localStorage.setItem(SHOWN_STORAGE_KEY, JSON.stringify(entries))
 }
 
-function bodyFor(occurrenceStartUtc: string, location?: string | null): string {
-  const when = new Date(occurrenceStartUtc).toLocaleString()
-  return location ? `Starts at ${when}.\nLocation: ${location}` : `Starts at ${when}.`
+function bodyFor({ occurrenceStartUtc, location, allDay }: DueItem): string {
+  const when = allDay
+    ? `All day on ${allDayDate(occurrenceStartUtc).toLocaleDateString()}.`
+    : `Starts at ${new Date(occurrenceStartUtc).toLocaleString()}.`
+  return location ? `${when}\nLocation: ${location}` : when
 }
 
 async function pollOnce(): Promise<void> {
@@ -46,7 +49,7 @@ async function pollOnce(): Promise<void> {
   for (const item of toShow) {
     void reg
       .showNotification(`Reminder: ${item.title}`, {
-        body: bodyFor(item.occurrenceStartUtc, item.location),
+        body: bodyFor(item),
         tag: `${item.reminderId}:${item.occurrenceStartUtc}`,
         data: { url: '/' },
       })

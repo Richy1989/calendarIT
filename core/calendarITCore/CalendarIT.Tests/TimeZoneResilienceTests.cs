@@ -27,6 +27,18 @@ public sealed class TimeZoneResilienceTests : IDisposable
 
     private static readonly DateTimeOffset Start = new(2026, 8, 3, 9, 0, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData(2026, 3, 8, 5)]   // Cuba springs forward at midnight: 00:00 never shows, the day begins at 01:00 (-04:00)
+    [InlineData(2026, 11, 1, 4)]  // and falls back to it: 00:00 shows twice, the day begins with the first (-04:00)
+    [InlineData(2026, 7, 1, 4)]
+    public void ToUtc_CopesWithAMidnightTheClocksSkipOrRepeat(int year, int month, int day, int expectedUtcHour)
+    {
+        Assert.True(TimeZones.TryFind("America/Havana", out var havana));
+        Assert.Equal(
+            new DateTime(year, month, day, expectedUtcHour, 0, 0, DateTimeKind.Utc),
+            TimeZones.ToUtc(new DateTime(year, month, day), havana));
+    }
+
     public TimeZoneResilienceTests()
     {
         _connection = new SqliteConnection("DataSource=:memory:");

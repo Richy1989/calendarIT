@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { listEvents, type EventDto } from './api/events'
 import { useHour12 } from './clock'
-import { dayKey, formatDateMedium, formatTimeRange, startOfToday } from './lib/dates'
+import { allDayDate, dayKey, formatDateMedium, formatTimeRange, startOfToday, toOffsetIso } from './lib/dates'
 import { UNCATEGORIZED } from './prefs'
 import { describeRule } from './lib/rrule'
 
@@ -55,7 +55,7 @@ export default function AgendaView({
   const { data, hasNextPage, isFetchingNextPage, fetchNextPage } = useInfiniteQuery({
     queryKey: ['events', 'agenda', todayKey],
     queryFn: ({ pageParam }) =>
-      listEvents(windowStart(pageParam).toISOString(), windowStart(pageParam + 1).toISOString()),
+      listEvents(toOffsetIso(windowStart(pageParam)), toOffsetIso(windowStart(pageParam + 1))),
     initialPageParam: 0,
     getNextPageParam: (_last, pages) => (pages.length < MAX_WINDOWS ? pages.length : undefined),
   })
@@ -75,6 +75,11 @@ export default function AgendaView({
       events.push(dto)
     }
   }
+  // The server orders by instant, and an all-day event's is midnight UTC — which west of UTC
+  // falls on the evening before, in the middle of another day's events. Order by where each
+  // one sits on the local clock instead, all-day first.
+  const localTime = (dto: EventDto) => (dto.allDay ? allDayDate(dto.start) : new Date(dto.start)).getTime()
+  events.sort((a, b) => localTime(a) - localTime(b) || Number(b.allDay) - Number(a.allDay))
 
   // Load the next window whenever the bottom sentinel is on screen — re-checked after
   // every page so empty stretches (or a filter hiding a whole window) keep auto-loading.
@@ -100,7 +105,7 @@ export default function AgendaView({
     if (last?.key === key) {
       last.items.push(dto)
     } else {
-      const label = dto.allDay ? formatDateMedium(new Date(`${key}T00:00:00`)) : formatDateMedium(start)
+      const label = formatDateMedium(dto.allDay ? allDayDate(dto.start) : start)
       days.push({ key, label, items: [dto] })
     }
   }

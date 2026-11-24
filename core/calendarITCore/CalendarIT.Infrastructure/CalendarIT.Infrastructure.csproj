@@ -28,6 +28,8 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.12" />
     <PackageReference Include="Ical.Net" Version="5.2.3" />
+    <!-- Used directly for the tz database (TimeZones, ZoneDefinition); the version Ical.Net resolves with. -->
+    <PackageReference Include="NodaTime" Version="3.2.2" />
     <PackageReference Include="Quartz" Version="3.18.2" />
     <PackageReference Include="Quartz.Extensions.Hosting" Version="3.18.2" />
     <PackageReference Include="MailKit" Version="4.18.1" />

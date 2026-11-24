@@ -10,20 +10,25 @@
 # Both start as root only long enough to make the data directory theirs, then run the .NET app
 # as an unprivileged user (PUID/PGID, default 1654 — the base image's "app" user). Existing
 # volumes written by older root-run images are taken over automatically on start.
+#
+# Base images are pinned by digest (the multi-platform index), so a tag moved upstream changes
+# nothing unnoticed; Dependabot proposes the new digest when one is published
+# (.github/dependabot.yml). Bump all FROM lines of an image together.
 
 # ---- 1. Build the React SPA (the committed OpenAPI client means no backend is needed here) ----
-FROM node:22-alpine AS web
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS web
 WORKDIR /src
 # Static assets (favicon/logo) live in the repo-root public/ — Vite's publicDir is ../public.
 COPY public/ ./public/
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
-RUN npm ci --legacy-peer-deps
+# No dependency needs an install script to build, so none gets to run code here.
+RUN npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
 COPY web/ ./
 RUN npm run build
 
 # ---- 2. Publish the .NET API ----
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:8c6edfb26c85153f236d26efebd9ad349aec403583f343f201ee67838b23658d AS api
 # Release version (git tag, e.g. 0.2.0) and commit sha, injected by the build script. A local
 # `docker build` without args produces an honest "0.0.0-dev".
 ARG VERSION=0.0.0-dev
@@ -38,7 +43,7 @@ RUN INFOVERSION="$VERSION"; [ -n "$COMMIT" ] && INFOVERSION="$VERSION+$COMMIT"; 
       /p:Version="$VERSION" /p:InformationalVersion="$INFOVERSION"
 
 # ---- 3a. Bundle: nginx + API in one container (published image, Unraid) ----
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS bundle
+FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:aac50ceef10391e78a899e3d2ccd00bbafa2dcb56ccf4586cbccf00edb84fc21 AS bundle
 RUN apt-get update \
  && apt-get install -y --no-install-recommends nginx \
  && rm -rf /var/lib/apt/lists/* /etc/nginx/sites-enabled/default
@@ -72,7 +77,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 ENTRYPOINT ["/entrypoint.sh"]
 
 # ---- 3b. Runtime (default): the .NET app serves API + SPA on :8080 (docker-compose.yml) ----
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:aac50ceef10391e78a899e3d2ccd00bbafa2dcb56ccf4586cbccf00edb84fc21 AS runtime
 WORKDIR /app
 COPY --from=api /app/publish ./
 # The API serves the SPA from wwwroot.

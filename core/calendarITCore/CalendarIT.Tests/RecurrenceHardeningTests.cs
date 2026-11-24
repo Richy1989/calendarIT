@@ -122,6 +122,20 @@ public sealed class RecurrenceHardeningTests : IDisposable
     }
 
     [Fact]
+    public void Expand_AllDayOccurrence_LastsThroughItsLastDay()
+    {
+        // A weekly two-day all-day event — its stored end is the second day's midnight — seen
+        // on that second day, and gone the day after.
+        var start = new DateTime(2026, 8, 3, 0, 0, 0, DateTimeKind.Utc);
+        IEnumerable<RecurrenceExpander.Occurrence> On(int day) => RecurrenceExpander.Expand(
+            start, start.AddDays(1), null, "FREQ=WEEKLY;COUNT=2",
+            new HashSet<DateTime>(), start.AddDays(day), start.AddDays(day + 1), allDay: true);
+
+        Assert.Equal(start, Assert.Single(On(1)).StartUtc);
+        Assert.Empty(On(2));
+    }
+
+    [Fact]
     public void Expand_IncludesAnOccurrenceAlreadyRunningWhenTheWindowOpens()
     {
         // A weekly three-day event seen from its second day.

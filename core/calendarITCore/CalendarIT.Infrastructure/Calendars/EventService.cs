@@ -16,6 +16,12 @@ public sealed class EventService(
     {
         var fromUtc = from?.UtcDateTime;
         var toUtc = to?.UtcDateTime;
+        // An all-day event is a date, not an instant: it is stored as that date's midnight UTC
+        // and is the same date wherever it is viewed. So it is matched against the window as the
+        // caller's clock shows it (the bounds carry their offset) — against the UTC instants,
+        // anyone west of UTC loses the events of the first day they look at.
+        var fromDay = from is { } f ? DateTime.SpecifyKind(f.DateTime, DateTimeKind.Utc) : (DateTime?)null;
+        var toDay = to is { } t ? DateTime.SpecifyKind(t.DateTime, DateTimeKind.Utc) : (DateTime?)null;
         var results = new List<EventDto>();
 
         // Single (non-recurring) events — and edited occurrences, which are one-offs standing in
@@ -24,11 +30,13 @@ public sealed class EventService(
             .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule == null);
         if (toUtc is not null)
         {
-            singles = singles.Where(e => e.StartUtc < toUtc);
+            singles = singles.Where(e => e.IsAllDay ? e.StartUtc < toDay : e.StartUtc < toUtc);
         }
         if (fromUtc is not null)
         {
-            singles = singles.Where(e => (e.EndUtc ?? e.StartUtc) >= fromUtc);
+            // The stored all-day end is the last day's midnight; the event runs to that day's end.
+            var lastDayFrom = fromDay!.Value.AddDays(-1);
+            singles = singles.Where(e => e.IsAllDay ? (e.EndUtc ?? e.StartUtc) > lastDayFrom : (e.EndUtc ?? e.StartUtc) >= fromUtc);
         }
         results.AddRange((await singles.ToListAsync(cancellationToken)).Select(ToDto));
 
@@ -39,7 +47,8 @@ public sealed class EventService(
             // needs expanding. (The other direction can't be filtered here: whether an old series
             // still runs is encoded in its RRULE, which SQL can't read.)
             var masters = await db.Events.AsNoTracking().Include(e => e.Reminders).Include(e => e.Attendees).Include(e => e.Category).Include(e => e.Calendar!.DefaultCategory)
-                .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule != null && e.StartUtc < toUtc)
+                .Where(e => e.Calendar!.OwnerUserId == userId && e.RRule != null
+                    && (e.IsAllDay ? e.StartUtc < toDay : e.StartUtc < toUtc))
                 .ToListAsync(cancellationToken);
 
             // Bounded twice over: per series (an hourly rule over a long window) and per response
@@ -52,7 +61,8 @@ public sealed class EventService(
                 var reminders = MapReminders(m.Reminders);
                 var attendees = MapAttendees(m.Attendees);
                 var occurrences = RecurrenceExpander
-                    .Expand(m.StartUtc, end, m.TimeZoneId, m.RRule!, exDates, fromUtc.Value, toUtc.Value, m.IsAllDay)
+                    .Expand(m.StartUtc, end, m.TimeZoneId, m.RRule!, exDates,
+                        m.IsAllDay ? fromDay!.Value : fromUtc.Value, m.IsAllDay ? toDay!.Value : toUtc.Value, m.IsAllDay)
                     .Take(Math.Min(MaxOccurrencesPerSeries, budget));
                 foreach (var occ in occurrences)
                 {
@@ -64,7 +74,8 @@ public sealed class EventService(
                         m.IsAllDay, Recurring: true, Recurrence: m.RRule, Reminders: reminders, Attendees: attendees,
                         InvitationStatus: m.InvitationStatus?.ToString(), OrganizerEmail: m.OrganizerEmail,
                         RecurrenceId: new DateTimeOffset(occ.StartUtc, TimeSpan.Zero),
-                        EffectiveCategoryId: EffectiveCategoryId(m)));
+                        EffectiveCategoryId: EffectiveCategoryId(m),
+                        TimeZone: m.TimeZoneId));
                 }
             }
         }
@@ -344,7 +355,7 @@ public sealed class EventService(
         row.StartUtc = request.Start.UtcDateTime;
         row.EndUtc = request.End?.UtcDateTime;
         row.IsAllDay = request.AllDay;
-        row.TimeZoneId = TimeZones.Normalize(request.TimeZone);
+        row.TimeZoneId = request.TimeZone is null ? row.TimeZoneId ?? master.TimeZoneId : TimeZones.Normalize(request.TimeZone);
         row.CategoryId = await ResolveCategoryIdAsync(userId, request.CategoryId, fallback: row.CategoryId ?? master.CategoryId, cancellationToken);
         row.UpdatedAt = now;
         SeriesWriter.InheritFromMaster(row, master);
@@ -559,12 +570,20 @@ public sealed class EventService(
         {
             throw new InvalidInputException("The end can't be before the start.");
         }
+        // The zone belongs to the event, not to whoever edits it: a save that names none keeps
+        // the one it has. (A zone id we can't resolve is dropped rather than stored: it would
+        // otherwise throw out of every later expansion, i.e. one bad save breaks the whole
+        // calendar view.)
+        var zone = request.TimeZone is null ? entity.TimeZoneId : TimeZones.Normalize(request.TimeZone);
         // Exclusions are stored as absolute instants, so they only stop lining up with the
         // series when the rule or its anchor moves — a rename or a new location must leave
         // them alone, or deleting one occurrence and later editing the series brings it back.
+        // A timed series in another zone changes its clocks on other days, so that moves it too.
         var recurrenceMoved = rrule != entity.RRule
             || request.Start.UtcDateTime != entity.StartUtc
-            || request.AllDay != entity.IsAllDay;
+            || request.AllDay != entity.IsAllDay
+            // Compared as zones, not strings: an id stored in another spelling is the same zone.
+            || (!request.AllDay && TimeZones.Normalize(zone) != TimeZones.Normalize(entity.TimeZoneId));
 
         entity.Title = request.Title.Trim();
         entity.Description = request.Description;
@@ -572,9 +591,7 @@ public sealed class EventService(
         entity.StartUtc = request.Start.UtcDateTime;
         entity.EndUtc = request.End?.UtcDateTime;
         entity.IsAllDay = request.AllDay;
-        // A zone id we can't resolve is dropped rather than stored: it would otherwise throw
-        // out of every later expansion, i.e. one bad save breaks the whole calendar view.
-        entity.TimeZoneId = TimeZones.Normalize(request.TimeZone);
+        entity.TimeZoneId = zone;
         entity.RRule = rrule;
         if (recurrenceMoved)
         {
@@ -613,7 +630,8 @@ public sealed class EventService(
             InvitationStatus: e.InvitationStatus?.ToString(), OrganizerEmail: e.OrganizerEmail,
             SeriesMasterId: e.SeriesMasterId,
             RecurrenceId: e.RecurrenceIdUtc is { } rid ? new DateTimeOffset(DateTime.SpecifyKind(rid, DateTimeKind.Utc)) : null,
-            EffectiveCategoryId: EffectiveCategoryId(e));
+            EffectiveCategoryId: EffectiveCategoryId(e),
+            TimeZone: e.TimeZoneId);
 
     private static IReadOnlyList<AttendeeDto> MapAttendees(IEnumerable<Attendee> attendees) =>
         attendees

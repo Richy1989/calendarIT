@@ -25,13 +25,16 @@ public sealed class DueReminderQuery(AppDbContext db, TimeProvider clock) : IDue
             .Select(r => (int?)r.MinutesBefore)
             .MaxAsync(cancellationToken) ?? 0;
         var horizon = now.AddMinutes(longestOffset);
+        var allDayFrom = windowStart - ReminderOccurrences.AllDaySlack;
+        var allDayTo = horizon + ReminderOccurrences.AllDaySlack;
 
         var reminders = await db.Reminders
             .Include(r => r.Event!).ThenInclude(e => e.Calendar)
             .Where(r => r.Channel == ReminderChannel.WebPush
                 && r.Event!.Calendar!.OwnerUserId == userId
                 && (r.Event!.RRule != null
-                    || (r.Event!.StartUtc > windowStart && r.Event!.StartUtc <= horizon)))
+                    || (r.Event!.StartUtc > windowStart && r.Event!.StartUtc <= horizon)
+                    || (r.Event!.IsAllDay && r.Event!.StartUtc > allDayFrom && r.Event!.StartUtc <= allDayTo)))
             .ToListAsync(cancellationToken);
 
         var items = new List<DueReminderDto>();
@@ -44,7 +47,8 @@ public sealed class DueReminderQuery(AppDbContext db, TimeProvider clock) : IDue
                     reminder.Id,
                     new DateTimeOffset(DateTime.SpecifyKind(occStart, DateTimeKind.Utc)),
                     reminder.Event!.Title,
-                    reminder.Event!.Location));
+                    reminder.Event!.Location,
+                    reminder.Event!.IsAllDay));
             }
         }
         return items;

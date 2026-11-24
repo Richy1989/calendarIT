@@ -45,6 +45,17 @@ public sealed class CalendarsController(ICalendarService calendars) : Controller
         return updated is null ? NotFound() : Ok(updated);
     }
 
+    /// <summary>Sets the reminders a new timed event in this calendar starts with (empty clears them).</summary>
+    [HttpPut("{id:guid}/default-reminders")]
+    [ProducesResponseType<CalendarDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SetDefaultReminders(Guid id, SetCalendarRemindersRequest request, CancellationToken cancellationToken)
+    {
+        var updated = await calendars.SetDefaultRemindersAsync(User.GetUserId(), id, request.Reminders, cancellationToken);
+        return updated is null ? NotFound() : Ok(updated);
+    }
+
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

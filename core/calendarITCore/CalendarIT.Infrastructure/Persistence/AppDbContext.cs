@@ -71,6 +71,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(c => c.Name).HasMaxLength(200).IsRequired();
             entity.Property(c => c.Color).HasMaxLength(32);
             entity.Property(c => c.TimeZoneId).HasMaxLength(64);
+            entity.Property(c => c.DefaultReminders).HasMaxLength(200);
             entity.HasIndex(c => c.OwnerUserId);
 
             // Deleting the category leaves the calendar without a default (its events uncategorized).

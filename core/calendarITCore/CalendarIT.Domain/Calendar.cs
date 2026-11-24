@@ -27,6 +27,13 @@ public class Calendar
 
     public Category? DefaultCategory { get; set; }
 
+    /// <summary>
+    /// The reminders a new timed event in this calendar starts with, so creating one doesn't
+    /// mean setting them each time: "minutes:channel" pairs, ';'-separated ("15:WebPush;1440:Email").
+    /// Only the web editor applies them, as a starting point the user can change. Null = none.
+    /// </summary>
+    public string? DefaultReminders { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }

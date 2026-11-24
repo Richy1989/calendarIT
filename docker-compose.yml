@@ -22,6 +22,12 @@ services:
       - backend
     volumes:
       - pgdata:/var/lib/postgresql/data
+    # Postgres' entrypoint, too, starts as root to own its data directory and then drops to the
+    # postgres user: these are the capabilities that takes, and nothing may regain more.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-calendarit} -d ${POSTGRES_DB:-calendarit}"]
       interval: 10s
@@ -77,6 +83,17 @@ services:
       - edge
     volumes:
       - appdata:/appdata
+    # Hardening. The image is read-only: the app writes only to /appdata (the volume) and
+    # /tmp. It starts as root just long enough to take ownership of /appdata (CHOWN, plus
+    # DAC_OVERRIDE/FOWNER to get into what an older root-run image left there), then drops to
+    # PUID/PGID (SETUID/SETGID) for good; no other capability, and no way to regain one.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    security_opt:
+      - no-new-privileges:true
     # No `ports:` on purpose — see the header. If your proxy runs on the host itself rather
     # than in a container, publish to loopback only, never 0.0.0.0:
     #   ports:

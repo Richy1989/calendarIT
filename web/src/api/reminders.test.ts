@@ -25,7 +25,7 @@ describe('getDueReminders', () => {
     } as never)
     const result = await getDueReminders('2026-08-01T00:00:00.000Z')
     expect(result).toEqual([
-      { reminderId: '1', occurrenceStartUtc: '2026-08-01T12:00:00Z', title: 'Standup', location: null },
+      { reminderId: '1', occurrenceStartUtc: '2026-08-01T12:00:00Z', title: 'Standup', location: null, allDay: false },
     ])
   })
 })

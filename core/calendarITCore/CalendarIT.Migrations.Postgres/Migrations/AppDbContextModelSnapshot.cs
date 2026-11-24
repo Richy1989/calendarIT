@@ -68,6 +68,10 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Property<Guid?>("DefaultCategoryId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("DefaultReminders")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)

@@ -15,24 +15,26 @@ public sealed class CalendarService(AppDbContext db, TimeProvider timeProvider) 
             .Where(c => c.OwnerUserId == userId)
             .OrderBy(c => c.CreatedAt)
             // Edited occurrences are rows of their own but not appointments of their own.
-            .Select(c => new CalendarDto(c.Id, c.Name, c.Events.Count(e => e.SeriesMasterId == null), c.DefaultCategoryId))
+            .Select(c => new { c.Id, c.Name, Count = c.Events.Count(e => e.SeriesMasterId == null), c.DefaultCategoryId, c.DefaultReminders })
             .ToListAsync(cancellationToken);
         if (calendars.Count > 0)
         {
-            return calendars;
+            return calendars
+                .Select(c => new CalendarDto(c.Id, c.Name, c.Count, c.DefaultCategoryId, DefaultReminders.Parse(c.DefaultReminders)))
+                .ToList();
         }
 
         // Fresh account: create the default calendar so the UI always has one to work with
         // (the same lazy bootstrap the event/import/CalDAV paths use).
         var created = await CreateEntityAsync(userId, "Personal", null, cancellationToken);
-        return [new CalendarDto(created.Id, created.Name, 0)];
+        return [new CalendarDto(created.Id, created.Name, 0, DefaultReminders: [])];
     }
 
     public async Task<CalendarDto> CreateAsync(Guid userId, SaveCalendarRequest request, CancellationToken cancellationToken = default)
     {
         var categoryId = await OwnedCategoryAsync(userId, request.DefaultCategoryId, cancellationToken);
         var entity = await CreateEntityAsync(userId, request.Name.Trim(), categoryId, cancellationToken);
-        return new CalendarDto(entity.Id, entity.Name, 0, entity.DefaultCategoryId);
+        return new CalendarDto(entity.Id, entity.Name, 0, entity.DefaultCategoryId, []);
     }
 
     public async Task<CalendarDto?> RenameAsync(Guid userId, Guid calendarId, SaveCalendarRequest request, CancellationToken cancellationToken = default)
@@ -67,6 +69,23 @@ public sealed class CalendarService(AppDbContext db, TimeProvider timeProvider) 
         await db.Events
             .Where(e => e.CalendarId == entity.Id && e.CategoryId == null && e.SeriesMasterId == null)
             .ExecuteUpdateAsync(s => s.SetProperty(e => e.UpdatedAt, entity.UpdatedAt), cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return await ToDtoAsync(entity, cancellationToken);
+    }
+
+    public async Task<CalendarDto?> SetDefaultRemindersAsync(
+        Guid userId, Guid calendarId, IReadOnlyList<ReminderInput> reminders, CancellationToken cancellationToken = default)
+    {
+        var entity = await db.Calendars
+            .SingleOrDefaultAsync(c => c.Id == calendarId && c.OwnerUserId == userId, cancellationToken);
+        if (entity is null)
+        {
+            return null;
+        }
+
+        // Defaults only seed new events in the web editor: nothing synced changes, so the
+        // calendar's CTag (UpdatedAt) is left alone.
+        entity.DefaultReminders = DefaultReminders.Format(reminders);
         await db.SaveChangesAsync(cancellationToken);
         return await ToDtoAsync(entity, cancellationToken);
     }
@@ -107,7 +126,7 @@ public sealed class CalendarService(AppDbContext db, TimeProvider timeProvider) 
     private async Task<CalendarDto> ToDtoAsync(Calendar entity, CancellationToken cancellationToken)
     {
         var count = await db.Events.CountAsync(e => e.CalendarId == entity.Id && e.SeriesMasterId == null, cancellationToken);
-        return new CalendarDto(entity.Id, entity.Name, count, entity.DefaultCategoryId);
+        return new CalendarDto(entity.Id, entity.Name, count, entity.DefaultCategoryId, DefaultReminders.Parse(entity.DefaultReminders));
     }
 
     private async Task<Calendar> CreateEntityAsync(Guid userId, string name, Guid? defaultCategoryId, CancellationToken cancellationToken)

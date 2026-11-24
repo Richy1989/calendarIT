@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getMailAccount } from './api/mailAccount'
 import { listCategories } from './api/categories'
+import CategoryPicker from './components/CategoryPicker'
 import DateTimeField from './components/DateTimeField'
+import { ColorDot, FormIcon } from './components/FormIcons'
 import RecurrenceEditor from './components/RecurrenceEditor'
 import { parseLocalValue, toLocalValue } from './lib/dates'
+import { defaultRemindersFor, REMINDER_OFFSETS, repeatPresets, sameReminders } from './lib/eventForm'
 import { buildRule, defaultSpec, describeRule, parseRule, weekdayOf, type RuleSpec } from './lib/rrule'
 import { useFirstDay } from './weekStart'
 import { enableNotifications } from './push/webPush'
@@ -34,6 +37,9 @@ export type EventDraft = {
   invitationStatus?: string | null
   /** The organizer of a received invitation, shown in the RSVP banner. */
   organizerEmail?: string | null
+  /** The zone an existing event lives in (null: none), sent back unchanged so an edit never
+   *  moves it. Undefined on a new event, which takes the browser's. */
+  timeZone?: string | null
   /** Set when the draft belongs to a repeating series: the series (master) id. */
   seriesId?: string
   /** With `seriesId`: the occurrence the editor was opened on — its start in the series' rule. */
@@ -42,36 +48,17 @@ export type EventDraft = {
   scope?: EditScope
   /** True when this occurrence already has its own edits. */
   isOverride?: boolean
+  /** Opens the editor with the custom repeat editor showing ("Custom…" in the quick form). */
+  customRepeat?: boolean
 }
 
 /** Which part of a repeating series an edit applies to. */
 export type EditScope = 'occurrence' | 'series'
 
-const REMINDER_PRESETS: { label: string; value: number }[] = [
-  { label: 'At start of event', value: 0 },
-  { label: '5 minutes before', value: 5 },
-  { label: '10 minutes before', value: 10 },
-  { label: '15 minutes before', value: 15 },
-  { label: '30 minutes before', value: 30 },
-  { label: '1 hour before', value: 60 },
-  { label: '2 hours before', value: 120 },
-  { label: '1 day before', value: 1440 },
-  { label: '1 week before', value: 10080 },
-]
-
-const REPEATS: { label: string; value: string }[] = [
-  { label: 'Does not repeat', value: '' },
-  { label: 'Daily', value: 'FREQ=DAILY' },
-  { label: 'Every weekday (Mon–Fri)', value: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' },
-  { label: 'Weekly', value: 'FREQ=WEEKLY' },
-  { label: 'Monthly', value: 'FREQ=MONTHLY' },
-  { label: 'Yearly', value: 'FREQ=YEARLY' },
-]
-
 /** The Repeats select's "Custom…" entry (opens the repeat editor). Not a valid RRULE on purpose. */
 const CUSTOM = '__custom__'
 
-const isPreset = (rule: string) => REPEATS.some((r) => r.value === rule)
+const isPreset = (rule: string) => repeatPresets(new Date()).some((r) => r.rule === rule)
 
 /** Friendly labels for RSVP / invitation statuses. */
 const RSVP_LABEL: Record<string, string> = {
@@ -80,8 +67,6 @@ const RSVP_LABEL: Record<string, string> = {
   Declined: 'Decline',
   NeedsAction: 'Pending',
 }
-
-const cssVar = (hex: string) => ({ ['--sw']: hex }) as React.CSSProperties
 
 /** Uncategorized events render in this neutral default. */
 const NO_CATEGORY_COLOR = '#708090' // slategray
@@ -98,7 +83,12 @@ export default function EventModal({
 }: {
   draft: EventDraft
   /** The user's calendars; the picker only shows when there is more than one. */
-  calendars?: { id: string; name: string; defaultCategoryId?: string | null }[]
+  calendars?: {
+    id: string
+    name: string
+    defaultCategoryId?: string | null
+    defaultReminders?: { minutesBefore: number | string; channel: string }[] | null
+  }[]
   onSave: (draft: EventDraft) => void
   /** Deletes what the editor shows: the occurrence or the series, per `draft.scope`. */
   onDelete?: () => void
@@ -124,12 +114,20 @@ export default function EventModal({
   // The custom-repeat editor's state, when it's open: set for a rule the presets don't cover (and
   // the editor can read), or once "Custom…" is picked. The RRULE text is only rebuilt from it when
   // something changes — the server takes a changed rule for a moved series and drops its exceptions.
-  const [customSpec, setCustomSpec] = useState<RuleSpec | null>(() =>
-    draft.recurrence && !isPreset(draft.recurrence)
-      ? parseRule(draft.recurrence, parseLocalValue(draft.start, draft.allDay))
-      : null,
-  )
+  const [customSpec, setCustomSpec] = useState<RuleSpec | null>(() => {
+    const at = parseLocalValue(draft.start, draft.allDay)
+    if (draft.customRepeat) return (draft.recurrence && parseRule(draft.recurrence, at)) || defaultSpec(at)
+    return draft.recurrence && !isPreset(draft.recurrence) ? parseRule(draft.recurrence, at) : null
+  })
   const startDate = parseLocalValue(start, allDay)
+  // "Custom…" from the quick form starts a rule; it's written once the editor has one.
+  const customStarted = useRef(false)
+  useEffect(() => {
+    if (draft.customRepeat && customSpec && !customStarted.current) {
+      customStarted.current = true
+      setRecurrence(buildRule(customSpec, startDate, allDay))
+    }
+  }, [draft.customRepeat, customSpec, startDate, allDay])
   // A rule another app wrote, using parts the editor doesn't model: shown, kept, not editable here.
   const foreignRule = recurrence !== '' && !isPreset(recurrence) && !customSpec
 
@@ -194,8 +192,16 @@ export default function EventModal({
   const [description, setDescription] = useState(draft.description)
   const [attendees, setAttendees] = useState(draft.attendees)
   const [guestInput, setGuestInput] = useState('')
-  const [expanded, setExpanded] = useState(Boolean(draft.location || draft.description || draft.attendees.length))
   const isEdit = Boolean(draft.id)
+
+  // A new event follows its calendar's default reminders until they're changed by hand.
+  const chooseCalendar = (id: string) => {
+    if (!isEdit) {
+      const before = defaultRemindersFor(calendars.find((c) => c.id === calendarId), allDay)
+      if (sameReminders(reminders, before)) setReminders(defaultRemindersFor(calendars.find((c) => c.id === id), allDay))
+    }
+    setCalendarId(id)
+  }
   // Repeat rule, calendar and guests belong to the series; editing one occurrence leaves them be.
   const occurrenceOnly = draft.scope === 'occurrence'
 
@@ -207,6 +213,8 @@ export default function EventModal({
   // The category it takes when it has none of its own: its calendar's default.
   const inheritedId = calendars.find((c) => c.id === calendarId)?.defaultCategoryId
   const inherited = inheritedId ? categories.find((c) => c.id === inheritedId) : undefined
+  const ownCategory = categoryId ? categories.find((c) => c.id === categoryId) : undefined
+  const shownColor = ownCategory?.color ?? inherited?.color ?? NO_CATEGORY_COLOR
 
   const addGuest = () => {
     const email = guestInput.trim().replace(/[,;]$/, '')
@@ -235,8 +243,17 @@ export default function EventModal({
     status === 'Declined' ? { mark: '✕', cls: ' no' } :
     status === 'Tentative' ? { mark: '?', cls: '' } : null
 
+  // Escape closes (a date picker that's open closes first); Ctrl/Cmd+Enter saves.
+  const formRef = useRef<HTMLFormElement>(null)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault()
+        formRef.current?.requestSubmit()
+      } else if (e.key === 'Escape' && !document.querySelector('.ctx-backdrop')) {
+        onClose()
+      }
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
@@ -251,6 +268,11 @@ export default function EventModal({
       setEnd((s) => (s.length <= 10 ? `${s}T10:00` : s))
     }
     setAllDay(checked)
+    // A new event's reminders follow: the calendar's defaults when timed, none when all-day.
+    if (!isEdit) {
+      const cal = calendars.find((c) => c.id === calendarId)
+      if (sameReminders(reminders, defaultRemindersFor(cal, allDay))) setReminders(defaultRemindersFor(cal, checked))
+    }
     // UNTIL is written differently for all-day series (a date) and timed ones (an instant).
     if (customSpec) applySpec(customSpec, startDate, checked)
   }
@@ -268,7 +290,7 @@ export default function EventModal({
 
   return (
     <div className="modal-overlay" onMouseDown={onClose}>
-      <form className="modal" onMouseDown={(e) => e.stopPropagation()} onSubmit={submit}>
+      <form ref={formRef} className="modal event-form" onMouseDown={(e) => e.stopPropagation()} onSubmit={submit}>
         <div className="modal-head">
           <span className="eyebrow">
             {onRespond ? 'Invitation' : occurrenceOnly ? 'Edit occurrence' : isEdit ? 'Edit appointment' : 'New appointment'}
@@ -322,185 +344,141 @@ export default function EventModal({
           </div>
         )}
 
-        <div className="field">
-          <label htmlFor="ev-title">Title</label>
-          {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
-          <input
-            id="ev-title"
-            value={title}
-            autoFocus
-            placeholder="What's happening?"
-            onChange={(e) => setTitle(e.target.value)}
-          />
+        <label htmlFor="ev-title" className="sr-only">Title</label>
+        {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+        <input
+          id="ev-title"
+          className="form-title"
+          value={title}
+          autoFocus
+          placeholder="Add title"
+          maxLength={500}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+
+        <div className="form-row">
+          <FormIcon name="clock" />
+          <div className="form-row-body form-when">
+            <DateTimeField id="ev-start" ariaLabel="Starts" value={start} allDay={allDay} onChange={changeStart} />
+            <span className="form-when-end">
+              <span className="form-when-sep" aria-hidden="true">–</span>
+              <DateTimeField id="ev-end" ariaLabel="Ends" value={end} allDay={allDay} onChange={setEnd} />
+            </span>
+            <label className="form-check">
+              <input type="checkbox" checked={allDay} onChange={(e) => toggleAllDay(e.target.checked)} />
+              All day
+            </label>
+          </div>
         </div>
-
-        <label className="toggle">
-          <input type="checkbox" checked={allDay} onChange={(e) => toggleAllDay(e.target.checked)} />
-          <span>All day</span>
-        </label>
-
-        <div className="field-row">
-          <div className="field">
-            <label htmlFor="ev-start">Starts</label>
-            <DateTimeField id="ev-start" ariaLabel="Start date and time" value={start} allDay={allDay} onChange={changeStart} />
-          </div>
-          <div className="field">
-            <label htmlFor="ev-end">Ends</label>
-            <DateTimeField id="ev-end" ariaLabel="End date and time" value={end} allDay={allDay} onChange={setEnd} />
-          </div>
-        </div>
-
-        {calendars.length > 1 && !occurrenceOnly && (
-          <div className="field">
-            <label htmlFor="ev-calendar">Calendar</label>
-            <select id="ev-calendar" value={calendarId} onChange={(e) => setCalendarId(e.target.value)}>
-              {calendars.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
 
         {occurrenceOnly ? (
-          <p className="field-hint">
+          <p className="field-hint form-indent">
             {draft.isOverride
               ? 'This occurrence has its own changes. Saving updates only this one.'
               : 'Saving changes only this occurrence; the rest of the series stays as it is.'}
           </p>
         ) : (
-        <div className="field">
-          <label htmlFor="ev-repeat">Repeats</label>
-          <select id="ev-repeat" value={customSpec ? CUSTOM : recurrence} onChange={(e) => chooseRepeat(e.target.value)}>
-            {REPEATS.map((r) => (
-              <option key={r.value || 'none'} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-            {foreignRule && <option value={recurrence}>Custom rule (from another app)</option>}
-            <option value={CUSTOM}>{customSpec ? describeRule(recurrence, startDate) : 'Custom…'}</option>
-          </select>
-          {customSpec && (
-            <RecurrenceEditor spec={customSpec} start={startDate} firstDay={firstDay} onChange={(spec) => applySpec(spec)} />
-          )}
-          {foreignRule && (
-            <p className="field-hint">
-              This rule ({recurrence}) was made in another app and can't be edited here. It's kept as
-              it is — pick another option to replace it.
-            </p>
-          )}
-          {isEdit && recurrence !== '' && (
-            <p className="field-hint">
-              Saving updates the whole series. Occurrences edited on their own keep their changes,
-              unless the repeat rule or the start changes.
-            </p>
-          )}
-        </div>
+          <div className="form-row form-row-top">
+            <FormIcon name="repeat" />
+            <div className="form-row-body form-stack">
+              <select
+                id="ev-repeat"
+                aria-label="Repeat"
+                className="form-select"
+                value={customSpec ? CUSTOM : recurrence}
+                onChange={(e) => chooseRepeat(e.target.value)}
+              >
+                {repeatPresets(startDate).map((r) => (
+                  <option key={r.preset} value={r.rule}>
+                    {r.label}
+                  </option>
+                ))}
+                {foreignRule && <option value={recurrence}>Custom rule (from another app)</option>}
+                <option value={CUSTOM}>{customSpec ? describeRule(recurrence, startDate) : 'Custom…'}</option>
+              </select>
+              {customSpec && (
+                <RecurrenceEditor spec={customSpec} start={startDate} firstDay={firstDay} onChange={(spec) => applySpec(spec)} />
+              )}
+              {foreignRule && (
+                <p className="field-hint">
+                  This rule ({recurrence}) was made in another app and can't be edited here. It's kept as
+                  it is — pick another option to replace it.
+                </p>
+              )}
+              {isEdit && recurrence !== '' && (
+                <p className="field-hint">
+                  Saving updates the whole series. Occurrences edited on their own keep their changes,
+                  unless the repeat rule or the start changes.
+                </p>
+              )}
+            </div>
+          </div>
         )}
 
-        <div className="field">
-          <label>Reminders</label>
-          <div className="reminders">
-            {reminders.map((r, i) => (
-              <div className="reminder-row" key={i}>
-                <select value={r.minutesBefore} onChange={(e) => setReminderOffset(i, Number(e.target.value))}>
-                  {REMINDER_PRESETS.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="reminder-channel"
-                  value={r.channel}
-                  onChange={(e) => setReminderChannel(i, e.target.value)}
-                  aria-label="Reminder delivery"
-                >
-                  <option value="Email">Email</option>
-                  <option value="WebPush">Browser</option>
-                </select>
-                <button type="button" className="reminder-remove" onClick={() => removeReminder(i)} aria-label="Remove reminder">
-                  ✕
-                </button>
-              </div>
-            ))}
-            <button type="button" className="reminder-add" onClick={addReminder}>
-              ＋ Add reminder
-            </button>
+        <div className="form-row">
+          <ColorDot color={shownColor} />
+          <div className="form-row-body form-where">
+            {calendars.length > 1 && !occurrenceOnly && (
+              <select id="ev-calendar" aria-label="Calendar" className="form-select" value={calendarId} onChange={(e) => chooseCalendar(e.target.value)}>
+                {calendars.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <CategoryPicker
+              value={categoryId}
+              onChange={setCategoryId}
+              emptyLabel={inherited ? `From calendar · ${inherited.name}` : 'No category'}
+              ariaLabel="Category"
+            />
+          </div>
+        </div>
+
+        <div className="form-row form-row-top">
+          <FormIcon name="bell" />
+          <div className="form-row-body form-stack">
+            <div className="form-chips" role="group" aria-label="Reminders">
+              {reminders.map((r, i) => (
+                <span className="reminder-chip" key={i}>
+                  <select
+                    value={r.minutesBefore}
+                    aria-label="When"
+                    onChange={(e) => setReminderOffset(i, Number(e.target.value))}
+                  >
+                    {!REMINDER_OFFSETS.some((p) => p.value === r.minutesBefore) && (
+                      <option value={r.minutesBefore}>{r.minutesBefore} min before</option>
+                    )}
+                    {REMINDER_OFFSETS.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.short}
+                      </option>
+                    ))}
+                  </select>
+                  <span aria-hidden="true">·</span>
+                  <select value={r.channel} onChange={(e) => setReminderChannel(i, e.target.value)} aria-label="Delivery">
+                    <option value="Email">Email</option>
+                    <option value="WebPush">Browser</option>
+                  </select>
+                  <button type="button" className="reminder-chip-remove" onClick={() => removeReminder(i)} aria-label="Remove reminder">
+                    ✕
+                  </button>
+                </span>
+              ))}
+              <button type="button" className="form-link" onClick={addReminder}>
+                {reminders.length ? '+ Add' : '+ Add reminder'}
+              </button>
+            </div>
             {pushHint && <p className="field-hint">{pushHint}</p>}
           </div>
         </div>
 
-        <div className="field">
-          <label>Category</label>
-          <div className="category-chips">
-            {categories.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                className={'category-chip' + (categoryId === c.id ? ' active' : '')}
-                style={cssVar(c.color)}
-                onClick={() => setCategoryId(c.id)}
-              >
-                <span className="category-chip-dot" aria-hidden="true" />
-                {c.name}
-              </button>
-            ))}
-            {/* Without a category of its own, an event shows in its calendar's default — say so. */}
-            <button
-              type="button"
-              className={'category-chip' + (categoryId === null ? ' active' : '')}
-              style={cssVar(inherited?.color ?? NO_CATEGORY_COLOR)}
-              title={inherited ? `Takes the category of its calendar (${inherited.name})` : undefined}
-              onClick={() => setCategoryId(null)}
-            >
-              <span className={'category-chip-dot' + (inherited ? '' : ' category-chip-dot-none')} aria-hidden="true" />
-              {inherited ? `From calendar · ${inherited.name}` : 'None'}
-            </button>
-          </div>
-          {categories.length === 0 && (
-            <p className="field-hint">Create categories in Settings → Categories to color your appointments.</p>
-          )}
-        </div>
-
-        <button
-          type="button"
-          className="details-toggle"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((v) => !v)}
-        >
-          <span className={'chev' + (expanded ? ' open' : '')} aria-hidden="true">
-            ▸
-          </span>
-          {expanded ? 'Fewer details' : 'Add details'}
-        </button>
-
-        {expanded && (
-          <div className="details">
-            <div className="field">
-              <label htmlFor="ev-location">Location</label>
-              <input
-                id="ev-location"
-                value={location}
-                placeholder="Where is it?"
-                onChange={(e) => setLocation(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="ev-desc">Description</label>
-              <textarea
-                id="ev-desc"
-                rows={3}
-                value={description}
-                placeholder="Notes, agenda, links…"
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-            {!occurrenceOnly && (
-            <div className="field">
-              <label htmlFor="ev-guests">Guests</label>
-              <div className="guest-chips">
+        {!occurrenceOnly && (
+          <div className="form-row form-row-top">
+            <FormIcon name="users" />
+            <div className="form-row-body form-stack">
+              <div className="guest-chips form-bare">
                 {attendees.map((a) => {
                   const s = statusMark(a.status)
                   return (
@@ -515,8 +493,9 @@ export default function EventModal({
                 })}
                 <input
                   id="ev-guests"
+                  aria-label="Guests"
                   value={guestInput}
-                  placeholder={attendees.length ? 'Add another…' : 'Invite people by email'}
+                  placeholder={attendees.length ? 'Add another…' : 'Add guests'}
                   onChange={(e) => setGuestInput(e.target.value)}
                   onKeyDown={onGuestKey}
                   onBlur={addGuest}
@@ -529,9 +508,33 @@ export default function EventModal({
                 </p>
               )}
             </div>
-            )}
           </div>
         )}
+
+        <div className="form-row">
+          <FormIcon name="pin" />
+          <input
+            id="ev-location"
+            className="form-row-body form-bare-input"
+            aria-label="Location"
+            value={location}
+            placeholder="Add location"
+            onChange={(e) => setLocation(e.target.value)}
+          />
+        </div>
+
+        <div className="form-row form-row-top">
+          <FormIcon name="text" />
+          <textarea
+            id="ev-desc"
+            className="form-row-body form-textarea"
+            aria-label="Description"
+            rows={3}
+            value={description}
+            placeholder="Add description"
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
 
         <div className="modal-actions">
           {isEdit && onDelete && (
@@ -545,11 +548,12 @@ export default function EventModal({
             </button>
           )}
           <span className="spacer" />
+          <span className="form-kbd">Ctrl+Enter</span>
           <button type="button" className="btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="btn-primary">
-            {isEdit ? 'Save' : 'Add appointment'}
+          <button type="submit" className="btn-primary" disabled={!title.trim()}>
+            Save
           </button>
         </div>
       </form>

@@ -7,6 +7,8 @@ export type DueItem = {
   occurrenceStartUtc: string
   title: string
   location?: string | null
+  /** An all-day event: `occurrenceStartUtc` is then its date, not an instant. */
+  allDay?: boolean
 }
 
 export type ShownEntry = { key: string; at: number }

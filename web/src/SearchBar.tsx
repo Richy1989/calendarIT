@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { searchEvents, type EventSearchResult } from './api/events'
 import { useHour12 } from './clock'
-import { formatTime } from './lib/dates'
+import { allDayDate, formatTime } from './lib/dates'
 
 function formatWhen(iso: string, allDay: boolean, hour12: boolean): string {
-  const d = new Date(iso)
+  const d = allDay ? allDayDate(iso) : new Date(iso)
   const date = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
   if (allDay) return `${date} · All day`
   return `${date} · ${formatTime(d, hour12)}`
@@ -77,7 +77,7 @@ export default function SearchBar({ onPick }: { onPick: (isoDate: string) => voi
   }, [open])
 
   const pick = (r: EventSearchResult) => {
-    onPick(r.start)
+    onPick(r.allDay ? r.start.slice(0, 10) : r.start)
     setOpen(false)
     setQ('')
     setDebounced('')

@@ -35,7 +35,8 @@ public static class RecurrenceExpander
     /// <summary>
     /// Occurrences that overlap [<paramref name="fromUtc"/>, <paramref name="toUtc"/>), ascending.
     /// An all-day series is a run of dates rather than instants, so it expands without a zone and
-    /// its exclusions are matched by date.
+    /// its exclusions are matched by date — and its window is read the same way, as wall-clock
+    /// time: the caller passes the viewer's local window, not the UTC instants.
     /// </summary>
     public static IEnumerable<Occurrence> Expand(
         DateTime masterStartUtc,
@@ -55,13 +56,14 @@ public static class RecurrenceExpander
             // An id we can't resolve falls through to the UTC branch rather than throwing: rows
             // written before ids were normalised on save may still carry one, and a single such
             // row must not take down every range query the user makes.
-            if (!allDay && TimeZones.TryFind(timeZoneId, out var tz))
+            if (!allDay && TimeZones.Canonical(timeZoneId) is { } zoneId && TimeZones.TryFind(zoneId, out var tz))
             {
                 var localStart = TimeZoneInfo.ConvertTimeFromUtc(masterStartUtc, tz); // wall-clock, Kind=Unspecified
-                // Ical.Net resolves zones through tzdb, so it must get the id as stored (IANA);
-                // tz.Id would be the Windows equivalent when running on Windows.
+                // Ical.Net resolves zones through tzdb and reads an id it doesn't know as UTC, so
+                // it gets the tz database's spelling — not tz.Id (the Windows name on Windows), nor
+                // another spelling a row stored before ids were canonicalized may hold.
                 evt = BuildEvent(
-                    new CalDateTime(localStart, timeZoneId!), new CalDateTime(localStart + duration, timeZoneId!), rrule);
+                    new CalDateTime(localStart, zoneId), new CalDateTime(localStart + duration, zoneId), rrule);
             }
             else
             {
@@ -88,9 +90,13 @@ public static class RecurrenceExpander
     {
         var excludedDays = allDay ? exDatesUtc.Select(DateOnly.FromDateTime).ToHashSet() : null;
 
-        // Start looking one duration early, so an occurrence that began before the window but is
+        // How long an occurrence occupies the window. An all-day one lasts through the end of its
+        // last day: its stored end is that day's midnight, a day short of where it really stops.
+        var span = allDay ? duration + TimeSpan.FromDays(1) : duration;
+
+        // Start looking one span early, so an occurrence that began before the window but is
         // still running inside it is found too (a multi-day series seen from its second day).
-        var lower = new CalDateTime(DateTime.SpecifyKind(fromUtc - duration, DateTimeKind.Utc));
+        var lower = new CalDateTime(DateTime.SpecifyKind(fromUtc - span, DateTimeKind.Utc));
 
         IEnumerator<Ical.Net.DataTypes.Occurrence> source;
         try
@@ -129,7 +135,7 @@ public static class RecurrenceExpander
                 }
 
                 var endUtc = startUtc + duration;
-                var overlaps = duration > TimeSpan.Zero ? endUtc > fromUtc : startUtc >= fromUtc;
+                var overlaps = span > TimeSpan.Zero ? startUtc + span > fromUtc : startUtc >= fromUtc;
                 var excluded = excludedDays is not null
                     ? excludedDays.Contains(DateOnly.FromDateTime(startUtc))
                     : exDatesUtc.Contains(ExDates.TruncateToSeconds(startUtc));

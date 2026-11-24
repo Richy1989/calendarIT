@@ -40,3 +40,15 @@ export async function deleteCalendar(id: string): Promise<void> {
     throw new Error(response?.status === 409 ? "You can't delete your last calendar." : 'Failed to delete calendar')
   }
 }
+
+export type ReminderDefault = { minutesBefore: number; channel: string }
+
+/** Sets the reminders a new timed event in this calendar starts with (empty clears them). */
+export async function setCalendarReminders(id: string, reminders: ReminderDefault[]): Promise<CalendarDto> {
+  const { data, error } = await api.PUT('/api/calendars/{id}/default-reminders', {
+    params: { path: { id } },
+    body: { reminders },
+  })
+  if (error || !data) throw new Error(problemMessage(error, 'Failed to save the default reminders'))
+  return data
+}

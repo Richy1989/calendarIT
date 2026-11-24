@@ -94,6 +94,64 @@ public sealed class ReminderDispatchTests : IDisposable
         Assert.Equal("owner@test", message.To.Mailboxes.Single().Address);
     }
 
+    private async Task AddAllDayAsync(DateTime day, string? zone, int minutesBefore, ReminderChannel channel = ReminderChannel.Email)
+    {
+        _db.Events.Add(new CalendarEvent
+        {
+            Id = Guid.NewGuid(),
+            CalendarId = _calendarId,
+            Uid = $"{Guid.NewGuid():N}@calendarit",
+            Title = "Birthday",
+            StartUtc = day,
+            EndUtc = day,
+            IsAllDay = true,
+            TimeZoneId = zone,
+            CreatedAt = day,
+            Reminders = [new Reminder { Id = Guid.NewGuid(), MinutesBefore = minutesBefore, Channel = channel }],
+        });
+        await _db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task AllDayReminder_FiresAtMidnightWhereTheEventWasWritten()
+    {
+        // Now is 08:00Z. The 1st begins then in Anchorage (UTC-8 in summer) — eight hours after
+        // its stored midnight. The 2nd begins at 22:00Z today in Vienna, so 14 hours' notice is
+        // due now too — though its stored start lies past the longest lead from now.
+        await AddAllDayAsync(new DateTime(2026, 9, 1), "America/Anchorage", minutesBefore: 0);
+        await AddAllDayAsync(new DateTime(2026, 9, 2), "Europe/Vienna", minutesBefore: 14 * 60);
+        // Not due: these began at midnight UTC, eight hours ago.
+        await AddAllDayAsync(new DateTime(2026, 9, 1), "UTC", minutesBefore: 0);
+        await AddAllDayAsync(new DateTime(2026, 9, 1), null, minutesBefore: 0);
+
+        await Job().RunAsync(_db, _mail, _push);
+
+        Assert.Equal(2, _mail.Sent.Count);
+    }
+
+    [Fact]
+    public async Task AllDayReminder_NamesTheDate_NotAClockTime()
+    {
+        _db.PushSubscriptions.Add(new PushSubscription
+        {
+            Id = Guid.NewGuid(), UserId = _userId, Endpoint = "https://push.example/a", P256dh = "k", Auth = "a",
+        });
+        await AddAllDayAsync(new DateTime(2026, 9, 1), "America/Anchorage", minutesBefore: 0);
+        await AddAllDayAsync(new DateTime(2026, 9, 1), "America/Anchorage", minutesBefore: 0, ReminderChannel.WebPush);
+
+        await Job().RunAsync(_db, _mail, _push);
+
+        // Read through its zone, the stored midnight would say "31 August, 16:00".
+        var mail = Assert.Single(_mail.Sent).Message.TextBody!;
+        var pushed = Assert.Single(_push.Sent).Message.Body;
+        foreach (var text in new[] { mail, pushed })
+        {
+            Assert.Contains(new DateTime(2026, 9, 1).ToString("D"), text);
+            Assert.DoesNotContain("16:00", text);
+            Assert.DoesNotContain("Anchorage", text);
+        }
+    }
+
     [Fact]
     public async Task DoesNotSendBeforeTheTriggerTime()
     {

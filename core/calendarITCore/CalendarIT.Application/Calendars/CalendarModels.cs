@@ -3,8 +3,10 @@ using System.ComponentModel.DataAnnotations;
 namespace CalendarIT.Application.Calendars;
 
 /// <summary>One of the user's calendars, as returned to the client. <paramref name="DefaultCategoryId"/>
-/// is the category its events take when they have none of their own (null: none).</summary>
-public sealed record CalendarDto(Guid Id, string Name, int EventCount, Guid? DefaultCategoryId = null);
+/// is the category its events take when they have none of their own (null: none);
+/// <paramref name="DefaultReminders"/> the reminders a new timed event in it starts with.</summary>
+public sealed record CalendarDto(
+    Guid Id, string Name, int EventCount, Guid? DefaultCategoryId = null, IReadOnlyList<ReminderDto>? DefaultReminders = null);
 
 /// <summary>Create/rename payload for a calendar.</summary>
 public sealed class SaveCalendarRequest
@@ -20,6 +22,16 @@ public sealed class SaveCalendarRequest
 public sealed class SetCalendarCategoryRequest
 {
     public Guid? CategoryId { get; init; }
+}
+
+/// <summary>The reminders a new timed event in a calendar starts with; empty clears them.</summary>
+public sealed class SetCalendarRemindersRequest
+{
+    /// <summary>A handful at most: they are a starting point, not a schedule.</summary>
+    public const int MaxDefaults = 5;
+
+    [MaxLength(MaxDefaults)]
+    public IReadOnlyList<ReminderInput> Reminders { get; init; } = [];
 }
 
 /// <summary>Outcome of a calendar delete — the last calendar can never be deleted.</summary>
@@ -46,4 +58,9 @@ public interface ICalendarService
     /// <summary>Sets or clears the calendar's default category. Null when the calendar isn't the
     /// user's; throws <see cref="InvalidInputException"/> for a category that isn't.</summary>
     Task<CalendarDto?> SetDefaultCategoryAsync(Guid userId, Guid calendarId, Guid? categoryId, CancellationToken cancellationToken = default);
+
+    /// <summary>Replaces the calendar's default reminders. Null when the calendar isn't the user's;
+    /// throws <see cref="InvalidInputException"/> for a channel that doesn't exist.</summary>
+    Task<CalendarDto?> SetDefaultRemindersAsync(
+        Guid userId, Guid calendarId, IReadOnlyList<ReminderInput> reminders, CancellationToken cancellationToken = default);
 }

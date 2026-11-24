@@ -14,5 +14,6 @@ export async function getDueReminders(sinceUtc: string): Promise<DueItem[] | nul
     occurrenceStartUtc: String(i.occurrenceStartUtc),
     title: i.title,
     location: i.location ?? null,
+    allDay: i.allDay ?? false,
   }))
 }

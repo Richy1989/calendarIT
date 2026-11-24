@@ -76,11 +76,12 @@ public static class ICalEventMapper
             ve.Start = new CalDateTime(DateOnly.FromDateTime(e.StartUtc));
             ve.End = new CalDateTime(DateOnly.FromDateTime((e.EndUtc ?? e.StartUtc).AddDays(1)));
         }
-        else if (TimeZones.TryFind(e.TimeZoneId, out var tz))
+        else if (TimeZones.Canonical(e.TimeZoneId) is { } zoneId && TimeZones.TryFind(zoneId, out var tz))
         {
-            // The id goes out as stored (IANA) — tz.Id would be the Windows name on Windows.
-            ve.Start = new CalDateTime(TimeZoneInfo.ConvertTimeFromUtc(e.StartUtc, tz), e.TimeZoneId!);
-            ve.End = new CalDateTime(TimeZoneInfo.ConvertTimeFromUtc(end, tz), e.TimeZoneId!);
+            // The id goes out in the tz database's spelling — tz.Id would be the Windows name on
+            // Windows, and a row stored before ids were canonicalized may hold another spelling.
+            ve.Start = new CalDateTime(TimeZoneInfo.ConvertTimeFromUtc(e.StartUtc, tz), zoneId);
+            ve.End = new CalDateTime(TimeZoneInfo.ConvertTimeFromUtc(end, tz), zoneId);
         }
         else
         {
@@ -148,9 +149,9 @@ public static class ICalEventMapper
         {
             return new CalDateTime(DateOnly.FromDateTime(utc));
         }
-        if (TimeZones.TryFind(series.TimeZoneId, out var tz))
+        if (TimeZones.Canonical(series.TimeZoneId) is { } zoneId && TimeZones.TryFind(zoneId, out var tz))
         {
-            return new CalDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), tz), series.TimeZoneId!);
+            return new CalDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), tz), zoneId);
         }
         return new CalDateTime(DateTime.SpecifyKind(utc, DateTimeKind.Utc));
     }
@@ -252,8 +253,9 @@ public static class ICalEventMapper
         ICalEvent ve, DomainEvent e, DateTime now, IReadOnlyList<Category>? categories = null, Guid? inheritedCategoryId = null)
     {
         var isAllDay = !ve.Start!.HasTime;
-        var startUtc = AsUtcLenient(ve.Start);
-        DateTime? endUtc = ve.End is null ? null : AsUtcLenient(ve.End);
+        var zones = new IncomingZones(ve);
+        var startUtc = zones.ToUtc(ve.Start);
+        DateTime? endUtc = ve.End is null ? null : zones.ToUtc(ve.End);
 
         // iCalendar's DTEND is exclusive, but we store all-day ends as the inclusive last day
         // (the convention events created in the UI use). Without this, a one-day imported
@@ -300,9 +302,10 @@ public static class ICalEventMapper
         e.StartUtc = startUtc;
         e.EndUtc = endUtc;
         e.IsAllDay = isAllDay;
-        // Only an id this runtime can resolve is stored; an invented TZID becomes floating
+        // Only a zone we can resolve is stored, in the tz database's spelling — a sender's own
+        // VTIMEZONE as the real zone that keeps its clocks. An invented TZID becomes floating
         // rather than a row that throws on every later read.
-        e.TimeZoneId = TimeZones.Normalize(ve.Start.TzId);
+        e.TimeZoneId = zones.ZoneId(ve.Start);
         e.RRule = rrule;
 
         var incomingExDates = ReadExDates(ve);
@@ -329,11 +332,12 @@ public static class ICalEventMapper
     public static List<DateTime> ReadExDates(ICalEvent ve)
     {
         var result = new List<DateTime>();
+        var zones = new IncomingZones(ve);
         try
         {
             foreach (var d in ve.ExceptionDates.GetAllDates())
             {
-                result.Add(ExDates.TruncateToSeconds(AsUtcLenient(d)));
+                result.Add(ExDates.TruncateToSeconds(zones.ToUtc(d)));
                 if (result.Count >= 5_000)
                 {
                     break; // a bounded list: each one is re-parsed on every expansion
@@ -353,7 +357,7 @@ public static class ICalEventMapper
     public static DateTime? ReadRecurrenceIdUtc(ICalEvent ve)
     {
         var rid = ve.RecurrenceIdentifier?.StartTime;
-        return rid is null ? null : ExDates.TruncateToSeconds(AsUtcLenient(rid));
+        return rid is null ? null : ExDates.TruncateToSeconds(new IncomingZones(ve).ToUtc(rid));
     }
 
     /// <summary>
@@ -372,6 +376,72 @@ public static class ICalEventMapper
         catch (Exception ex) when (ex is ArgumentException or TimeZoneNotFoundException)
         {
             return DateTime.SpecifyKind(value.Value, DateTimeKind.Utc);
+        }
+    }
+
+    /// <summary>
+    /// The zones one VEVENT's dates name, resolved once each: the tz database's zone when the
+    /// TZID names one in any spelling (<see cref="TimeZones.Canonical"/>), else the VCALENDAR's own
+    /// VTIMEZONE for it — matched to the real zone that keeps the same clocks, or read directly.
+    /// Only when neither helps is the wall clock read as UTC.
+    /// </summary>
+    private sealed class IncomingZones(ICalEvent ve)
+    {
+        private readonly Dictionary<(string, int), (string? Id, ZoneDefinition? Definition)> _resolved = [];
+
+        /// <summary>The zone id to store for a value, or null for none we can resolve.</summary>
+        public string? ZoneId(CalDateTime? value) =>
+            value is { HasTime: true, TzId: { } tzid } ? Resolve(tzid, value.Value.Year).Id : null;
+
+        public DateTime ToUtc(CalDateTime value)
+        {
+            if (!value.HasTime || value.TzId is not { } tzid || value.IsUtc)
+            {
+                return AsUtcLenient(value);
+            }
+            var wall = DateTime.SpecifyKind(value.Value, DateTimeKind.Unspecified);
+            var (id, definition) = Resolve(tzid, wall.Year);
+            if (id is not null)
+            {
+                try
+                {
+                    // Through Ical.Net, so the instant agrees with the occurrences it expands.
+                    return DateTime.SpecifyKind(new CalDateTime(wall, id).AsUtc, DateTimeKind.Utc);
+                }
+                catch (Exception)
+                {
+                    if (TimeZones.TryFind(id, out var zone))
+                    {
+                        return TimeZones.ToUtc(wall, zone);
+                    }
+                }
+            }
+            return definition is not null ? definition.ToUtc(wall) : DateTime.SpecifyKind(wall, DateTimeKind.Utc);
+        }
+
+        private (string? Id, ZoneDefinition? Definition) Resolve(string tzid, int year)
+        {
+            if (_resolved.TryGetValue((tzid, year), out var known))
+            {
+                return known;
+            }
+            (string?, ZoneDefinition?) result = (TimeZones.Canonical(tzid), null);
+            if (result.Item1 is null && FindDefinition(tzid) is { } vtz && ZoneDefinition.Read(vtz, year) is { } definition)
+            {
+                result = (definition.Match(tzid), definition);
+            }
+            return _resolved[(tzid, year)] = result;
+        }
+
+        private Ical.Net.CalendarComponents.VTimeZone? FindDefinition(string tzid)
+        {
+            var defined = ve.Calendar?.TimeZones;
+            if (defined is null)
+            {
+                return null;
+            }
+            return defined.FirstOrDefault(z => string.Equals(z.TzId, tzid, StringComparison.Ordinal))
+                ?? defined.FirstOrDefault(z => string.Equals(z.TzId?.Trim(), tzid.Trim(), StringComparison.OrdinalIgnoreCase));
         }
     }
 

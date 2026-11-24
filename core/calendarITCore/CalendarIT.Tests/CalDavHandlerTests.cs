@@ -383,6 +383,22 @@ public sealed class CalDavHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task Report_CalendarQuery_KeepsAnAllDayEventForAClientWestOfUtc()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        var allDay = PutIcs
+            .Replace("DTSTART:20260901T100000Z", "DTSTART;VALUE=DATE:20260901")
+            .Replace("DTEND:20260901T110000Z", "DTEND;VALUE=DATE:20260902");
+        var ctx = Context(allDay);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+
+        // New York asking for its September 1st: midnight there is 04:00Z, after the event's
+        // stored midnight — but the event is that whole day, wherever the client is.
+        Assert.Equal(1, await QueryCountAsync(calId, TimeRangeQuery("20260901T040000Z", "20260902T040000Z")));
+        Assert.Equal(0, await QueryCountAsync(calId, TimeRangeQuery("20261001T000000Z", "20261101T000000Z")));
+    }
+
+    [Fact]
     public async Task Report_CalendarQuery_KeepsSeriesThatStartedBeforeTheWindow()
     {
         var calId = await DiscoverCalendarIdAsync();

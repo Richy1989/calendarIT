@@ -16,6 +16,8 @@ import type {
   EventInput,
 } from '@fullcalendar/core'
 import EventModal, { type EditScope, type EventDraft } from './EventModal'
+import QuickCreate from './QuickCreate'
+import { defaultRemindersFor } from './lib/eventForm'
 import AgendaView from './AgendaView'
 import {
   createEvent,
@@ -37,7 +39,7 @@ import { saveDefaultView } from './api/profile'
 import { useHour12 } from './clock'
 import { useFirstDay } from './weekStart'
 import { Popover } from './components/Popover'
-import { addDays, dayKey, toLocalInput } from './lib/dates'
+import { addDays, allDayDate, dayKey, parseLocalValue, toLocalInput, toOffsetIso } from './lib/dates'
 import { occurrenceOf, type OccurrenceRef } from './lib/occurrences'
 import { useUndoStack } from './lib/useUndoStack'
 import { getSavedView, saveView, UNCATEGORIZED } from './prefs'
@@ -53,6 +55,9 @@ import {
 
 // Uncategorized events render in this neutral default (categories carry the real colors).
 const DEFAULT_COLOR = '#708090' // slategray
+
+/** The id of the quick create form's preview event in the grid. */
+const DRAFT_GHOST_ID = '__draft__'
 
 function hexToRgba(hex: string, alpha: number): string {
   const h = hex.replace('#', '')
@@ -107,6 +112,7 @@ function dtoToInput(dto: EventDto): EventInput {
       reminders: dto.reminders,
       invitationStatus: dto.invitationStatus ?? null,
       organizerEmail: dto.organizerEmail ?? null,
+      timeZone: dto.timeZone ?? null,
     },
   }
 }
@@ -128,7 +134,8 @@ function draftToRequest(d: EventDraft): SaveEventRequest {
     end: d.end ? toApiIso(d.end, d.allDay) : null,
     allDay: d.allDay,
     recurrence: d.recurrence || null,
-    timeZone: browserTz,
+    // A new event lives in this browser's zone; an existing one keeps its own (null = keep).
+    timeZone: d.timeZone === undefined ? browserTz : d.timeZone,
     reminders: d.reminders.map((r) => ({ minutesBefore: r.minutesBefore, channel: r.channel })),
     attendees: d.attendees.map((a) => ({ email: a.email, name: a.name ?? null })),
   }
@@ -149,7 +156,7 @@ function dtoToRequest(dto: EventDto): SaveEventRequest {
     end: dto.end ?? null,
     allDay: dto.allDay,
     recurrence: dto.recurrence ?? null,
-    timeZone: browserTz,
+    timeZone: dto.timeZone ?? null,
     reminders: dto.reminders.map((r) => ({ minutesBefore: Number(r.minutesBefore), channel: r.channel })),
     attendees: dto.attendees.map((a) => ({ email: a.email, name: a.name ?? null })),
   }
@@ -182,6 +189,7 @@ function dtoToDraft(dto: EventDto): EventDraft {
     attendees: dto.attendees.map((a) => ({ email: a.email, name: a.name, status: a.status })),
     invitationStatus: dto.invitationStatus ?? null,
     organizerEmail: dto.organizerEmail ?? null,
+    timeZone: dto.timeZone ?? null,
   }
 }
 
@@ -316,6 +324,47 @@ export default function CalendarView({
   const hour12 = useHour12()
   const firstDay = useFirstDay()
   const [draft, setDraft] = useState<EventDraft | null>(null)
+  // A new event made in the grid starts in the quick create form; "More options" (or the list
+  // view, which has no grid to anchor to) uses the full editor.
+  const [quickMode, setQuickMode] = useState(false)
+  const quickDraft = draft && quickMode && !draft.id ? draft : null
+
+  // The color a draft shows in: its category's, else its calendar's default category's.
+  const draftColor = (d: EventDraft) => {
+    const own = d.categoryId ? categories.find((c) => c.id === d.categoryId) : undefined
+    const inheritedId = calendars.find((c) => c.id === d.calendarId)?.defaultCategoryId
+    const inherited = inheritedId ? categories.find((c) => c.id === inheritedId) : undefined
+    return own?.color ?? inherited?.color ?? DEFAULT_COLOR
+  }
+
+  // While the quick form is open, the event it describes is drawn in the grid as it is typed.
+  const gridEvents = useMemo(() => {
+    if (!quickDraft) return events
+    const color = draftColor(quickDraft)
+    const ghost: EventInput = {
+      id: DRAFT_GHOST_ID,
+      title: quickDraft.title.trim() || '(No title)',
+      start: quickDraft.start,
+      end: quickDraft.allDay ? addDays(quickDraft.end.slice(0, 10), 1) : quickDraft.end,
+      allDay: quickDraft.allDay,
+      backgroundColor: hexToRgba(color, 0.32),
+      borderColor: color,
+      classNames: ['fc-draft-ghost'],
+      editable: false,
+    }
+    return [...events, ghost]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, quickDraft, categories, calendars])
+
+  // A quick draft moved to a day the grid doesn't show takes the grid there, so its preview
+  // (and the form beside it) stays in view.
+  const quickStart = quickDraft ? parseLocalValue(quickDraft.start, quickDraft.allDay).getTime() : null
+  useEffect(() => {
+    const api = calendarRef.current?.getApi()
+    if (quickStart === null || !api) return
+    const { activeStart, activeEnd } = api.view
+    if (quickStart < activeStart.getTime() || quickStart >= activeEnd.getTime()) api.gotoDate(new Date(quickStart))
+  }, [quickStart])
 
   // Ctrl-Z / Ctrl-Shift-Z. `record` gets an inverse for each change; the toast names the
   // step so walking the stack isn't blind. `originalEdit` snapshots an event as it was
@@ -361,7 +410,7 @@ export default function CalendarView({
   // Keep the events query range in sync, and — when the *view* changes (month→week→day)
   // rather than just paging — reveal the week/day that holds the currently selected cell.
   const handleDatesSet = (arg: DatesSetArg) => {
-    setRange({ from: arg.start.toISOString(), to: arg.end.toISOString() })
+    setRange({ from: toOffsetIso(arg.start), to: toOffsetIso(arg.end) })
 
     const viewChanged = lastView.current !== null && lastView.current !== arg.view.type
     lastView.current = arg.view.type
@@ -426,7 +475,8 @@ export default function CalendarView({
     const api = calendarRef.current?.getApi()
     if (!api) return
     setAgendaMode(false) // a date jump is a grid concern; leave the list if it's up
-    const d = new Date(focus.date)
+    // A bare 'YYYY-MM-DD' (an all-day hit) is that day here, not midnight UTC.
+    const d = focus.date.length === 10 ? allDayDate(focus.date) : new Date(focus.date)
     api.changeView('timeGridDay', d)
     setSelectedDate(dayKey(d))
   }, [focus])
@@ -640,17 +690,34 @@ export default function CalendarView({
   const defaultCategoryId = () =>
     calendars.find((c) => c.id === defaultCalendarId())?.defaultCategoryId ? null : (categories[0]?.id ?? null)
 
+  // A new event: in the first visible calendar, with its default category and — when timed —
+  // its default reminders.
+  const blankDraft = (allDay: boolean) => {
+    const calendarId = defaultCalendarId()
+    return {
+      title: '', categoryId: defaultCategoryId(), location: '', description: '', recurrence: '', attendees: [], calendarId,
+      reminders: defaultRemindersFor(calendars.find((c) => c.id === calendarId), allDay),
+    }
+  }
+
+  // Opens a new event: the quick form beside its slot in the grid, the full editor in the list.
+  const startNew = (d: EventDraft) => {
+    setQuickMode(!agendaMode)
+    setDraft(d)
+    // The preview replaces the selection highlight.
+    if (!agendaMode) calendarRef.current?.getApi().unselect()
+  }
+
   const openNewOn = (date: Date, allDay: boolean) => {
-    const blank = { title: '', categoryId: defaultCategoryId(), location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
     if (allDay) {
       const day = toLocalInput(date).slice(0, 10)
-      setDraft({ ...blank, start: day, end: day, allDay: true })
+      startNew({ ...blankDraft(true), start: day, end: day, allDay: true })
       return
     }
     const start = new Date(date)
     if (start.getHours() === 0 && start.getMinutes() === 0) start.setHours(9)
     const end = new Date(start.getTime() + 60 * 60 * 1000)
-    setDraft({ ...blank, start: toLocalInput(start), end: toLocalInput(end), allDay: false })
+    startNew({ ...blankDraft(false), start: toLocalInput(start), end: toLocalInput(end), allDay: false })
   }
 
   // Drag-selection (mouse, as in any calendar): day view picks a time range in hours,
@@ -659,19 +726,19 @@ export default function CalendarView({
   const handleSelect = (arg: DateSelectArg) => {
     clearEventSelection()
     setSelectedDate(dayKey(arg.start))
-    const blank = { title: '', categoryId: defaultCategoryId(), location: '', description: '', recurrence: '', reminders: [], attendees: [], calendarId: defaultCalendarId() }
     if (arg.allDay) {
       const startDay = dayKey(arg.start)
       const endDay = addDays(dayKey(arg.end), -1) // exclusive → inclusive last day
-      setDraft({ ...blank, start: startDay, end: endDay < startDay ? startDay : endDay, allDay: true })
+      startNew({ ...blankDraft(true), start: startDay, end: endDay < startDay ? startDay : endDay, allDay: true })
     } else {
-      setDraft({ ...blank, start: toLocalInput(arg.start), end: toLocalInput(arg.end), allDay: false })
+      startNew({ ...blankDraft(false), start: toLocalInput(arg.start), end: toLocalInput(arg.end), allDay: false })
     }
   }
 
   // Closes the editor and clears any pending drag-selection highlight behind it.
   const closeDraft = () => {
     setDraft(null)
+    setQuickMode(false)
     calendarRef.current?.getApi().unselect()
   }
 
@@ -701,6 +768,7 @@ export default function CalendarView({
   }
 
   const handleEventClick = (info: EventClickArg) => {
+    if (info.event.id === DRAFT_GHOST_ID) return // the quick form's own preview
     if (isCoarsePointer()) {
       // touch: a tap opens, as before
       void openForEdit(info.event.extendedProps.seriesId, info.event.extendedProps.occurrence ?? null)
@@ -1014,7 +1082,7 @@ export default function CalendarView({
     end: ev.end ? (ev.allDay ? toApiIso(addDays(ev.endStr.slice(0, 10), -1), true) : ev.end.toISOString()) : null,
     allDay: ev.allDay,
     recurrence: null,
-    timeZone: browserTz,
+    timeZone: (ev.extendedProps.timeZone as string | null | undefined) ?? null, // the event's own, never the browser's
     reminders: (ev.extendedProps.reminders as { minutesBefore: number; channel: string }[] | undefined)?.map((r) => ({
       minutesBefore: r.minutesBefore,
       channel: r.channel,
@@ -1182,7 +1250,7 @@ export default function CalendarView({
         selectMinDistance={8} // plain clicks keep their click/double-click behavior; only a real drag selects
         unselectAuto={false} // the highlight stays under the editor; closeDraft() clears it
         dayMaxEvents={isNarrow ? 2 : 4}
-        events={events}
+        events={gridEvents}
         datesSet={handleDatesSet}
         dateClick={handleDateClick}
         select={handleSelect}
@@ -1409,6 +1477,25 @@ export default function CalendarView({
       )}
 
       {draft && (
+        quickDraft ? (
+          <QuickCreate
+            draft={quickDraft}
+            calendars={calendars}
+            color={draftColor(quickDraft)}
+            categoryName={(() => {
+              const id = calendars.find((c) => c.id === quickDraft.calendarId)?.defaultCategoryId
+              return id ? categories.find((c) => c.id === id)?.name : undefined
+            })()}
+            mobile={isNarrow}
+            onChange={setDraft}
+            onSave={save}
+            onMore={(d) => {
+              setQuickMode(false)
+              setDraft(d)
+            }}
+            onClose={closeDraft}
+          />
+        ) : (
         <EventModal
           // A scope switch loads a different draft; remount so the fields start from it.
           key={`${draft.id ?? 'new'}:${draft.scope ?? ''}`}
@@ -1427,6 +1514,7 @@ export default function CalendarView({
           onScopeChange={draftOccurrence ? (scope) => void openForEdit(draftOccurrence.seriesId, draftOccurrence, scope) : undefined}
           onClose={closeDraft}
         />
+        )
       )}
 
       {toast && (

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteAvatar, getProfile, uploadAvatar } from './api/profile'
 import { exportIcs, importIcs } from './api/events'
-import { createCalendar, deleteCalendar, listCalendars, renameCalendar, setCalendarCategory, type CalendarDto } from './api/calendars'
+import { createCalendar, deleteCalendar, listCalendars, renameCalendar, setCalendarCategory, setCalendarReminders, type CalendarDto, type ReminderDefault } from './api/calendars'
+import { REMINDER_OFFSETS } from './lib/eventForm'
 import { createCategory, deleteCategory, listCategories, updateCategory, type CategoryDto } from './api/categories'
 import { deleteMailAccount, getMailAccount, saveMailAccount, testMailAccount } from './api/mailAccount'
 import { changePassword } from './api/password'
@@ -623,6 +624,11 @@ function CalendarsSection() {
     },
     onError: (e) => setNotice((e as Error).message),
   })
+  const remindersMut = useMutation({
+    mutationFn: (v: { id: string; reminders: ReminderDefault[] }) => setCalendarReminders(v.id, v.reminders),
+    onSuccess: () => { setNotice(null); queryClient.invalidateQueries({ queryKey: ['calendars'] }) },
+    onError: (e) => setNotice((e as Error).message),
+  })
   const renameMut = useMutation({
     mutationFn: (v: { id: string; name: string }) => renameCalendar(v.id, v.name),
     onSuccess: () => { setNotice(null); refresh() },
@@ -646,7 +652,8 @@ function CalendarsSection() {
       <p className="settings-sub">
         Split your schedule into separate calendars — say, Personal and Work — and toggle them from the
         heading above the calendar. Each one syncs as its own calendar over CalDAV. Give a calendar a
-        category and every appointment in it without one of its own takes that color.
+        category and every appointment in it without one of its own takes that color; give it default
+        reminders and every new timed appointment in it starts with them.
       </p>
 
       <ul className="cal-list">
@@ -656,6 +663,7 @@ function CalendarsSection() {
             calendar={c}
             onRename={(name) => renameMut.mutate({ id: c.id, name })}
             onCategory={(categoryId) => categoryMut.mutate({ id: c.id, categoryId })}
+            onReminders={(reminders) => remindersMut.mutate({ id: c.id, reminders })}
             onDelete={() => setConfirmDelete(c)}
             canDelete={calendars.length > 1}
           />
@@ -730,6 +738,7 @@ function CalendarRow({
   calendar,
   onRename,
   onCategory,
+  onReminders,
   onDelete,
   canDelete,
 }: {
@@ -737,6 +746,8 @@ function CalendarRow({
   onRename: (name: string) => void
   /** Sets the category this calendar's events take when they have none of their own. */
   onCategory: (categoryId: string | null) => void
+  /** Sets the reminders a new timed appointment in this calendar starts with. */
+  onReminders: (reminders: ReminderDefault[]) => void
   onDelete: () => void
   canDelete: boolean
 }) {
@@ -790,6 +801,7 @@ function CalendarRow({
           emptyLabel="No default category"
           ariaLabel={`Default category for ${calendar.name}`}
         />
+        <DefaultRemindersEditor calendar={calendar} onChange={onReminders} />
       </span>
 
       <span className="cal-item-actions">
@@ -813,6 +825,52 @@ function CalendarRow({
   )
 }
 
+
+/** A calendar's default reminders: chips to adjust or remove, and one to add. */
+function DefaultRemindersEditor({ calendar, onChange }: { calendar: CalendarDto; onChange: (r: ReminderDefault[]) => void }) {
+  const reminders: ReminderDefault[] = (calendar.defaultReminders ?? []).map((r) => ({
+    minutesBefore: Number(r.minutesBefore),
+    channel: r.channel,
+  }))
+  const update = (i: number, patch: Partial<ReminderDefault>) =>
+    onChange(reminders.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
+  return (
+    <span className="form-chips cal-reminders" role="group" aria-label={`Default reminders for ${calendar.name}`}>
+      {reminders.map((r, i) => (
+        <span className="reminder-chip" key={`${r.minutesBefore}:${r.channel}`}>
+          <select value={r.minutesBefore} aria-label="When" onChange={(e) => update(i, { minutesBefore: Number(e.target.value) })}>
+            {!REMINDER_OFFSETS.some((p) => p.value === r.minutesBefore) && (
+              <option value={r.minutesBefore}>{r.minutesBefore} min before</option>
+            )}
+            {REMINDER_OFFSETS.map((p) => (
+              <option key={p.value} value={p.value}>{p.short}</option>
+            ))}
+          </select>
+          <span aria-hidden="true">·</span>
+          <select value={r.channel} aria-label="Delivery" onChange={(e) => update(i, { channel: e.target.value })}>
+            <option value="Email">Email</option>
+            <option value="WebPush">Browser</option>
+          </select>
+          <button type="button" className="reminder-chip-remove" aria-label="Remove default reminder" onClick={() => onChange(reminders.filter((_, idx) => idx !== i))}>
+            ✕
+          </button>
+        </span>
+      ))}
+      {reminders.length < 5 && (
+        <button
+          type="button"
+          className="form-link"
+          onClick={() => {
+            const unused = REMINDER_OFFSETS.find((o) => o.value >= 15 && !reminders.some((r) => r.minutesBefore === o.value))
+            onChange([...reminders, { minutesBefore: unused?.value ?? 15, channel: 'Email' }])
+          }}
+        >
+          {reminders.length ? '+ Add' : '+ Default reminder'}
+        </button>
+      )}
+    </span>
+  )
+}
 
 /** Manage the user's categories: the named colors appointments take their color from. */
 function CategoriesSection() {
@@ -1308,6 +1366,7 @@ const BACKEND_LIBRARIES: readonly Library[] = [
     url: 'https://learn.microsoft.com/aspnet/core/security/authentication/identity',
   },
   { name: 'Ical.Net', license: 'MIT', url: 'https://github.com/ical-org/ical.net' },
+  { name: 'Noda Time', license: 'Apache-2.0', url: 'https://nodatime.org' },
   { name: 'Quartz.NET', license: 'Apache-2.0', url: 'https://www.quartz-scheduler.net' },
   { name: 'MailKit', license: 'MIT', url: 'https://github.com/jstedfast/MailKit' },
   { name: 'Serilog', license: 'Apache-2.0', url: 'https://serilog.net' },

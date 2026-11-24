@@ -63,6 +63,10 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.Property<Guid?>("DefaultCategoryId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DefaultReminders")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)

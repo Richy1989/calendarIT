@@ -38,14 +38,15 @@ public sealed class RecurrenceEditingTests : IDisposable
         _connection.Dispose();
     }
 
-    private static SaveEventRequest Daily(string title, DateTimeOffset? start = null, string rrule = "FREQ=DAILY;COUNT=5") =>
+    private static SaveEventRequest Daily(
+        string title, DateTimeOffset? start = null, string rrule = "FREQ=DAILY;COUNT=5", string? zone = "UTC") =>
         new()
         {
             Title = title,
             Start = start ?? Start,
             End = (start ?? Start).AddMinutes(30),
             Recurrence = rrule,
-            TimeZone = "UTC",
+            TimeZone = zone,
         };
 
     private async Task<int> OccurrenceCountAsync() =>
@@ -90,6 +91,63 @@ public sealed class RecurrenceEditingTests : IDisposable
         var master = await _db.Events.AsNoTracking().SingleAsync(e => e.Id == created.Id);
         Assert.Null(master.ExDates);
         Assert.Equal(5, await OccurrenceCountAsync());
+    }
+
+    [Fact]
+    public async Task EditingWithoutNamingAZone_KeepsTheSeriesZone()
+    {
+        var created = await _events.CreateAsync(_userId, Daily("Standup", zone: "America/New_York"));
+        await _events.DeleteAsync(_userId, created.Id, Start.AddDays(1));
+
+        // An edit from a browser somewhere else must not pull the series into that zone.
+        var updated = await _events.UpdateAsync(_userId, created.Id, Daily("Standup (renamed)", zone: null));
+
+        Assert.Equal("America/New_York", updated!.TimeZone);
+        Assert.Equal(4, await OccurrenceCountAsync());
+    }
+
+    [Fact]
+    public async Task SendingTheSameZoneBack_KeepsExclusions()
+    {
+        var created = await _events.CreateAsync(_userId, Daily("Standup", zone: "America/New_York"));
+        await _events.DeleteAsync(_userId, created.Id, Start.AddDays(1));
+
+        await _events.UpdateAsync(_userId, created.Id, Daily("Standup (renamed)", zone: created.TimeZone));
+
+        Assert.Equal(4, await OccurrenceCountAsync());
+    }
+
+    [Theory]
+    [InlineData(null)]                     // "keep the zone"
+    [InlineData("europe/berlin")]          // the stored spelling, sent back as the API returned it
+    [InlineData("W. Europe Standard Time")] // the same zone by another name
+    public async Task AZoneStoredInAnotherSpelling_IsNotAMove(string? sent)
+    {
+        var created = await _events.CreateAsync(_userId, Daily("Standup", zone: "Europe/Berlin"));
+        await _events.DeleteAsync(_userId, created.Id, Start.AddDays(1));
+        // A row written before ids were canonicalized.
+        await _db.Events.Where(e => e.Id == created.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.TimeZoneId, "europe/berlin"));
+        _db.ChangeTracker.Clear();
+
+        await _events.UpdateAsync(_userId, created.Id, Daily("Standup (renamed)", zone: sent));
+
+        Assert.Equal(4, await OccurrenceCountAsync());
+    }
+
+    [Fact]
+    public async Task MovingTheSeriesToAnotherZone_DropsExclusions()
+    {
+        var created = await _events.CreateAsync(_userId, Daily("Standup", zone: "America/New_York"));
+        await _events.DeleteAsync(_userId, created.Id, Start.AddDays(1));
+
+        // Another zone changes its clocks on other days, so the series produces other instants
+        // and the stored exclusions stop naming real occurrences.
+        await _events.UpdateAsync(_userId, created.Id, Daily("Standup", zone: "Europe/Vienna"));
+
+        var master = await _db.Events.AsNoTracking().SingleAsync(e => e.Id == created.Id);
+        Assert.Equal("Europe/Vienna", master.TimeZoneId);
+        Assert.Null(master.ExDates);
     }
 
     [Fact]

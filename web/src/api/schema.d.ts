@@ -978,6 +978,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/calendars/{id}/default-reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SetCalendarRemindersRequest"];
+                    "text/json": components["schemas"]["SetCalendarRemindersRequest"];
+                    "application/*+json": components["schemas"]["SetCalendarRemindersRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CalendarDto"];
+                        "application/json": components["schemas"]["CalendarDto"];
+                        "text/json": components["schemas"]["CalendarDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/categories": {
         parameters: {
             query?: never;
@@ -2407,6 +2474,7 @@ export interface components {
             eventCount: number | string;
             /** Format: uuid */
             defaultCategoryId?: null | string;
+            defaultReminders?: null | components["schemas"]["ReminderDto"][];
         };
         CategoryDto: {
             /** Format: uuid */
@@ -2429,6 +2497,8 @@ export interface components {
             occurrenceStartUtc: string;
             title: string;
             location: null | string;
+            /** @default false */
+            allDay: boolean;
         };
         DueRemindersResponse: {
             items: components["schemas"]["DueReminderDto"][];
@@ -2461,6 +2531,7 @@ export interface components {
             recurrenceId?: null | string;
             /** Format: uuid */
             effectiveCategoryId?: null | string;
+            timeZone?: null | string;
         };
         EventSearchResult: {
             /** Format: uuid */
@@ -2641,6 +2712,9 @@ export interface components {
         SetCalendarCategoryRequest: {
             /** Format: uuid */
             categoryId?: null | string;
+        };
+        SetCalendarRemindersRequest: {
+            reminders?: components["schemas"]["ReminderInput"][];
         };
         UpdateClockRequest: {
             use24Hour: boolean;

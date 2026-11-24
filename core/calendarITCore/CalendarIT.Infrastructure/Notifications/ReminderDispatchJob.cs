@@ -49,16 +49,21 @@ public sealed class ReminderDispatchJob(
         // Start - offset, so for its trigger to land in (windowStart, now] its start must lie in
         // (windowStart, now + longest offset] — a bounded range the database can filter on,
         // instead of reading every reminder ever created once a minute. Recurring masters have
-        // to come along regardless: their occurrences aren't in the row.
+        // to come along regardless: their occurrences aren't in the row. An all-day event begins
+        // at its owner's midnight, up to a day either side of the stored one, so its range is
+        // that much wider.
         var longestOffset = await db.Reminders
             .Select(r => (int?)r.MinutesBefore)
             .MaxAsync(cancellationToken) ?? 0;
         var horizon = now.AddMinutes(longestOffset);
+        var allDayFrom = windowStart - ReminderOccurrences.AllDaySlack;
+        var allDayTo = horizon + ReminderOccurrences.AllDaySlack;
 
         var reminders = await db.Reminders
             .Include(r => r.Event!).ThenInclude(e => e.Calendar)
             .Where(r => r.Event!.RRule != null
-                || (r.Event!.StartUtc > windowStart && r.Event!.StartUtc <= horizon))
+                || (r.Event!.StartUtc > windowStart && r.Event!.StartUtc <= horizon)
+                || (r.Event!.IsAllDay && r.Event!.StartUtc > allDayFrom && r.Event!.StartUtc <= allDayTo))
             .ToListAsync(cancellationToken);
         if (reminders.Count == 0)
         {
@@ -175,9 +180,8 @@ public sealed class ReminderDispatchJob(
             return;
         }
 
-        var localStart = FormatLocal(occStartUtc, ev.TimeZoneId);
         var subject = $"Reminder: {ev.Title}";
-        var body = $"\"{ev.Title}\" starts at {localStart}." +
+        var body = $"\"{ev.Title}\" {(ev.IsAllDay ? $"is on {occStartUtc:D} (all day)" : $"starts at {FormatLocal(occStartUtc, ev.TimeZoneId)}")}." +
                    (string.IsNullOrWhiteSpace(ev.Location) ? "" : $"\nLocation: {ev.Location}");
 
         var message = new MimeMessage();
@@ -221,8 +225,7 @@ public sealed class ReminderDispatchJob(
             return;
         }
 
-        var localStart = FormatLocal(occStartUtc, ev.TimeZoneId);
-        var body = $"Starts at {localStart}." +
+        var body = (ev.IsAllDay ? $"All day on {occStartUtc:D}." : $"Starts at {FormatLocal(occStartUtc, ev.TimeZoneId)}.") +
                    (string.IsNullOrWhiteSpace(ev.Location) ? "" : $"\nLocation: {ev.Location}");
         // Same tag for every browser + this occurrence, so a second device doesn't stack a duplicate.
         var message = new PushMessage($"Reminder: {ev.Title}", body, Url: "/", Tag: $"{reminder.Id}:{occStartUtc:O}");
@@ -243,20 +246,14 @@ public sealed class ReminderDispatchJob(
         }
     }
 
+    /// <summary>A timed start in the event's own zone. Not for all-day events: their stored
+    /// start is a date, and reading it through a zone names the wrong hour or even the wrong day.</summary>
     private static string FormatLocal(DateTime utc, string? timeZoneId)
     {
-        if (!string.IsNullOrWhiteSpace(timeZoneId))
+        if (TimeZones.Canonical(timeZoneId) is { } zoneId && TimeZones.TryFind(zoneId, out var tz))
         {
-            try
-            {
-                var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-                var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), tz);
-                return $"{local:f} ({timeZoneId})";
-            }
-            catch (TimeZoneNotFoundException)
-            {
-                // fall through to UTC
-            }
+            var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), tz);
+            return $"{local:f} ({zoneId})";
         }
         return $"{utc:f} UTC";
     }

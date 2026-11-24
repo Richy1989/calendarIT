@@ -2525,3 +2525,455 @@ input[aria-invalid='true']:focus-visible {
 .cal-add-row .category-picker {
   flex: none;
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Event forms — the quick create popover and the full editor share one look: a row per field,
+   an icon where a label would be (the label stays, for screen readers), no hint text unless it
+   matters. */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.event-form {
+  width: min(540px, 100%);
+  max-height: calc(100vh - 2.5rem);
+  overflow-y: auto;
+  gap: 0.2rem;
+}
+.event-form > .modal-head,
+.event-form > .invite-banner,
+.event-form > .scope-switch {
+  margin-bottom: 0.5rem;
+}
+.event-form > .modal-actions {
+  margin-top: 0.8rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.form-title {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 0.6rem;
+  padding: 0.2rem 0.1rem 0.5rem;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid var(--hairline-strong);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 600;
+  transition: border-color 0.15s;
+}
+.form-title:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+.form-title::placeholder {
+  color: var(--text-faint);
+  font-weight: 500;
+}
+
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 2.6rem;
+}
+.form-row-top {
+  align-items: flex-start;
+}
+.form-row-top > .form-icon {
+  margin-top: 0.6rem;
+}
+.form-row-body {
+  flex: 1;
+  min-width: 0;
+}
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.25rem 0;
+}
+.form-indent {
+  margin: 0.2rem 0 0.2rem 2.05rem;
+}
+
+.form-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--text-dim);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.form-icon-sm {
+  width: 14px;
+  height: 14px;
+}
+.form-dot {
+  display: grid;
+  place-items: center;
+}
+.form-dot > span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.form-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.form-when .dtf-trigger {
+  width: auto;
+  padding: 0.42rem 0.6rem;
+  font-size: 0.86rem;
+  background: var(--surface-2);
+}
+.form-when-sep {
+  color: var(--text-faint);
+}
+.form-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.form-check input {
+  accent-color: var(--accent);
+}
+
+.form-select {
+  max-width: 100%;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.86rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+.form-where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+.form-where .category-picker select {
+  padding: 0.4rem 0.55rem;
+  font-size: 0.86rem;
+  background: var(--surface-2);
+}
+
+.form-bare-input,
+.form-bare input {
+  padding: 0.45rem 0;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.92rem;
+}
+.form-bare-input:focus,
+.form-bare input:focus {
+  outline: none;
+}
+.form-bare-input::placeholder,
+.form-bare input::placeholder,
+.form-textarea::placeholder {
+  color: var(--text-faint);
+}
+.form-textarea {
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 0.55rem 0.7rem;
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+}
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.form-row-quiet {
+  min-height: 2rem;
+}
+.form-row-quiet .form-icon {
+  stroke: var(--text-faint);
+}
+.form-note {
+  font-size: 0.8rem;
+  color: var(--text-faint);
+}
+
+.form-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.reminder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.12rem 0.2rem 0.12rem 0.35rem;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  color: var(--text-faint);
+  font-size: 0.82rem;
+}
+.reminder-chip select {
+  padding: 0.2rem 0.15rem;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.reminder-chip select option {
+  background: var(--surface-2);
+}
+.reminder-chip-remove {
+  padding: 0.25rem 0.35rem;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-faint);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.reminder-chip-remove:hover {
+  color: #ffd9d9;
+  background: rgba(255, 107, 107, 0.14);
+}
+.form-link {
+  padding: 0.3rem 0.2rem;
+  background: none;
+  border: 0;
+  color: #9db0ff;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+.form-link:hover {
+  color: #c3cfff;
+}
+
+.form-kbd {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-faint);
+}
+
+/* Repeat presets: a quiet button that opens a small menu. */
+.form-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+.form-menu-btn.is-quiet {
+  color: var(--text-dim);
+}
+.form-menu-btn:hover {
+  color: #c3cfff;
+}
+.qc-repeat {
+  position: relative;
+}
+.form-menu {
+  position: absolute;
+  left: 2rem;
+  top: 2.5rem;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 15rem;
+  padding: 0.35rem;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+}
+.form-menu-item {
+  padding: 0.5rem 0.65rem;
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-size: 0.86rem;
+  text-align: left;
+  cursor: pointer;
+}
+.form-menu-item:hover,
+.form-menu-item.is-current {
+  background: var(--surface-3);
+}
+.form-menu-sep {
+  height: 1px;
+  margin: 0.3rem 0;
+  background: var(--hairline);
+}
+
+/* The quick create popover: beside its slot on a desktop, a bottom sheet on a phone. Below the
+   date pickers' backdrop (70), which it opens; above the grid and its toolbars. */
+.quick-create {
+  position: fixed;
+  z-index: 55;
+  width: 400px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  background: linear-gradient(180deg, rgba(23, 29, 43, 0.99), rgba(16, 20, 30, 0.99));
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card), 0 0 0 1px rgba(124, 107, 255, 0.1);
+  animation: rise 0.18s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.qc-grip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 2.2rem;
+  padding: 0 0.3rem 0 0.75rem;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--hairline);
+  cursor: grab;
+  touch-action: none;
+}
+.qc-grip:active {
+  cursor: grabbing;
+}
+.qc-grip > .form-icon {
+  stroke: var(--text-faint);
+}
+.qc-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.qc-close:hover {
+  background: var(--surface-3);
+}
+.qc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 1rem 1.1rem 1rem;
+}
+.qc-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+.qc-actions .spacer {
+  flex: 1;
+}
+.qc-actions .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.qc-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(6, 8, 13, 0.55);
+  animation: fade 0.18s ease both;
+}
+.quick-create.is-sheet {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  max-width: none;
+  max-height: 92vh;
+  border-radius: 20px 20px 0 0;
+  border-bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.qc-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.5rem 0 1.1rem;
+}
+.is-sheet .form-row {
+  min-height: 3rem;
+}
+.is-sheet .qc-close {
+  width: 44px;
+  height: 44px;
+}
+.is-sheet .qc-actions .btn-ghost,
+.is-sheet .qc-actions .btn-primary {
+  flex: 1;
+  padding-block: 0.8rem;
+}
+.is-sheet .qc-actions .spacer {
+  display: none;
+}
+
+/* The event the quick form describes, drawn in the grid while it's typed. */
+.fc .fc-draft-ghost {
+  border-style: dashed !important;
+  border-width: 1px 1px 1px 3px !important;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* Settings → Calendars: a calendar's default reminders under its category. */
+.cal-reminders {
+  margin-top: 0.3rem;
+}
+
+/* Borderless fields show focus their own way, not with the global ring: the title's underline
+   turns accent, a bare field gets one. */
+.form-title:focus-visible {
+  box-shadow: none;
+  border-radius: 0;
+}
+.form-bare-input:focus-visible,
+.form-bare input:focus-visible {
+  border-radius: 0;
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
+/* The dash stays with the end, so a wrapped end starts its own line instead of leaving it behind. */
+.form-when-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}

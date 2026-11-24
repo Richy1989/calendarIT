@@ -38,7 +38,10 @@ public sealed record EventDto(
     DateTimeOffset? RecurrenceId = null,
     /// <summary>The category the event shows as: its own <see cref="CategoryId"/>, else its
     /// calendar's default category. <see cref="Color"/> already reflects it.</summary>
-    Guid? EffectiveCategoryId = null);
+    Guid? EffectiveCategoryId = null,
+    /// <summary>The zone the event lives in — the one a series keeps its clock time in. Send it
+    /// back unchanged on an edit. Null for an event without one (its times are plain UTC).</summary>
+    string? TimeZone = null);
 
 /// <summary>A reminder: fire <paramref name="MinutesBefore"/> minutes before start, via <paramref name="Channel"/>.</summary>
 public sealed record ReminderDto(int MinutesBefore, string Channel);
@@ -92,7 +95,9 @@ public sealed class SaveEventRequest : IValidatableObject
     [MaxLength(1000)]
     public string? Recurrence { get; init; }
 
-    /// <summary>IANA time zone (e.g. "Europe/Berlin") the event was authored in.</summary>
+    /// <summary>IANA time zone (e.g. "Europe/Berlin") the event lives in: the author's on create.
+    /// On update, null keeps the event's zone; changing it re-anchors a repeating series, which
+    /// drops its deleted and edited occurrences like any other move.</summary>
     [MaxLength(64)]
     public string? TimeZone { get; init; }
 

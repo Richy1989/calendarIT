@@ -200,16 +200,23 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
 
             var query = WithSeries(db.Events.AsNoTracking())
                 .Where(e => e.CalendarId == cal.Id && e.SeriesMasterId == null);
+            // An all-day event is a date wherever the client is, stored at midnight UTC: its real
+            // span lies up to a day either side, and runs to the end of its last day. Its bounds
+            // are widened accordingly — the client drops what it doesn't want, but can't ask again
+            // for what was left out.
             if (rangeEnd is { } end)
             {
                 // Nothing that begins after the window can appear in it, series included.
-                query = query.Where(e => e.StartUtc < end);
+                var allDayEnd = end.AddDays(1);
+                query = query.Where(e => e.IsAllDay ? e.StartUtc < allDayEnd : e.StartUtc < end);
             }
             if (rangeStart is { } start)
             {
                 // A series has to be kept regardless: its RRULE — which SQL can't evaluate — may
                 // put occurrences inside the window long after the stored start.
-                query = query.Where(e => e.RRule != null || (e.EndUtc ?? e.StartUtc) >= start);
+                var allDayStart = start.AddDays(-2);
+                query = query.Where(e => e.RRule != null
+                    || (e.IsAllDay ? (e.EndUtc ?? e.StartUtc) > allDayStart : (e.EndUtc ?? e.StartUtc) >= start));
             }
 
             events = await query.ToListAsync(ctx.RequestAborted);

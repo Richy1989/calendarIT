@@ -78,13 +78,28 @@ the API boundary (DTOs) — convert with `.UtcDateTime` inbound and
 `new DateTimeOffset(DateTime.SpecifyKind(..., DateTimeKind.Utc))` outbound. (`RefreshToken` is the
 one exception — it keeps `DateTimeOffset` because it's never SQL-ordered.)
 
+**All-day events are dates, not instants**: stored as the date's midnight UTC (end = the inclusive
+last day) and the same date wherever they're viewed. Range queries therefore match them against the
+window's *wall clock* — the SPA sends `from`/`to` with its offset (`toOffsetIso`), never
+`toISOString()` — and reminders count from midnight in the event's own zone
+(`ReminderOccurrences`), with text that names the date. Never run an all-day start through a zone
+conversion or `new Date(iso)` for display (`allDayDate` in `web/src/lib/dates.ts`).
+
+**An event's zone is its own**: set from the browser on create, returned as `EventDto.TimeZone`
+and sent back unchanged on edit (null on update = keep). Changing the zone of a timed series moves
+it, like a rule change.
+
 ### Recurring events
 
 Events store an **RRULE master** (`RRule` + newline-separated `ExDates`); occurrences are **expanded
 on read**, server-side, DST-correctly, via Ical.Net in `Infrastructure/Calendars/RecurrenceExpander`.
 This expansion runs everywhere occurrences matter (event listing, reminders, CalDAV, search).
-Time-zone ids are normalized on save; unknown ids are treated as "floating" via the `TimeZones`
-helper — the single place that decision is made.
+Time-zone ids go through the `TimeZones` helper — the single place that decides what an id means:
+`TimeZones.Canonical` gives NodaTime's tz-database spelling (any case, Windows names, vendor
+prefixes like `/mozilla.org/…/Europe/Berlin`), and that spelling is what's stored and what's
+handed to Ical.Net, which silently reads an id it doesn't know as UTC. An incoming TZID that is
+no zone name but has a VTIMEZONE (Outlook's "(UTC+01:00) Amsterdam, Berlin…") is matched to the
+real zone with the same clocks (`ZoneDefinition`); unresolvable ids are "floating".
 
 - **Rules are validated on the way in** (`RecurrenceRules`: unparseable or sub-hourly → 400 from the
   API, dropped to a one-off from CalDAV/import/iMIP) and **expansion never throws or runs
@@ -180,7 +195,12 @@ history before regenerating if something looks hand-tweaked. Auth token refresh 
 refreshes; refresh tokens rotate, so the new one must be saved). Shared primitives live in
 `src/lib/` (`dates.ts` date helpers, `useUndoStack.ts`) and `src/components/` (`Popover.tsx` portals
 to `document.body` to escape the modal's `overflow-hidden`; `DateTimeField`, `MonthCalendar`,
-`TimePicker`). Cross-cutting prefs (clock 12/24h, week-start) are React contexts that seed from
+`TimePicker`). Creating an event in the grid opens `QuickCreate.tsx` (a popover beside the slot, a bottom sheet
+on phones) on a draft `CalendarView` owns and draws live as a `.fc-draft-ghost` event; "More
+options", editing, and the list view use `EventModal`. Both share `lib/eventForm.ts` (repeat
+presets, reminder wording) and take a new timed event's reminders from its calendar
+(`Calendar.DefaultReminders`, set in Settings → Calendars; all-day events start with none).
+Cross-cutting prefs (clock 12/24h, week-start) are React contexts that seed from
 localStorage for first paint and reconcile to the server profile.
 
 **Canonical dev port is 5299** (backend http profile). The Vite proxy and `gen:api` both target it.
@@ -204,8 +224,9 @@ localStorage for first paint and reconcile to the server profile.
   files: `# CalendarIT X.Y.Z`, logo, "_Changes since `vPREV`._", ✨ New Features / 🔧
   Improvements / 🔒 Security / 🐛 Fixes / 📦 Deployment & Docs, Buy-Me-A-Coffee link; user-facing
   wording, issue numbers in brackets), commit them to `main`, then push a plain tag
-  `git tag vX.Y.Z && git push origin vX.Y.Z`. `release.yml` builds the bundle image, checks its
-  log, pushes `richy1989/calendarit:X.Y.Z` (+ `:latest` unless the tag has a `-suffix`), and creates
+  `git tag vX.Y.Z && git push origin vX.Y.Z`. `release.yml` first runs the full test suite
+  (`test.yml`, which also runs on every push to main and every PR), then builds the bundle image, checks its
+  log, pushes (with SBOM + provenance attestations) `richy1989/calendarit:X.Y.Z` (+ `:latest` unless the tag has a `-suffix`), and creates
   the GitHub Release from the notes file + Docker line + GitHub's changelog link. Versions are
   `0.x` (the `v8.0.0` tag was a typo for 0.8.0; the next after 0.9.0 is 0.10.0, never 8.x).
 - **Keep the About page in sync**: when a library listed there (`FRONTEND_LIBRARIES` /

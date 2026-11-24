@@ -13,6 +13,25 @@ export function toLocalInput(d: Date): string {
   return `${dayKey(d)}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`
 }
 
+/**
+ * A Date → ISO 8601 on the local clock, with its offset ('2026-10-12T00:00:00-04:00'). Range
+ * queries send this rather than toISOString(): all-day events are dates, and the server can only
+ * match them to the viewer's day if it is told where that day begins and ends.
+ */
+export function toOffsetIso(d: Date): string {
+  const offset = -d.getTimezoneOffset()
+  const abs = Math.abs(offset)
+  return (
+    `${toLocalInput(d)}:${pad2(d.getSeconds())}` +
+    `${offset < 0 ? '-' : '+'}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`
+  )
+}
+
+/** An all-day event's API start/end (its date at midnight UTC) → that date at local midnight. */
+export function allDayDate(iso: string): Date {
+  return new Date(`${iso.slice(0, 10)}T00:00:00`)
+}
+
 /** Shifts a 'YYYY-MM-DD' day string by n days (e.g. FullCalendar's exclusive all-day end). */
 export function addDays(day: string, n: number): string {
   const d = new Date(`${day}T00:00:00`)

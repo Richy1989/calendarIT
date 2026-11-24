@@ -1,0 +1,24 @@
+# Keeps what is pinned from going stale: the actions (pinned to a commit in .github/workflows)
+# and the Dockerfile's base images (pinned by digest). Each proposal is a pull request, so the
+# test workflow runs on it before anything changes.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      base-images:
+        patterns: ["*"]
+    # Same major only: a new .NET or Node major is a deliberate upgrade, not a weekly bump.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
