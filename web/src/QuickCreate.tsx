@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import CategoryPicker from './components/CategoryPicker'
-import DateTimeField from './components/DateTimeField'
+import EventWhen from './components/EventWhen'
 import { ColorDot, FormIcon } from './components/FormIcons'
 import type { EventDraft } from './EventModal'
 import { parseLocalValue, toLocalValue } from './lib/dates'
@@ -247,20 +247,14 @@ export default function QuickCreate({
           onChange={(e) => set({ title: e.target.value })}
         />
 
-        <div className="form-row">
-          <FormIcon name="clock" />
-          <div className="form-row-body form-when">
-            <DateTimeField ariaLabel="Starts" value={draft.start} allDay={draft.allDay} onChange={changeStart} />
-            <span className="form-when-end">
-              <span className="form-when-sep" aria-hidden="true">–</span>
-              <DateTimeField ariaLabel="Ends" value={draft.end} allDay={draft.allDay} onChange={(end) => set({ end })} />
-            </span>
-            <label className="form-check">
-              <input type="checkbox" checked={draft.allDay} onChange={(e) => toggleAllDay(e.target.checked)} />
-              All day
-            </label>
-          </div>
-        </div>
+        <EventWhen
+          start={draft.start}
+          end={draft.end}
+          allDay={draft.allDay}
+          onStart={changeStart}
+          onEnd={(end) => set({ end })}
+          onAllDay={toggleAllDay}
+        />
 
         <div className="form-row qc-repeat">
           <FormIcon name="repeat" />

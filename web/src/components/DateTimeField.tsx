@@ -18,12 +18,15 @@ export default function DateTimeField({
   allDay,
   id,
   ariaLabel,
+  timeOnly = false,
 }: {
   value: string
   onChange: (value: string) => void
   allDay: boolean
   id?: string
   ariaLabel?: string
+  /** Shows only the time (an end on its start's day); the picker still offers the date. */
+  timeOnly?: boolean
 }) {
   const hour12 = useHour12()
   const [anchor, setAnchor] = useState<Anchor | null>(null)
@@ -50,12 +53,16 @@ export default function DateTimeField({
         ref={triggerRef}
         id={id}
         aria-label={ariaLabel}
-        className={'dtf-trigger' + (anchor ? ' is-open' : '')}
+        className={'dtf-trigger' + (anchor ? ' is-open' : '') + (timeOnly && !allDay ? ' is-time-only' : '')}
         onClick={toggle}
       >
-        <CalendarGlyph />
-        {/* Date shrinks (ellipsis) before the time does — the time must never wrap or clip. */}
-        <span className="dtf-date">{formatDateCompact(date)}</span>
+        {!(timeOnly && !allDay) && (
+          <>
+            <CalendarGlyph />
+            {/* Date shrinks (ellipsis) before the time does — the time must never wrap or clip. */}
+            <span className="dtf-date">{formatDateCompact(date)}</span>
+          </>
+        )}
         {!allDay && <span className="dtf-time">{formatTime(date, hour12)}</span>}
       </button>
 

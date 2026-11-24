@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getMailAccount } from './api/mailAccount'
 import { listCategories } from './api/categories'
 import CategoryPicker from './components/CategoryPicker'
-import DateTimeField from './components/DateTimeField'
+import EventWhen from './components/EventWhen'
 import { ColorDot, FormIcon } from './components/FormIcons'
 import RecurrenceEditor from './components/RecurrenceEditor'
 import { parseLocalValue, toLocalValue } from './lib/dates'
@@ -356,20 +356,16 @@ export default function EventModal({
           onChange={(e) => setTitle(e.target.value)}
         />
 
-        <div className="form-row">
-          <FormIcon name="clock" />
-          <div className="form-row-body form-when">
-            <DateTimeField id="ev-start" ariaLabel="Starts" value={start} allDay={allDay} onChange={changeStart} />
-            <span className="form-when-end">
-              <span className="form-when-sep" aria-hidden="true">–</span>
-              <DateTimeField id="ev-end" ariaLabel="Ends" value={end} allDay={allDay} onChange={setEnd} />
-            </span>
-            <label className="form-check">
-              <input type="checkbox" checked={allDay} onChange={(e) => toggleAllDay(e.target.checked)} />
-              All day
-            </label>
-          </div>
-        </div>
+        <EventWhen
+          start={start}
+          end={end}
+          allDay={allDay}
+          onStart={changeStart}
+          onEnd={setEnd}
+          onAllDay={toggleAllDay}
+          startId="ev-start"
+          endId="ev-end"
+        />
 
         {occurrenceOnly ? (
           <p className="field-hint form-indent">

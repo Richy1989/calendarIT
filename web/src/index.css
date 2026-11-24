@@ -532,6 +532,23 @@ button {
   box-shadow: 0 0 8px rgba(53, 224, 212, 0.6);
 }
 
+/* A dot where the line starts, centred on the column's left edge. FullCalendar clips the
+   line's container to the column, which would cut the dot in half. */
+.calendar-shell .fc .fc-timegrid-now-indicator-container {
+  overflow: visible;
+}
+.calendar-shell .fc .fc-timegrid-now-indicator-line::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: -7px; /* centred on the 2px line */
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 8px rgba(53, 224, 212, 0.6);
+}
+
 .calendar-shell .fc .fc-timegrid-now-indicator-arrow {
   border-color: var(--cyan);
   color: var(--cyan);
