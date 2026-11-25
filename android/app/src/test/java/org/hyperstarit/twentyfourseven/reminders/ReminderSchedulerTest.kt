@@ -28,13 +28,15 @@ class ReminderSchedulerTest {
     private lateinit var prefs: ReminderPrefs
     private lateinit var scheduler: ReminderScheduler
     private val alarms get() = shadowOf(context.getSystemService(AlarmManager::class.java)).scheduledAlarms
-    private val now = System.currentTimeMillis()
+    // A fixed moment (the one a CI run once failed at), so no test depends on the wall clock.
+    private val now = java.time.Instant.parse("2026-11-25T20:55:44.551Z").toEpochMilli()
+    private val clock = Clock.fixed(java.time.Instant.ofEpochMilli(now), java.time.ZoneOffset.UTC)
 
     @Before
     fun setUp() = runBlocking {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         prefs = ReminderPrefs(context)
-        scheduler = ReminderScheduler(context, db, prefs, Clock.systemUTC())
+        scheduler = ReminderScheduler(context, db, prefs, clock)
         db.calendars().upsert(listOf(CalendarEntity("cal", "a", "P", null, null, null, emptyList(), false, 0, "1")))
     }
 

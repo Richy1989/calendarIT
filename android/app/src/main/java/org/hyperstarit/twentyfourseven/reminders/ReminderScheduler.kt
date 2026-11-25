@@ -52,7 +52,7 @@ class ReminderScheduler(
 
     private suspend fun plan(now: Long): List<PlannedReminder> {
         val zone = ZoneId.systemDefault()
-        val today = LocalDate.now(zone)
+        val today = LocalDate.now(clock.withZone(zone))
         val calendars = db.calendars().observeAll().first().associateBy { it.id }
         val occurrences = Occurrences.build(
             db.events().observeLive().first().map { it.data },

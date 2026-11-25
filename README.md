@@ -1,19 +1,19 @@
 <p align="center">
-  <img src="public/logo.svg" alt="CalendarIT" width="88" height="88" />
+  <img src="docs/icon/corner-store.svg" alt="24seven" width="88" height="88" />
 </p>
 
-<h1 align="center">CalendarIT</h1>
+<h1 align="center">24seven</h1>
 
-<p align="center"><b>A lightweight, modern calendar. It does what you want — and just that.</b></p>
+<p align="center"><b>A self-hosted calendar and task list for the web and Android.</b></p>
 
 ---
 
-No feeds to scroll, no AI to argue with, no "productivity suite" to sign up for.
-CalendarIT is a self-hosted calendar that's just that — a beautiful, easy-to-use calendar.
-Try it, you'll like it.
+Plan your week in the browser, then take it with you on Android. The native app keeps a copy
+of your events and tasks on your phone, so you can edit them offline and sync your changes
+back to your own server. [Set up the Android app](#android-app) · [Run the server](#with-docker)
 
 <p align="center">
-  <img src="docs/ScreenShot_Month.png" alt="CalendarIT — month view" width="100%" />
+  <img src="docs/ScreenShot_Month.png" alt="24seven — month view" width="100%" />
 </p>
 
 ---
@@ -22,7 +22,7 @@ Try it, you'll like it.
 
 ## Why
 
-Most calendar apps grew into something else - CalendarIT deliberately stays small:
+Most calendar apps grew into something else - 24seven deliberately stays small:
 
 - **Good-looking and simple.** Easy on the eyes, easy to use — the combination I
   couldn't find anywhere else.
@@ -37,6 +37,8 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
 
 - 📅 **Events, the fast way** — drag on the grid to create, double-click or right-click,
   drag to move or resize — with undo/redo for every change.
+- ☑️ **Tasks** — set due dates, priorities and reminders, add subtasks, and check things off
+  from the web or Android.
 - 🗂️ **Multiple calendars** — split Personal from Work, toggle which are shown, move
   events between them; each syncs as its own calendar over CalDAV.
 - 🔁 **Recurring events** — daily, weekly, monthly, yearly, or custom: every N days/weeks/months
@@ -45,16 +47,16 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
   series, and it syncs to your phone that way too.
 - ⏰ **Reminders** — by email or browser notification (Web Push), set per appointment; they
   also sync to your phone as calendar alarms (VALARM) over CalDAV.
-- 📱 **Made for phones too** — a responsive layout with a thumb-reachable toolbar, and swipe
-  left/right to page between views.
+- 📱 **Native Android app** — browse your month, week, day or agenda, edit recurring events
+  offline, snooze reminders, and put a month widget on your home screen.
 - 🌍 **Time zones** — stored correctly, displayed in yours, DST-safe.
 - 🎨 **Categories** — named colors (Work, Family, …) managed in Settings; recolor a
   category and every appointment in it follows. Give a whole calendar a category (say, an
   imported holiday calendar) and everything in it without one of its own takes that color. Syncs via the iCalendar `CATEGORIES` +
   `COLOR` properties; a color picked on the phone maps back to the nearest category.
 - 🔎 **Search** — find any appointment by title or location, keyboard-first.
-- 📲 **Phone sync** — a built-in **CalDAV** server, so any CalDAV-capable app can
-  subscribe and sync two-way.
+- 📲 **Calendar sync** — the Android app syncs directly with your 24seven server. Other
+  calendar clients can connect to the same server over **CalDAV**.
 - 📄 **iCal import / export** — pick which calendars to export; import into any
   calendar or a new one.
 - 🔐 **Accounts** — email + password, JWT sessions with rotating refresh tokens, password change
@@ -66,8 +68,8 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
 
 <table>
   <tr>
-    <td width="50%"><a href="docs/ScreenShot_Week.png"><img src="docs/ScreenShot_Week.png" alt="CalendarIT — week view" /></a></td>
-    <td width="50%"><a href="docs/ScreenShot_List_Search.png"><img src="docs/ScreenShot_List_Search.png" alt="CalendarIT — list view with instant search" /></a></td>
+    <td width="50%"><a href="docs/ScreenShot_Week.png"><img src="docs/ScreenShot_Week.png" alt="24seven — week view" /></a></td>
+    <td width="50%"><a href="docs/ScreenShot_List_Search.png"><img src="docs/ScreenShot_List_Search.png" alt="24seven — list view with instant search" /></a></td>
   </tr>
   <tr>
     <td align="center"><sub><b>Week View</b>.</sub></td>
@@ -76,6 +78,32 @@ If a feature doesn't help you keep track of your time, it doesn't belong here.
 </table>
 
 ## Quick start
+
+### Android app
+
+You need **Android 14 or newer** and an account on a 24seven server with the mobile sync API.
+Build the server from `main` using the Docker instructions below. The `v0.10.0` server tag
+predates that API. You can create your account in the web app if registration is open.
+
+The Android app is available to build from source. For signed APKs, look for tags starting
+with `24seven-v` on the [GitHub Releases page](https://github.com/Richy1989/calendarIT/releases).
+
+To install from source, use **JDK 21** and **Android SDK Platform 37.2**. Connect a phone with
+USB debugging enabled or start an Android emulator, then run this from the repository root:
+
+```bash
+cd android
+./gradlew :app:installFossDebug
+```
+
+Open **24seven**, choose **24seven server**, and enter the HTTPS address you use in your browser,
+along with your email and password. For local development, the debug app on an emulator can
+reach the backend on your computer at `http://10.0.2.2:5299`.
+
+After the first sync you can work offline. In **Settings**, you can turn on phone reminders
+or **Show in phone's calendar** to view and edit appointments from other Android calendar apps.
+Background sync runs on a schedule. For faster updates, enable **Instant updates** with a
+UnifiedPush distributor such as ntfy.
 
 ### With Docker
 
@@ -124,11 +152,11 @@ labels preconfigured).
 ### Local development
 
 ```bash
-# 1) backend  → http://localhost:5299
-cd core/calendarITCore
+# From the repository root, in one terminal → http://localhost:5299
+cd core/calendarITCore/calendarITCore
 dotnet run
 
-# 2) frontend → http://localhost:5173  (proxies /api to the backend)
+# From the repository root, in another terminal → http://localhost:5173
 cd web
 npm install
 npm run dev
@@ -191,7 +219,7 @@ Everything is set through environment variables:
 ### Forgot your password?
 
 The sign-in screen has a **Forgot your password?** link that emails a single-use link, valid for
-two hours. Because CalendarIT has no mail relay of its own, that email is sent through **your own
+two hours. Because 24seven has no mail relay of its own, that email is sent through **your own
 connected mail account** (Settings → Email) — set a **Reminder From address** there if you'd rather
 it came from `noreply@` than your personal address.
 
@@ -215,7 +243,7 @@ read your database, so it grants no new access, but it is worth knowing.
 
 > **Browser notifications are opt-in per browser.** Choose **Browser** on an appointment's
 > reminder (or flip the toggle in **Settings → General**) and allow the permission prompt. They
-> arrive even when CalendarIT isn't open, and need a secure origin — HTTPS in production, or
+> arrive even when 24seven isn't open, and need a secure origin — HTTPS in production, or
 > `localhost` in dev. No keys to configure: VAPID keys are generated automatically on first run
 > (set `VAPID_*` only if you want to pin them across deployments).
 
@@ -224,6 +252,7 @@ read your database, so it grants no new access, but it is worth knowing.
 ```
 core/calendarITCore/   ASP.NET Core solution (API host + Domain/Application/Infrastructure/CalDav)
 web/                   React + Vite frontend
+android/               Native Android app (Kotlin, Jetpack Compose, Room)
 Dockerfile             Two images: the API serving the SPA (default), and nginx + API (--target bundle)
 docker-compose.yml     App + PostgreSQL
 ARCHITECTURE.md        Design decisions and roadmap
@@ -237,7 +266,7 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Accounts & auth: Identity + JWT with rotating refresh tokens; per-device sessions you can
   review and sign out (effective immediately), throttled and timing-safe logins
 - ✅ Web UI shell: calendar views, quick create beside the clicked slot (bottom sheet on phones)
-  with repeat presets, and a full event editor; three themes (Midnight, Daylight, Graphite) with
+  with repeat presets, and a full event editor; four themes (Corner Store, Midnight, Daylight, Graphite) with
   your own accent and highlight colors
 - ✅ Events persist to the database — create / edit / delete / drag, scoped per user, with
   undo/redo
@@ -264,14 +293,13 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Tasks — to-dos in your calendars with due dates (a day or a time), priority, reminders
   (browser or email, counting from 9:00 for a task due on a day) and one level of subtasks: a task panel beside the calendar, due tasks in the grid (tick off, drag to
   reschedule), and two-way sync as `VTODO` with phone task apps over CalDAV
-- 🚧 Native Android app (24seven) — server side ready: an offline-first delta sync API
-  (`/api/sync`) with conflict detection, and device registration (`/api/devices`); the app itself
-  is in progress
+- ✅ Native Android app — offline event and task editing, background sync with conflict
+  detection, local reminders, a month widget, and optional two-way Android system calendar integration
 - ✅ Calendar subscriptions — subscribe to a published .ics / `webcal://` calendar (holidays, a
   team's schedule); it refreshes on its own schedule and stays read-only
 - ✅ Categories — events take their color from a named category (managed in Settings);
   existing per-event colors were auto-migrated into categories on first startup
-- ✅ Mobile — responsive phone layout, a thumb-reachable bottom toolbar, and swipe left/right
+- ✅ Mobile web — responsive phone layout, a thumb-reachable bottom toolbar, and swipe left/right
   to page between views (visual polish still ongoing)
 - ✅ Inviting guests — connect your own email account (Settings → Email, password stored
   encrypted), add guests to an event, and they get a standard iMIP invite with Accept/Decline in
@@ -300,7 +328,7 @@ Not there yet — on the list:
 
 ## Support
 
-CalendarIT is free and self-hosted — no accounts, no subscriptions. If it's useful to you and you'd
+24seven is free and self-hosted. You sign in to your own server. If it's useful to you and you'd
 like to say thanks, you can [**buy me a coffee** ☕](https://buymeacoffee.com/spaceelephant). Much
 appreciated, but never expected.
 
