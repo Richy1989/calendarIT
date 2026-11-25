@@ -35,6 +35,7 @@ class Formats(context: Context, val zone: ZoneId = ZoneId.systemDefault(), val l
     fun monthTitle(date: LocalDate): String = month.format(date).replaceFirstChar { it.titlecase(locale) }
     fun shortDay(date: LocalDate): String = shortDay.format(date)
     fun dayName(day: DayOfWeek): String = day.getDisplayName(TextStyle.SHORT, locale)
+    fun fullDayName(day: DayOfWeek): String = day.getDisplayName(TextStyle.FULL, locale).replaceFirstChar { it.titlecase(locale) }
 
     /** "09:00 – 10:30", "All day", or for an all-day span "Mon 1 Dec – Wed 3 Dec". */
     fun span(o: Occurrence): String = when {

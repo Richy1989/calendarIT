@@ -114,6 +114,9 @@ fun CalendarScreen(
 
     ModalNavigationDrawer(
         drawerState = drawer,
+        // Sideways swipes belong to the calendar (next month, week, day): the drawer opens with the
+        // menu button and only takes swipes while it's open, to be swiped shut.
+        gesturesEnabled = drawer.isOpen,
         scrimColor = c.overlay.copy(alpha = 0.55f),
         drawerContent = {
             ModalDrawerSheet(drawerContainerColor = c.surface, drawerShape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp)) {

@@ -1,5 +1,5 @@
 #requires -Version 7
-# Seeds the CalendarIT backend with a demo user, two calendars, and a set of categories,
+# Seeds the 24seven backend with a demo user, two calendars, and a set of categories,
 # then fills the calendar with demo events that each take their colour from a category.
 #
 #   User       -> test@test.com / Test1234#1234 (registered if missing, otherwise logged in)
@@ -14,6 +14,8 @@
 #                 sprint review, family dinner), all-day + multi-day events (birthday,
 #                 conference, payday), and one-off appointments across this and next month.
 #                 Work-ish events land in "Work", everything else in "Personal".
+#
+#   Tasks      -> due dates relative to today, priorities, undated tasks and subtasks.
 #
 # The backend must already be running (e.g. via ./deploy/dev.ps1).
 #
@@ -64,7 +66,12 @@ $auth = @{ Authorization = "Bearer $($tokens.accessToken)" }
 # Listing bootstraps the default "Personal" calendar server-side; "Work" is ours to add.
 
 $calendars = Invoke-RestMethod -Uri "$BaseUrl/api/calendars" -Headers $auth
-$personalId = [string](@($calendars)[0].id)
+$personal = $calendars | Where-Object { $_.name -eq 'Personal' -and -not $_.subscription } | Select-Object -First 1
+if (-not $personal) {
+    $personal = $calendars | Where-Object { $_.name -ne 'Work' -and -not $_.subscription } | Select-Object -First 1
+}
+if (-not $personal) { throw 'No writable personal calendar found.' }
+$personalId = $personal.id
 
 $work = @($calendars) | Where-Object { $_.name -eq 'Work' } | Select-Object -First 1
 if (-not $work) {
@@ -136,6 +143,29 @@ function AllDayIso([datetime]$day) {
     return $day.ToString('yyyy-MM-dd') + 'T00:00:00Z'
 }
 
+# ---------- tasks ----------------------------------------------------------------------
+$tasks = @(Invoke-RestMethod -Uri "$BaseUrl/api/tasks?includeDone=true" -Headers $auth | Write-Output)
+$today = (Get-Date).Date
+foreach ($spec in (Get-Content -Raw (Join-Path $PSScriptRoot 'seed-tasks.json') | ConvertFrom-Json)) {
+    $calendar = if ($spec.calendar -eq 'Work') { $workId } else { $personalId }
+    $inCalendar = @($tasks | Where-Object { $_.calendarId -eq $calendar })
+    $parentId = $null
+    if ($spec.parent) {
+        $parent = $inCalendar | Where-Object { $_.title -eq $spec.parent -and -not $_.parentId } | Select-Object -First 1
+        if (-not $parent) { throw "Missing parent task: $($spec.parent)" }
+        $parentId = $parent.id
+    }
+    if ($inCalendar | Where-Object { $_.title -eq $spec.title -and $_.parentId -eq $parentId }) { continue }
+    $body = @{ calendarId = $calendar; title = $spec.title; priority = $spec.priority; parentId = $parentId }
+    if ($null -ne $spec.days) {
+        $body.due = AllDayIso ($today.AddDays($spec.days))
+        $body.dueAllDay = $true
+    }
+    $tasks += Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/tasks" -Headers $auth `
+        -ContentType 'application/json' -Body ($body | ConvertTo-Json)
+    Write-Host "    + task: $($spec.title)"
+}
+
 # ---------- idempotency guard ---------------------------------------------------------
 
 $existing = Invoke-RestMethod -Uri "$BaseUrl/api/events" -Headers $auth -Body @{
@@ -143,7 +173,7 @@ $existing = Invoke-RestMethod -Uri "$BaseUrl/api/events" -Headers $auth -Body @{
     to   = AllDayIso $monthStart.AddMonths(3)
 }
 if ($existing.Count -gt 0 -and -not $Force) {
-    Write-Host "==> $Email already has $($existing.Count) event(s) from $($monthStart.ToString('yyyy-MM')) onward — nothing seeded." -ForegroundColor Yellow
+    Write-Host "==> $Email already has $($existing.Count) event(s) from $($monthStart.ToString('yyyy-MM')) onward — skipping event creation." -ForegroundColor Yellow
     Write-Host "    Re-run with -Force to seed anyway (will create duplicates)." -ForegroundColor Yellow
     exit 0
 }
@@ -280,4 +310,4 @@ foreach ($e in $events) {
     Write-Host ("    + {0,-24} ({1}, {2}, {3})" -f $e.title, $kind, $cal, $e.category)
 }
 
-Write-Host "==> done. Log in as $Email / $Password and enjoy the view." -ForegroundColor Green
+Write-Host "==> done. Demo calendar ready for $Email." -ForegroundColor Green

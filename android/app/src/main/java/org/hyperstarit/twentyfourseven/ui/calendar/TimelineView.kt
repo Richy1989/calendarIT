@@ -2,6 +2,7 @@ package org.hyperstarit.twentyfourseven.ui.calendar
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -114,11 +115,7 @@ private fun DayHeaders(dates: List<LocalDate>, formats: Formats, onDay: (LocalDa
     Row(Modifier.fillMaxWidth().padding(start = GUTTER, top = 6.dp, bottom = 6.dp)) {
         dates.forEach { date ->
             val isToday = date == today
-            Column(
-                Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable(enabled = dates.size > 1) { onDay(date) }.padding(vertical = 2.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(formats.dayName(date.dayOfWeek).uppercase().take(3), style = Brand.label, color = if (isToday) c.link else c.textFaint)
+            val number = @Composable {
                 Box(
                     Modifier.padding(top = 3.dp).size(30.dp).clip(CircleShape).then(if (isToday) Modifier.background(c.grad) else Modifier),
                     contentAlignment = Alignment.Center,
@@ -130,6 +127,30 @@ private fun DayHeaders(dates: List<LocalDate>, formats: Formats, onDay: (LocalDa
                         color = if (isToday) c.onAccent else c.text,
                     )
                 }
+            }
+            // A single day has room for its whole name beside the number: "Thursday 12".
+            if (dates.size == 1) {
+                Row(
+                    Modifier.weight(1f).padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        formats.fullDayName(date.dayOfWeek),
+                        fontFamily = Display, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                        color = if (isToday) c.link else c.text,
+                        modifier = Modifier.padding(top = 3.dp, end = 6.dp),
+                    )
+                    number()
+                }
+                return@forEach
+            }
+            Column(
+                Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable(enabled = dates.size > 1) { onDay(date) }.padding(vertical = 2.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(formats.dayName(date.dayOfWeek).uppercase().take(3), style = Brand.label, color = if (isToday) c.link else c.textFaint)
+                number()
             }
         }
     }

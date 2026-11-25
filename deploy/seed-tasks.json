@@ -1,0 +1,10 @@
+[
+  { "calendar": "Work", "title": "Send the design review notes", "days": -1, "priority": "high" },
+  { "calendar": "Work", "title": "Prepare the release checklist", "days": 0, "priority": "high" },
+  { "calendar": "Work", "title": "Review the mobile layouts", "parent": "Prepare the release checklist" },
+  { "calendar": "Work", "title": "Check the release notes", "parent": "Prepare the release checklist" },
+  { "calendar": "Personal", "title": "Pick up the library holds", "days": 0 },
+  { "calendar": "Personal", "title": "Book train tickets to Vienna", "days": 2, "priority": "normal" },
+  { "calendar": "Work", "title": "Share the workshop agenda", "days": 4 },
+  { "calendar": "Personal", "title": "Choose photos for the album", "priority": "low" }
+]

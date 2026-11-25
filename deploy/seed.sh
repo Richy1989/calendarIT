@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Seeds the CalendarIT backend with a demo user, two calendars, and a set of categories,
+# Seeds the 24seven backend with a demo user, two calendars, and a set of categories,
 # then fills the calendar with demo events that each take their colour from a category.
 #
 #   User       -> test@test.com / Test1234#1234 (registered if missing, otherwise logged in)
@@ -14,6 +14,8 @@
 #                 sprint review, family dinner), all-day + multi-day events (birthday,
 #                 conference, payday), and one-off appointments across this and next month.
 #                 Work-ish events land in "Work", everything else in "Personal".
+#
+#   Tasks      -> due dates relative to today, priorities, undated tasks and subtasks.
 #
 # The backend must already be running (e.g. via ./deploy/dev.sh).
 # Requires: curl, jq, GNU date.
@@ -69,7 +71,7 @@ auth="Authorization: Bearer $access_token"
 # Listing bootstraps the default "Personal" calendar server-side; "Work" is ours to add.
 
 calendars=$(curl -sS -f "$base_url/api/calendars" -H "$auth")
-personal_id=$(jq -r '.[0].id' <<<"$calendars")
+personal_id=$(jq -er '([.[] | select(.name == "Personal" and .subscription == null)][0] // [.[] | select(.name != "Work" and .subscription == null)][0]).id' <<<"$calendars")
 work_id=$(jq -r '[.[] | select(.name == "Work")][0].id // empty' <<<"$calendars")
 if [[ -z "$work_id" ]]; then
     work_id=$(jq -n '{name:"Work"}' | curl -sS -f -X POST "$base_url/api/calendars" \
@@ -111,9 +113,9 @@ done
 # ---------- date helpers --------------------------------------------------------------
 
 # The IANA time zone the events are authored in (backend expands recurrences DST-correct).
-time_zone=$(timedatectl show -p Timezone --value 2>/dev/null \
+time_zone=${TZ:-$(timedatectl show -p Timezone --value 2>/dev/null \
     || readlink /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||' \
-    || echo UTC)
+    || echo UTC)}
 [[ -n "$time_zone" ]] || time_zone=UTC
 
 month_start=$(date +%Y-%m-01)
@@ -125,11 +127,39 @@ first_dow() {
     echo "$d"
 }
 
-# Local wall-clock time on a day -> UTC ISO instant (per-date DST handled by date -u).
-utc_iso()    { date -u -d "$1 $2" +%Y-%m-%dT%H:%M:%SZ; }
+# Local wall-clock time on a day -> UTC ISO instant (convert the local instant before formatting in UTC).
+utc_iso()    { date -u -d "@$(date -d "$1 $2" +%s)" +%Y-%m-%dT%H:%M:%SZ; }
 # All-day events use date-at-UTC-midnight; end is the INCLUSIVE last day (API convention).
 allday_iso() { echo "${1}T00:00:00Z"; }
 plus_days()  { date -d "$1 + $2 days" +%F; }
+
+# ---------- tasks ----------------------------------------------------------------------
+# Add missing demo tasks even when upgrading an account previously seeded with events.
+# Match the calendar and parent as well as the title, including completed tasks.
+task_fixture="$(dirname -- "${BASH_SOURCE[0]}")/seed-tasks.json"
+tasks=$(curl -fsS "$base_url/api/tasks?includeDone=true" -H "$auth")
+today=$(date +%F)
+while IFS= read -r spec; do
+    calendar=$(jq -r '.calendar' <<<"$spec")
+    task_cal=$personal_id
+    [[ "$calendar" != Work ]] || task_cal=$work_id
+    task_body=$(jq -nc --argjson spec "$spec" --argjson tasks "$tasks" --arg cal "$task_cal" '
+        ($tasks | map(select(.calendarId == $cal))) as $inCalendar |
+        (if $spec.parent then
+            ($inCalendar | map(select(.title == $spec.parent and .parentId == null)) | first.id // error("Missing parent task"))
+         else null end) as $parent |
+        if any($inCalendar[]; .title == $spec.title and .parentId == $parent) then empty
+        else {calendarId:$cal, title:$spec.title, priority:$spec.priority, parentId:$parent} end')
+    [[ -n "$task_body" ]] || continue
+    days=$(jq -r '.days // empty' <<<"$spec")
+    if [[ -n "$days" ]]; then
+        due=$(date -d "$today $days days" +%F)
+        task_body=$(jq --arg due "$(allday_iso "$due")" '. + {due:$due, dueAllDay:true}' <<<"$task_body")
+    fi
+    added=$(curl -fsS "$base_url/api/tasks" -H "$auth" -H 'Content-Type: application/json' -d "$task_body")
+    tasks=$(jq --argjson task "$added" '. + [$task]' <<<"$tasks")
+    echo "    + task: $(jq -r '.title' <<<"$added")"
+done < <(jq -c '.[]' "$task_fixture")
 
 # ---------- idempotency guard ---------------------------------------------------------
 
@@ -138,7 +168,7 @@ existing=$(curl -sS -G "$base_url/api/events" -H "$auth" \
     --data-urlencode "to=$(allday_iso "$(date -d "$month_start + 3 months" +%F)")" \
     | jq 'length')
 if [[ "$existing" -gt 0 && "$force" -ne 1 ]]; then
-    echo "==> $email already has $existing event(s) from ${month_start%-*} onward — nothing seeded."
+    echo "==> $email already has $existing event(s) from ${month_start%-*} onward — skipping event creation."
     echo "    Re-run with --force to seed anyway (will create duplicates)."
     exit 0
 fi
@@ -238,4 +268,4 @@ use_personal
 post_event 'Doctor check-up' 'Health' "$(utc_iso "$mon_n" 09:30)" "$(utc_iso "$mon_n" 10:00)" false '' '' '' \
     '[{"minutesBefore":60,"channel":"Email"}]'
 
-echo "==> done ($created events). Log in as $email / $password and enjoy the view."
+echo "==> done ($created events). Demo calendar ready for $email."

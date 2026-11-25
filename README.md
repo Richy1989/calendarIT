@@ -1,337 +1,123 @@
 <p align="center">
-  <img src="docs/icon/corner-store.svg" alt="24seven" width="88" height="88" />
+  <img src="docs/icon/corner-store.svg" width="72" height="72" alt="" />
 </p>
 
 <h1 align="center">24seven</h1>
 
-<p align="center"><b>A self-hosted calendar and task list for the web and Android.</b></p>
-
----
-
-Plan your week in the browser, then take it with you on Android. The native app keeps a copy
-of your events and tasks on your phone, so you can edit them offline and sync your changes
-back to your own server. [Set up the Android app](#android-app) · [Run the server](#with-docker)
+<p align="center"><strong>A self-hosted calendar and task list for the web and Android.</strong><br />
+Plan the week in your browser. Take it with you on your phone, even offline.</p>
 
 <p align="center">
-  <img src="docs/ScreenShot_Month.png" alt="24seven — month view" width="100%" />
+  <a href="#with-docker">Host with Docker</a> &nbsp;·&nbsp;
+  <a href="#android-app">Android app</a> &nbsp;·&nbsp;
+  <a href="#local-development">Demo data</a>
 </p>
 
----
+<picture>
+  <source media="(max-width: 600px)" srcset="docs/readme-cover-compact.webp" />
+  <img src="docs/readme-cover.webp" width="100%" alt="The same calendar on two screens. The browser shows November in Corner Store, and the Android agenda shows Wednesday’s team standup in Daylight." />
+</picture>
 
-[<img src="public/bymeacoffee.png" alt="Buy Me A Coffee" height="60">](https://buymeacoffee.com/spaceelephant)
+<p align="center"><sub>Full size &nbsp;·&nbsp; <a href="docs/screenshots/web-month-corner-store.png">Web month</a> &nbsp;·&nbsp; <a href="docs/screenshots/android-agenda-daylight.png">Android agenda</a></sub></p>
 
-## Why
+## In the browser
 
-Most calendar apps grew into something else - 24seven deliberately stays small:
-
-- **Good-looking and simple.** Easy on the eyes, easy to use — the combination I
-  couldn't find anywhere else.
-- **Yours.** Self-hosted. Your events live in your database, on your server.
-- **Standards-first.** Plain iCalendar (`.ics`) and CalDAV, so it talks to the tools you
-  already have instead of locking you in.
-- **Quiet.** A clean, dark, keyboard-friendly UI that gets out of the way.
-
-If a feature doesn't help you keep track of your time, it doesn't belong here.
-
-## What it does
-
-- 📅 **Events, the fast way** — drag on the grid to create, double-click or right-click,
-  drag to move or resize — with undo/redo for every change.
-- ☑️ **Tasks** — set due dates, priorities and reminders, add subtasks, and check things off
-  from the web or Android.
-- 🗂️ **Multiple calendars** — split Personal from Work, toggle which are shown, move
-  events between them; each syncs as its own calendar over CalDAV.
-- 🔁 **Recurring events** — daily, weekly, monthly, yearly, or custom: every N days/weeks/months
-  (shift patterns like "every 4 weeks on Mon and Tue"), monthly on "the second Tuesday", ending on
-  a date or after N times. Edit or move a single occurrence without touching the rest of the
-  series, and it syncs to your phone that way too.
-- ⏰ **Reminders** — by email or browser notification (Web Push), set per appointment; they
-  also sync to your phone as calendar alarms (VALARM) over CalDAV.
-- 📱 **Native Android app** — browse your month, week, day or agenda, edit recurring events
-  offline, snooze reminders, and put a month widget on your home screen.
-- 🌍 **Time zones** — stored correctly, displayed in yours, DST-safe.
-- 🎨 **Categories** — named colors (Work, Family, …) managed in Settings; recolor a
-  category and every appointment in it follows. Give a whole calendar a category (say, an
-  imported holiday calendar) and everything in it without one of its own takes that color. Syncs via the iCalendar `CATEGORIES` +
-  `COLOR` properties; a color picked on the phone maps back to the nearest category.
-- 🔎 **Search** — find any appointment by title or location, keyboard-first.
-- 📲 **Calendar sync** — the Android app syncs directly with your 24seven server. Other
-  calendar clients can connect to the same server over **CalDAV**.
-- 📄 **iCal import / export** — pick which calendars to export; import into any
-  calendar or a new one.
-- 🔐 **Accounts** — email + password, JWT sessions with rotating refresh tokens, password change
-  and self-service reset by email, and a switch to close sign-up. See every signed-in device in
-  Settings and sign any of them out — instantly.
-- 📮 **Reliable mail** — invitations, replies and reminders are queued and sent in the background
-  through your own mail account, retried while your mail server is down, and listed in Settings
-  with what happened to each.
+Drag across an open hour to book it. When plans move, drag the appointment to its new time or resize it, with undo a keystroke away. Switch to the agenda to see what's coming up and tick off the tasks due alongside it.
 
 <table>
   <tr>
-    <td width="50%"><a href="docs/ScreenShot_Week.png"><img src="docs/ScreenShot_Week.png" alt="24seven — week view" /></a></td>
-    <td width="50%"><a href="docs/ScreenShot_List_Search.png"><img src="docs/ScreenShot_List_Search.png" alt="24seven — list view with instant search" /></a></td>
-  </tr>
-  <tr>
-    <td align="center"><sub><b>Week View</b>.</sub></td>
-    <td align="center"><sub><b>List View</b>, and search for appointments (works in all views).</sub></td>
+    <td width="50%" valign="top"><a href="docs/screenshots/web-week-daylight.png"><img src="docs/screenshots/web-week-daylight.png" alt="Daylight week view with DevConf spanning three days above timed appointments" /></a><br /><b>Week</b> · Daylight</td>
+    <td width="50%" valign="top"><a href="docs/screenshots/web-agenda-midnight.png"><img src="docs/screenshots/web-agenda-midnight.png" alt="Midnight agenda beside a task panel with overdue items and a release checklist" /></a><br /><b>Agenda and tasks</b> · Midnight</td>
   </tr>
 </table>
 
-## Quick start
+- **Recurring appointments.** Schedule every other Friday or the second Tuesday of each month. Reschedule a single occurrence, all future occurrences or the whole series. Each event keeps its own time zone through daylight-saving changes.
+- **Shared plans.** Invite guests, track their replies and respond to invitations from the calendar. Connect your own mail account for invitations and email reminders, or choose a browser notification for a reminder.
+- **Your other calendars.** Toggle Work and Personal independently, subscribe to a holiday feed, or import and export `.ics` files. CalDAV lets other clients sync appointments and tasks with your server.
 
-### Android app
+## Android app
 
-You need **Android 14 or newer** and an account on a 24seven server with the mobile sync API.
-Build the server from `main` using the Docker instructions below. The `v0.10.0` server tag
-predates that API. You can create your account in the web app if registration is open.
+After the first sync, the native app keeps a copy of your events and tasks on the phone. Edit an appointment on the train, check off a subtask, and your changes sync when you're connected again.
 
-The Android app is available to build from source. For signed APKs, look for tags starting
-with `24seven-v` on the [GitHub Releases page](https://github.com/Richy1989/calendarIT/releases).
+<table>
+  <tr>
+    <td width="33%" valign="top"><a href="docs/screenshots/android-month-corner-store.png"><img src="docs/screenshots/android-month-corner-store.png" alt="Android month calendar in Corner Store with work and personal appointments" /></a><br /><b>Month</b> · Corner Store</td>
+    <td width="33%" valign="top"><a href="docs/screenshots/android-agenda-daylight.png"><img src="docs/screenshots/android-agenda-daylight.png" alt="Android agenda in Daylight, showing event times, locations and calendars" /></a><br /><b>Agenda</b> · Daylight</td>
+    <td width="33%" valign="top"><a href="docs/screenshots/android-tasks-graphite.png"><img src="docs/screenshots/android-tasks-graphite.png" alt="Android tasks in Graphite with two subtasks under the release checklist" /></a><br /><b>Tasks</b> · Graphite</td>
+  </tr>
+</table>
 
-To install from source, use **JDK 21** and **Android SDK Platform 37.2**. Connect a phone with
-USB debugging enabled or start an Android emulator, then run this from the repository root:
+1. On **Android 14 or newer**, download the signed APK and open it on your phone. [Android release and checksum](https://github.com/Richy1989/24seven/releases/tag/24seven-v0.3.0)
+2. Choose **24seven server**, enter your server's HTTPS address, and sign in with the same account you use on the web. The Docker build below includes the mobile sync API. The `v0.10.0` server predates it.
+3. Open **Settings** to enable phone reminders or **Show in phone's calendar**. Add the month widget from your home screen's widget picker. For immediate updates between scheduled syncs, connect a UnifiedPush distributor such as ntfy.
+
+## With Docker
+
+From a checkout of `main`, the included Compose file builds the web app and API together and starts PostgreSQL. You'll need Docker Compose and an HTTPS reverse proxy for this setup.
+
+1. Copy `.env.example` to `.env`. Set `POSTGRES_PASSWORD`, generate a `JWT_SIGNING_KEY` with `openssl rand -base64 48`, and set `PUBLIC_BASE_URL` to your public HTTPS address.
+2. Run `docker compose up -d --build` from the repository root.
+3. Attach your reverse proxy to the `calendarit-edge` Docker network and forward requests to `http://app:8080`. For a proxy running on the host, the Compose file also shows a loopback port mapping.
+4. Open your HTTPS address and register your first account. To close sign-up afterward, set `DISABLE_REGISTRATION=true` in `.env` and run `docker compose up -d`.
+
+The Compose file includes the network and volume declarations. Unraid users can install either the standard template or the version with Traefik labels. [Compose file](docker-compose.yml) · [Environment example](.env.example) · [Unraid](deploy/calendarit.unraid.xml) · [Unraid with Traefik](deploy/calendarit-traefik.unraid.xml)
+
+<details>
+<summary><strong>Try it locally with SQLite and one container</strong></summary>
+
+From the repository root, set a signing key in a local environment file on first setup. Keep that file and the named volume when you recreate the container.
+
+```bash
+(umask 077 && echo "JWT_SIGNING_KEY=$(openssl rand -base64 48)" > secrets/24seven-local.env)
+docker build -t 24seven-local .
+docker run -d --name 24seven-local --env-file secrets/24seven-local.env \
+  -e APPDATA_PATH=/appdata -v 24seven-data:/appdata \
+  -p 127.0.0.1:8080:8080 24seven-local
+```
+
+Open <http://localhost:8080> to register and use the web app.
+
+</details>
+
+## Configuration
+
+| Setting | Where to find it |
+| --- | --- |
+| Calendars and colors | In web **Settings**, create calendars and assign category colors. Recolor a category once to update all its appointments. |
+| Email and reminders | In **Settings → Email**, connect SMTP for outgoing invitations and reminders, and IMAP for incoming invitations and replies. **Outgoing mail** shows queued messages and delivery errors. |
+| Browser notifications | Enable **Browser** for a reminder and allow notifications in that browser. Web Push requires HTTPS or localhost. The server persists its generated keys in `APPDATA_PATH`. |
+| Password recovery | Set `PUBLIC_BASE_URL` so **Forgot your password?** can generate a single-use link valid for two hours. The server sends it through the user's connected mail account. If that account is unavailable, the instance owner can find the link by searching `docker compose logs app` for `password-reset`. Treat those logs as sensitive. |
+| Reverse proxy | Set `FORWARDED_PROXY_HOPS` to the number of proxies in front of the API. Use `1` for a single proxy in front of the Compose app, or `2` when that proxy fronts the bundled nginx image. |
+
+For database selection, mail host policy, authentication limits, log levels, container user IDs and optional Web Push keys, see the commented [Compose file](docker-compose.yml) and [environment example](.env.example).
+
+## Local development
+
+Use the **.NET 10 SDK**, **Node.js 22.12+** and npm. From the repository root, start the API and web dev server together, then seed the running server from a second terminal.
+
+| | Linux (Bash) | Windows (PowerShell 7) |
+| --- | --- | --- |
+| Start the app | `./deploy/dev.sh` | `./deploy/dev.ps1` |
+| Load demo calendars and tasks | `./deploy/seed.sh` | `./deploy/seed.ps1` |
+
+Open <http://localhost:5173> and sign in with the local demo account `test@test.com` / `Test1234#1234`. The seed creates the Work and Personal calendars shown above, including recurring events, timed appointments and subtasks. The API listens on port `5299`. To regenerate the TypeScript API client, run `npm run gen:api` from `web/` with the API running.
+
+<details>
+<summary><strong>Build the Android app from source</strong></summary>
+
+Install JDK 21 and Android SDK Platform 37.2. Connect a phone with USB debugging enabled or start an emulator, then run the following from the repository root.
 
 ```bash
 cd android
 ./gradlew :app:installFossDebug
 ```
 
-Open **24seven**, choose **24seven server**, and enter the HTTPS address you use in your browser,
-along with your email and password. For local development, the debug app on an emulator can
-reach the backend on your computer at `http://10.0.2.2:5299`.
+On the emulator, enter `http://10.0.2.2:5299` as the server address to reach the local development API.
 
-After the first sync you can work offline. In **Settings**, you can turn on phone reminders
-or **Show in phone's calendar** to view and edit appointments from other Android calendar apps.
-Background sync runs on a schedule. For faster updates, enable **Instant updates** with a
-UnifiedPush distributor such as ntfy.
+</details>
 
-### With Docker
+The web client uses React and Vite, the server uses ASP.NET Core, and the Android app uses Kotlin, Jetpack Compose and Room. For design decisions and the roadmap, see [the architecture notes](ARCHITECTURE.md).
 
-Set a signing key — Compose reads it from a `.env` in the same folder:
+## License and support
 
-```bash
-echo "JWT_SIGNING_KEY=$(openssl rand -base64 48)" > .env
-```
-
-A minimal `docker-compose.yml` — one container on the built-in SQLite database, no separate DB
-needed (the repo ships a fuller, commented version that uses PostgreSQL, with its own
-`.env.example`):
-
-```yaml
-services:
-  app:
-    build: .                       # or an image you've built/pushed
-    restart: unless-stopped
-    environment:
-      # DATABASE_PROVIDER defaults to Sqlite — no separate database service required.
-      APPDATA_PATH: /appdata       # SQLite file, avatars, and auto-generated keys live here
-      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env}   # required — min 32 chars
-      # Optional extras (see the Configuration table below): DISABLE_REGISTRATION,
-      # PUBLIC_BASE_URL (for password-reset emails), FORWARDED_PROXY_HOPS, VAPID_*, …
-    volumes:
-      - appdata:/appdata
-    # The app serves plain HTTP on :8080 and is deliberately NOT published to the host — put a
-    # TLS-terminating reverse proxy in front and point it at http://app:8080 (CalDAV clients
-    # effectively require HTTPS). To reach it directly from the host, publish to loopback only:
-    #   ports: ["127.0.0.1:8080:8080"]
-
-volumes:
-  appdata:
-```
-
-Then start it:
-
-```bash
-docker compose up --build      # add -d to run in the background
-```
-
-Running Unraid? Ready-made templates live in [`deploy/`](./deploy) —
-`calendarit.unraid.xml` (plain) and `calendarit-traefik.unraid.xml` (with Traefik
-labels preconfigured).
-
-### Local development
-
-```bash
-# From the repository root, in one terminal → http://localhost:5299
-cd core/calendarITCore/calendarITCore
-dotnet run
-
-# From the repository root, in another terminal → http://localhost:5173
-cd web
-npm install
-npm run dev
-```
-
-Regenerate the typed API client after changing the backend (with it running):
-
-```bash
-cd web && npm run gen:api
-```
-
-## Configuration
-
-Everything is set through environment variables:
-
-| Variable                                  | Purpose                                          |
-| ----------------------------------------- | ------------------------------------------------ |
-| `DATABASE_PROVIDER`                       | `Sqlite` (default) or `Postgres` — the shipped `docker-compose.yml` sets `Postgres` |
-| `POSTGRES_CONNECTION`                     | Npgsql connection string (Postgres only)         |
-| `APPDATA_PATH`                            | Writable data dir (SQLite file, etc.) — `/appdata`|
-| `JWT_SIGNING_KEY`                         | **Required.** ≥ 32 chars                         |
-| `JWT_ISSUER` / `JWT_AUDIENCE`             | Token issuer / audience                          |
-| `DISABLE_REGISTRATION`                    | `true` closes public sign-up. Existing accounts are unaffected |
-| `PUBLIC_BASE_URL`                         | **Required for password reset.** Origin used in reset links, e.g. `https://calendar.example.com` |
-| `AUTH_RATE_LIMIT_PER_MINUTE`              | Auth requests allowed per client IP per minute. Default `20` |
-| `FORWARDED_PROXY_HOPS`                    | How many `X-Forwarded-For` hops to trust. Default `1` — see below |
-| `Serilog__MinimumLevel__Default`          | Log level (console-only, to stdout). Default `Information` |
-| `NO_COLOR`                                | Set to anything to turn the log's colour off (the layout stays). Unset by default: `docker logs` and Unraid's log view show the colours |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`  | Web Push signing keys. **Optional** — auto-generated and persisted under `APPDATA_PATH` if unset. Set both to pin them across deployments |
-| `VAPID_SUBJECT`                           | Contact URI in push messages, e.g. `mailto:admin@example.com`. Default `mailto:admin@calendarit.local` |
-| `MAIL_HOST_POLICY`                        | Where users' mail servers may point: `private` (default — internet + LAN, never the server itself or link-local/cloud-metadata addresses), `public` (internet only; use when strangers can sign up), or `any` |
-| `PUID` / `PGID`                           | User/group the app runs as inside the container. Default `1654` (the image's `app` user); the Unraid templates use `99`/`100` |
-
-> **Set `PUBLIC_BASE_URL` if you want self-service password reset.** The address in a reset
-> link is deliberately never read from the request: `Host` is just a header, and the
-> forgot-password endpoint is anonymous, so taking it from there would let anyone have a
-> genuine reset link mailed to a host they control. With it unset, reset links aren't sent and
-> the server logs why — sign-in, and everything else, is unaffected.
-
-> **Set `FORWARDED_PROXY_HOPS` to match your setup.** The app trusts exactly this many
-> proxies when reading the client's IP, which is what the auth rate limit and your logs key
-> on. Count the proxies in front of the API: **1** when your reverse proxy talks to the app
-> directly (the `docker-compose` setup), **2** for the single-container image, where your
-> proxy sits in front of the container's own nginx. Too low and every client looks like one
-> address; too high and clients can forge their own.
-
-> **Repeated bad passwords lock an account** for 15 minutes after 10 failures — this covers
-> the web login and CalDAV alike, since both check the same credentials. Worth knowing if you
-> change your password: a phone still syncing with the old one will keep retrying and can lock
-> you out, so update it in your CalDAV client too. (Completing a password reset lifts a lockout.)
-
-> **The containers run the app as an unprivileged user.** They start as root only long enough
-> to take ownership of the data directory — including volumes written by older, root-run
-> images — then drop to `PUID`/`PGID`. Nothing to do when upgrading.
-
-> **Close sign-up once everyone has an account.** Set `DISABLE_REGISTRATION=true` — your instance
-> is reachable by anyone who knows the address, because that is what makes phone sync work.
-> Existing accounts keep working and the Register tab disappears from the sign-in screen.
-
-### Forgot your password?
-
-The sign-in screen has a **Forgot your password?** link that emails a single-use link, valid for
-two hours. Because 24seven has no mail relay of its own, that email is sent through **your own
-connected mail account** (Settings → Email) — set a **Reminder From address** there if you'd rather
-it came from `noreply@` than your personal address.
-
-If the account has no working mail account, the link can't be emailed, so the server **writes it to
-its log** instead:
-
-```bash
-docker logs <container> | grep password-reset
-```
-
-That keeps a self-hosted instance recoverable without database surgery. It also means anyone who
-can read your container logs can take over an account — which is already true of anyone who can
-read your database, so it grants no new access, but it is worth knowing.
-
-> **Email needs no environment variables.** Invitations and reminders are sent through each
-> user's own mail account, connected in-app under **Settings → Email** (SMTP + IMAP, password
-> stored encrypted). Mail is queued and sent in the background — saving an event never waits on
-> a mail server — and retried with backoff for a while if the server can't be reached; **Settings →
-> Email → Outgoing mail** shows what was sent, what's waiting, and why anything failed. Users
-> without a connected account simply get their reminders logged instead of emailed.
-
-> **Browser notifications are opt-in per browser.** Choose **Browser** on an appointment's
-> reminder (or flip the toggle in **Settings → General**) and allow the permission prompt. They
-> arrive even when 24seven isn't open, and need a secure origin — HTTPS in production, or
-> `localhost` in dev. No keys to configure: VAPID keys are generated automatically on first run
-> (set `VAPID_*` only if you want to pin them across deployments).
-
-## Project layout
-
-```
-core/calendarITCore/   ASP.NET Core solution (API host + Domain/Application/Infrastructure/CalDav)
-web/                   React + Vite frontend
-android/               Native Android app (Kotlin, Jetpack Compose, Room)
-Dockerfile             Two images: the API serving the SPA (default), and nginx + API (--target bundle)
-docker-compose.yml     App + PostgreSQL
-ARCHITECTURE.md        Design decisions and roadmap
-```
-
-## Status
-
-Under active development — built in phases (see `ARCHITECTURE.md` §10).
-
-- ✅ Foundations: solution, logging, health checks, Docker skeleton
-- ✅ Accounts & auth: Identity + JWT with rotating refresh tokens; per-device sessions you can
-  review and sign out (effective immediately), throttled and timing-safe logins
-- ✅ Web UI shell: calendar views, quick create beside the clicked slot (bottom sheet on phones)
-  with repeat presets, and a full event editor; four themes (Corner Store, Midnight, Daylight, Graphite) with
-  your own accent and highlight colors
-- ✅ Events persist to the database — create / edit / delete / drag, scoped per user, with
-  undo/redo
-- ✅ Recurring events (RRULE) with timezone/DST-correct expansion; edit, move or delete a single
-  occurrence (or put it back), change or delete it and all following ones, or change the whole
-  series. Edited occurrences round-trip as
-  `RECURRENCE-ID` overrides over CalDAV, `.ics` and email invitations
-- ✅ Video calls — a Join button for Zoom, Teams, Meet, Jitsi, Webex and Whereby links in an
-  appointment's location or description
-- ✅ iCal (.ics) import / export — round-trips title, time + zone, all-day, color, RRULE (Outlook
-  and Windows time-zone names are mapped to the real zone);
-  export a selection of calendars, import into a chosen or new calendar
-- ✅ Reminders — **email** and **browser notifications (Web Push)** via a Quartz.NET job
-  (recurrence-aware, timezone-correct, dedup); the channel is chosen per reminder on the event,
-  and each calendar can set the reminders new appointments start with; browser reminders can be
-  snoozed from the notification
-- ✅ Mail outbox — all outgoing mail is queued and sent in the background with retries; its
-  status is visible (and retryable) in Settings → Email
-- ✅ CalDAV server — two-way sync with standard clients: discovery, ETags/CTag,
-  calendar-query/multiget, incremental sync (RFC 6578 sync-collection: phones fetch only what
-  changed), create/edit/delete, reminders as VALARM both ways
-- ✅ Multiple calendars — create/rename/delete in Settings, per-calendar visibility
-  toggles, each exposed as its own CalDAV collection
-- ✅ Tasks — to-dos in your calendars with due dates (a day or a time), priority, reminders
-  (browser or email, counting from 9:00 for a task due on a day) and one level of subtasks: a task panel beside the calendar, due tasks in the grid (tick off, drag to
-  reschedule), and two-way sync as `VTODO` with phone task apps over CalDAV
-- ✅ Native Android app — offline event and task editing, background sync with conflict
-  detection, local reminders, a month widget, and optional two-way Android system calendar integration
-- ✅ Calendar subscriptions — subscribe to a published .ics / `webcal://` calendar (holidays, a
-  team's schedule); it refreshes on its own schedule and stays read-only
-- ✅ Categories — events take their color from a named category (managed in Settings);
-  existing per-event colors were auto-migrated into categories on first startup
-- ✅ Mobile web — responsive phone layout, a thumb-reachable bottom toolbar, and swipe left/right
-  to page between views (visual polish still ongoing)
-- ✅ Inviting guests — connect your own email account (Settings → Email, password stored
-  encrypted), add guests to an event, and they get a standard iMIP invite with Accept/Decline in
-  their calendar; updates and cancellations are mailed too.
-  - **Guest replies sync back** — with IMAP configured, your inbox is scanned on a configurable
-    interval (default 5 min) and each Accept/Decline/Tentative updates the guest's status on the
-    event (read-only, idempotent — messages are never modified).
-  - **Receiving invitations** — the same scan picks up invitations others email you (iMIP
-    REQUEST), adds them as pending (dashed outline + ✉), and removes them when the organizer cancels.
-    Forwarding an invitation to that address works too, inline or as an attachment.
-  - **Responding** — open a received invitation and Accept / Maybe / Decline; your status is
-    saved and an iMIP REPLY is emailed back to the organizer.
-  - An invitation not sent by its organizer (e.g. a forward) only ever lands as pending for you to
-    accept or decline. Cancellations and guest replies must genuinely come from the organizer (or
-    guest) they name, so nobody can delete your events or answer for a guest — mismatches are
-    logged and ignored.
-
-A few edges are still rough (noted above and in the roadmap), but the features listed here work
-end-to-end.
-
-## Missing / next
-
-Not there yet — on the list:
-
-- ⬜ **Repeating tasks** — a phone's repeat rule is kept, but a task doesn't repeat here yet.
-
-## Support
-
-24seven is free and self-hosted. You sign in to your own server. If it's useful to you and you'd
-like to say thanks, you can [**buy me a coffee** ☕](https://buymeacoffee.com/spaceelephant). Much
-appreciated, but never expected.
-
-## License
-
-Released under the [MIT](./LICENSE) © 2026 Richy Leopold. Free to use, modify, and distribute; just keep the copyright and license notice.
+24seven is free to self-host and released under the [MIT license](LICENSE). If it makes your week easier, you can [buy Richy a coffee](https://buymeacoffee.com/spaceelephant).
