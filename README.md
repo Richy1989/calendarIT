@@ -261,6 +261,9 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
   changed), create/edit/delete, reminders as VALARM both ways
 - ✅ Multiple calendars — create/rename/delete in Settings, per-calendar visibility
   toggles, each exposed as its own CalDAV collection
+- ✅ Tasks — to-dos in your calendars with due dates (a day or a time), priority and one level
+  of subtasks: a task panel beside the calendar, due tasks in the grid (tick off, drag to
+  reschedule), and two-way sync as `VTODO` with phone task apps over CalDAV
 - ✅ Calendar subscriptions — subscribe to a published .ics / `webcal://` calendar (holidays, a
   team's schedule); it refreshes on its own schedule and stays read-only
 - ✅ Categories — events take their color from a named category (managed in Settings);
@@ -290,8 +293,8 @@ end-to-end.
 
 Not there yet — on the list:
 
-- ⬜ **Task management** — to-dos with due dates and completion, alongside events, syncing over
-  CalDAV as `VTODO`.
+- ⬜ **Task reminders** — reminders on a task's due date (push / email), like an appointment's.
+- ⬜ **Repeating tasks** — a phone's repeat rule is kept, but a task doesn't repeat here yet.
 
 ## Support
 

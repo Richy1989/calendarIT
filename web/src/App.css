@@ -3360,3 +3360,251 @@ input[aria-invalid='true']:focus-visible {
   opacity: 0.45;
   cursor: default;
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Tasks: the panel beside the calendar, its rows, and tasks in the grid. */
+.cal-main-row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 1rem;
+}
+.cal-main-col {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cal-main-col > .calendar-fc-host,
+.cal-main-col > .agenda {
+  flex: 1;
+  min-height: 0;
+}
+.task-panel {
+  flex: none;
+  width: 19rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding-left: 1rem;
+  border-left: 1px solid var(--hairline);
+}
+.task-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+.task-panel-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+.task-add input {
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.88rem;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+.task-add input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--hairline));
+}
+.task-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 0.6rem;
+}
+.task-group h3 {
+  margin: 0.9rem 0 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.task-group.is-overdue h3 {
+  color: var(--danger-ink);
+}
+.task-empty {
+  color: var(--text-faint);
+  font-size: 0.85rem;
+}
+.task-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.35rem 0.25rem;
+  border-radius: var(--r-sm);
+}
+.task-row:hover {
+  background: var(--surface-2);
+}
+.task-row.is-sub {
+  padding-left: 1.6rem;
+}
+.task-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.task-row-title {
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+.task-row.is-done .task-row-title {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+.task-row-due {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+.task-row-due.is-overdue {
+  color: var(--danger-ink);
+}
+.task-row-notes {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-prio.is-high {
+  margin-right: 0.3rem;
+  color: var(--danger-ink);
+  font-weight: 700;
+}
+/* The round tick box, in the panel, the editor and the grid. */
+.task-check,
+.fc-task-check {
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-top: 0.1rem;
+  padding: 0;
+  border: 1.5px solid var(--text-faint);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.task-check:hover,
+.fc-task-check:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.task-check.is-done {
+  border-color: var(--accent);
+  background: var(--accent)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 80% no-repeat;
+}
+.task-show-done {
+  margin-top: 0.6rem;
+  align-self: flex-start;
+}
+/* The editor's extras. */
+.task-due {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.task-due-clear {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+}
+.task-priority {
+  display: flex;
+  gap: 0.25rem;
+}
+.task-priority-icon {
+  display: inline-flex;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--text-faint);
+}
+.task-subtasks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0.4rem 0 0.2rem 2.3rem;
+}
+.task-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+.task-sub .task-check {
+  margin-top: 0;
+}
+.task-sub-title {
+  flex: 1;
+  min-width: 0;
+}
+.task-sub.is-done .task-sub-title {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+.task-sub-add {
+  font-size: 0.86rem;
+}
+/* A task in the grid: a quiet item with its tick box, not a coloured appointment box. */
+.calendar-shell .fc .fc-event.fc-task {
+  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--hairline));
+  color: var(--text);
+}
+.calendar-shell .fc .fc-event.fc-task.is-high {
+  border-color: color-mix(in srgb, var(--danger) 70%, var(--hairline));
+}
+.fc-task-body {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0 0.2rem;
+  overflow: hidden;
+  font-size: 0.78rem;
+}
+.fc-task-check {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin-top: 0;
+}
+.fc-task-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fc-task-time {
+  color: var(--text-dim);
+}
+@media (max-width: 760px) {
+  /* On a phone the panel covers the calendar, like a sheet. */
+  .task-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    width: auto;
+    padding: 1rem;
+    border-left: 0;
+    background: var(--bg);
+  }
+}

@@ -42,9 +42,13 @@ import { saveDefaultView } from './api/profile'
 import { useHour12 } from './clock'
 import { useFirstDay } from './weekStart'
 import { Popover } from './components/Popover'
-import { addDays, allDayDate, dayKey, parseLocalValue, toLocalInput, toOffsetIso } from './lib/dates'
+import { addDays, allDayDate, dayKey, formatTime, parseLocalValue, toLocalInput, toOffsetIso } from './lib/dates'
 import { occurrenceOf, type OccurrenceRef } from './lib/occurrences'
 import { useUndoStack } from './lib/useUndoStack'
+import TaskPanel from './components/TaskPanel'
+import TaskEditor from './components/TaskEditor'
+import { createTask, deleteTask, listTasks, setTaskDone, taskToRequest, updateTask, type SaveTaskRequest, type TaskDto } from './api/tasks'
+import { dueToApi, isDone } from './lib/tasks'
 import { getSavedView, saveView, UNCATEGORIZED } from './prefs'
 import {
   hasEventClipboard,
@@ -240,6 +244,7 @@ export default function CalendarView({
     enabled: !!range,
   })
   const { data: calendars = [] } = useQuery({ queryKey: ['calendars'], queryFn: listCalendars })
+  const { data: openTasks = [] } = useQuery({ queryKey: ['tasks', false], queryFn: () => listTasks(false) })
   // Subscribed calendars are read-only copies of a feed: shown, never written to.
   const subscribedIds = useMemo(() => new Set(calendars.filter((c) => c.subscription).map((c) => c.id)), [calendars])
   const writableCalendars = useMemo(() => calendars.filter((c) => !c.subscription), [calendars])
@@ -349,9 +354,28 @@ export default function CalendarView({
     return own?.color ?? inherited?.color ?? DEFAULT_COLOR
   }
 
+  // Open tasks with a due date, on their day: a date-only one in the all-day row, a timed one
+  // at its time. Dragging one moves its due date; its box ticks it off.
+  const taskEvents = useMemo<EventInput[]>(
+    () =>
+      openTasks
+        .filter((t) => t.due && (!visibleCalendarIds || visibleCalendarIds.includes(t.calendarId)))
+        .map((t) => ({
+          id: `task:${t.id}`,
+          title: t.title,
+          start: t.dueAllDay ? t.due!.slice(0, 10) : t.due!,
+          end: t.dueAllDay ? undefined : new Date(new Date(t.due!).getTime() + 30 * 60_000).toISOString(),
+          allDay: t.dueAllDay,
+          durationEditable: false,
+          classNames: ['fc-task', ...(t.priority === 'high' ? ['is-high'] : [])],
+          extendedProps: { kind: 'task', taskId: t.id },
+        })),
+    [openTasks, visibleCalendarIds],
+  )
+
   // While the quick form is open, the event it describes is drawn in the grid as it is typed.
   const gridEvents = useMemo(() => {
-    if (!quickDraft) return events
+    if (!quickDraft) return [...events, ...taskEvents]
     const color = draftColor(quickDraft)
     const ghost: EventInput = {
       id: DRAFT_GHOST_ID,
@@ -364,9 +388,9 @@ export default function CalendarView({
       classNames: ['fc-draft-ghost'],
       editable: false,
     }
-    return [...events, ghost]
+    return [...events, ...taskEvents, ghost]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, quickDraft, categories, calendars])
+  }, [events, taskEvents, quickDraft, categories, calendars])
 
   // A quick draft moved to a day the grid doesn't show takes the grid there, so its preview
   // (and the form beside it) stays in view.
@@ -391,6 +415,33 @@ export default function CalendarView({
     toastTimer.current = setTimeout(() => setToast(null), 2500)
   }, [])
   const [menu, setMenu] = useState<ContextMenu | null>(null)
+
+  // ---- Tasks: a panel beside the grid, and the ones with a due date on their day in it.
+  const [tasksOpen, setTasksOpen] = useState(() => localStorage.getItem('calendarit.tasksOpen') === '1')
+  const toggleTasks = () =>
+    setTasksOpen((open) => {
+      localStorage.setItem('calendarit.tasksOpen', open ? '0' : '1')
+      return !open
+    })
+  /** The task editor: a task, or null for a new one; undefined when closed. */
+  const [taskEdit, setTaskEdit] = useState<TaskDto | null | undefined>(undefined)
+  const refreshTasks = () => queryClient.invalidateQueries({ queryKey: ['tasks'] })
+  const taskSaveMut = useMutation({
+    mutationFn: (v: { id?: string; body: SaveTaskRequest }) => (v.id ? updateTask(v.id, v.body) : createTask(v.body)),
+    onSuccess: refreshTasks,
+    onError: (e: Error) => showToast(e.message),
+  })
+  const taskDoneMut = useMutation({
+    mutationFn: (t: TaskDto) => setTaskDone(t.id, !isDone(t)),
+    onSuccess: refreshTasks,
+    onError: (e: Error) => showToast(e.message),
+  })
+  const taskDeleteMut = useMutation({
+    mutationFn: (id: string) => deleteTask(id),
+    onSuccess: refreshTasks,
+    onError: (e: Error) => showToast(e.message),
+  })
+  const findTask = (id: string) => openTasks.find((t) => t.id === id)
   // Whether the clipboard holds a copied event — drives the "Paste" affordance, and stays in
   // sync when another tab copies (subscribeClipboard also listens for the storage event).
   const [canPaste, setCanPaste] = useState(hasEventClipboard)
@@ -792,6 +843,16 @@ export default function CalendarView({
 
   const handleEventClick = (info: EventClickArg) => {
     if (info.event.id === DRAFT_GHOST_ID) return // the quick form's own preview
+    if (info.event.extendedProps.kind === 'task') {
+      const task = findTask(info.event.extendedProps.taskId as string)
+      // Its box ticks it off; anywhere else opens it.
+      if ((info.jsEvent.target as HTMLElement).closest('.fc-task-check')) {
+        if (task) taskDoneMut.mutate(task)
+      } else if (task) {
+        setTaskEdit(task)
+      }
+      return
+    }
     if (isCoarsePointer()) {
       // touch: a tap opens, as before
       void openForEdit(info.event.extendedProps.seriesId, info.event.extendedProps.occurrence ?? null)
@@ -1146,6 +1207,24 @@ export default function CalendarView({
   })
 
   const applyChange = (info: EventChangeArg) => {
+    if (info.event.extendedProps.kind === 'task') {
+      const task = findTask(info.event.extendedProps.taskId as string)
+      const start = info.event.start
+      if (!task || !start) {
+        info.revert()
+        return
+      }
+      // Dropped into the all-day row it becomes a date; into a time slot, that time.
+      const allDay = info.event.allDay
+      const body = {
+        ...taskToRequest(task),
+        due: dueToApi(allDay ? dayKey(start) : toLocalInput(start), allDay),
+        dueAllDay: allDay,
+        timeZone: allDay ? null : (task.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone),
+      }
+      taskSaveMut.mutate({ id: task.id, body }, { onError: () => info.revert() })
+      return
+    }
     const id = info.event.extendedProps.seriesId as string
     const newBody = eventToBody(info.event)
     const oldBody = eventToBody(info.oldEvent) // position before the drag — the undo target
@@ -1195,6 +1274,7 @@ export default function CalendarView({
   }
 
   const onEventMount = (arg: EventMountArg) => {
+    if (arg.event.extendedProps.kind === 'task') return // a task: clicks are handled in handleEventClick
     // Expose the event's own category color to CSS, so the selection highlight glows in the
     // appointment's colour rather than a fixed accent (cyan already means "now"/"today").
     if (arg.event.borderColor) arg.el.style.setProperty('--ev-color', arg.event.borderColor)
@@ -1248,6 +1328,8 @@ export default function CalendarView({
 
   return (
     <>
+      <div className="cal-main-row">
+      <div className="cal-main-col">
       <div className="calendar-fc-host" ref={fcHostRef} style={agendaMode ? { display: 'none' } : undefined}>
       <FullCalendar
         ref={calendarRef}
@@ -1265,12 +1347,13 @@ export default function CalendarView({
             click: (_ev, element) => openCatPop(element.getBoundingClientRect()),
           },
           listBtn: { text: 'list', click: enterAgenda },
+          tasksBtn: { text: tasksOpen ? '✓ Tasks' : 'Tasks', click: toggleTasks },
         }}
         headerToolbar={
           isNarrow
             ? { left: 'addEvent', center: 'title', right: 'prev,next todaySelect' }
             : {
-                left: 'addEvent calPicker catPicker',
+                left: 'addEvent calPicker catPicker tasksBtn',
                 center: 'title',
                 right: 'prev,next todaySelect dayGridMonth,timeGridWeek,timeGridDay,listBtn',
               }
@@ -1279,7 +1362,7 @@ export default function CalendarView({
         // it frees the top row for the date. Desktop keeps everything in the header.
         footerToolbar={
           isNarrow
-            ? { left: 'calPicker catPicker', right: 'dayGridMonth,timeGridWeek,timeGridDay,listBtn' }
+            ? { left: 'calPicker catPicker tasksBtn', right: 'dayGridMonth,timeGridWeek,timeGridDay,listBtn' }
             : undefined
         }
         height="100%"
@@ -1317,6 +1400,20 @@ export default function CalendarView({
         dayCellClassNames={(arg) =>
           arg.view.type !== 'timeGridDay' && dayKey(arg.date) === selectedDate ? ['is-selected'] : []
         }
+        eventContent={(arg) =>
+          arg.event.extendedProps.kind === 'task' ? (
+            <span className="fc-task-body">
+              <span className="fc-task-check" role="checkbox" aria-checked={false} aria-label={`Tick off “${arg.event.title}”`} />
+              <span className="fc-task-title">
+                {/* A task is due at a moment, not over a span: just that time. */}
+                {!arg.event.allDay && arg.event.start && <span className="fc-task-time">{formatTime(arg.event.start, hour12)} </span>}
+                {arg.event.title}
+              </span>
+            </span>
+          ) : (
+            true
+          )
+        }
         eventClick={handleEventClick}
         eventChange={applyChange}
         dayCellDidMount={onDateCellMount}
@@ -1340,6 +1437,39 @@ export default function CalendarView({
             const occurrence = occurrenceOf(dto)
             setMenu({ kind: 'event', x, y, seriesId: occurrence?.seriesId ?? dto.id, occurrence, readOnly: subscribedIds.has(dto.calendarId) })
           }}
+        />
+      )}
+
+      </div>
+      {tasksOpen && (
+        <TaskPanel
+          defaultCalendarId={defaultCalendarId()}
+          visibleCalendarIds={visibleCalendarIds ?? null}
+          onOpen={(t) => setTaskEdit(t)}
+          onClose={toggleTasks}
+        />
+      )}
+      </div>
+
+      {taskEdit !== undefined && (
+        <TaskEditor
+          key={taskEdit?.id ?? 'new'}
+          task={taskEdit}
+          calendars={writableCalendars}
+          defaultCalendarId={defaultCalendarId()}
+          onSave={(body) => {
+            taskSaveMut.mutate({ id: taskEdit?.id, body })
+            setTaskEdit(undefined)
+          }}
+          onDelete={
+            taskEdit
+              ? () => {
+                  taskDeleteMut.mutate(taskEdit.id)
+                  setTaskEdit(undefined)
+                }
+              : undefined
+          }
+          onClose={() => setTaskEdit(undefined)}
         />
       )}
 

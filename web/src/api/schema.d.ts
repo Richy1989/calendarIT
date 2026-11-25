@@ -2836,6 +2836,270 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    includeDone?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TaskDto"][];
+                        "application/json": components["schemas"]["TaskDto"][];
+                        "text/json": components["schemas"]["TaskDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveTaskRequest"];
+                    "text/json": components["schemas"]["SaveTaskRequest"];
+                    "application/*+json": components["schemas"]["SaveTaskRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TaskDto"];
+                        "application/json": components["schemas"]["TaskDto"];
+                        "text/json": components["schemas"]["TaskDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TaskDto"];
+                        "application/json": components["schemas"]["TaskDto"];
+                        "text/json": components["schemas"]["TaskDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveTaskRequest"];
+                    "text/json": components["schemas"]["SaveTaskRequest"];
+                    "application/*+json": components["schemas"]["SaveTaskRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TaskDto"];
+                        "application/json": components["schemas"]["TaskDto"];
+                        "text/json": components["schemas"]["TaskDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{id}/done": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SetTaskDoneRequest"];
+                    "text/json": components["schemas"]["SetTaskDoneRequest"];
+                    "application/*+json": components["schemas"]["SetTaskDoneRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TaskDto"];
+                        "application/json": components["schemas"]["TaskDto"];
+                        "text/json": components["schemas"]["TaskDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3105,6 +3369,21 @@ export interface components {
             username: string;
             password?: null | string;
         };
+        SaveTaskRequest: {
+            /** Format: uuid */
+            calendarId?: null | string;
+            title: string;
+            notes?: null | string;
+            /** Format: date-time */
+            due?: null | string;
+            dueAllDay?: boolean;
+            timeZone?: null | string;
+            priority?: null | string;
+            /** Format: uuid */
+            parentId?: null | string;
+            /** Format: int32 */
+            sortOrder?: null | number | string;
+        };
         SessionDto: {
             /** Format: uuid */
             id: string;
@@ -3129,6 +3408,9 @@ export interface components {
             /** Format: int32 */
             refreshMinutes?: number | string;
         };
+        SetTaskDoneRequest: {
+            done?: boolean;
+        };
         SnoozeReminderRequest: {
             token: string;
             /** Format: int32 */
@@ -3141,6 +3423,28 @@ export interface components {
             refreshMinutes?: number | string;
             /** Format: uuid */
             defaultCategoryId?: null | string;
+        };
+        TaskDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            calendarId: string;
+            title: string;
+            notes: null | string;
+            /** Format: date-time */
+            due: null | string;
+            dueAllDay: boolean;
+            timeZone: null | string;
+            status: string;
+            /** Format: date-time */
+            completedAt: null | string;
+            priority: null | string;
+            /** Format: uuid */
+            parentId: null | string;
+            /** Format: int32 */
+            sortOrder: number | string;
+            /** Format: date-time */
+            updatedAt: string;
         };
         UpdateAppearanceRequest: {
             theme: null | string;
