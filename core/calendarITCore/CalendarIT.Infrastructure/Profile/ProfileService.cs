@@ -18,6 +18,9 @@ public sealed class ProfileService(AppDbContext db) : IProfileService
     private static readonly HashSet<string> KnownWeekStarts =
         new(StringComparer.Ordinal) { "sunday", "monday" };
 
+    private static readonly HashSet<string> KnownThemes =
+        new(StringComparer.Ordinal) { "midnight", "daylight", "graphite" };
+
     public async Task<ProfileDto?> GetAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var user = await db.Users
@@ -26,6 +29,7 @@ public sealed class ProfileService(AppDbContext db) : IProfileService
             .Select(u => new
             {
                 u.Email, u.AvatarData, u.AvatarContentType, u.DefaultCalendarView, u.Use24HourClock, u.WeekStart,
+                u.Theme, u.AccentColor, u.HighlightColor,
             })
             .SingleOrDefaultAsync(cancellationToken);
         if (user is null)
@@ -37,7 +41,55 @@ public sealed class ProfileService(AppDbContext db) : IProfileService
             ? $"data:{user.AvatarContentType};base64,{Convert.ToBase64String(bytes)}"
             : null;
 
-        return new ProfileDto(user.Email, dataUrl, user.DefaultCalendarView, user.Use24HourClock, user.WeekStart);
+        return new ProfileDto(user.Email, dataUrl, user.DefaultCalendarView, user.Use24HourClock, user.WeekStart,
+            user.Theme, user.AccentColor, user.HighlightColor);
+    }
+
+    public async Task<bool> SetAppearanceAsync(
+        Guid userId, string? theme, string? accentColor, string? highlightColor, CancellationToken cancellationToken = default)
+    {
+        string? normalizedTheme = null;
+        if (theme is not null)
+        {
+            normalizedTheme = theme.Trim().ToLowerInvariant();
+            if (!KnownThemes.Contains(normalizedTheme))
+            {
+                return false;
+            }
+        }
+        if (!TryNormalizeColor(accentColor, out var accent) || !TryNormalizeColor(highlightColor, out var highlight))
+        {
+            return false;
+        }
+
+        var user = await db.Users.SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null)
+        {
+            return false;
+        }
+        user.Theme = normalizedTheme;
+        user.AccentColor = accent;
+        user.HighlightColor = highlight;
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    /// <summary>Null stays null (the theme's own color); otherwise only "#rrggbb", stored lowercase.
+    /// The value lands in a CSS custom property, so nothing else may get through.</summary>
+    private static bool TryNormalizeColor(string? color, out string? normalized)
+    {
+        normalized = null;
+        if (color is null)
+        {
+            return true;
+        }
+        var c = color.Trim();
+        if (c.Length != 7 || c[0] != '#' || !c.Skip(1).All(Uri.IsHexDigit))
+        {
+            return false;
+        }
+        normalized = c.ToLowerInvariant();
+        return true;
     }
 
     public async Task<bool> SetWeekStartAsync(Guid userId, string? weekStart, CancellationToken cancellationToken = default)

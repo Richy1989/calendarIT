@@ -1482,9 +1482,9 @@ export default function CalendarView({
             draft={quickDraft}
             calendars={calendars}
             color={draftColor(quickDraft)}
-            categoryName={(() => {
+            inheritedCategory={(() => {
               const id = calendars.find((c) => c.id === quickDraft.calendarId)?.defaultCategoryId
-              return id ? categories.find((c) => c.id === id)?.name : undefined
+              return id ? categories.find((c) => c.id === id) : undefined
             })()}
             mobile={isNarrow}
             onChange={setDraft}

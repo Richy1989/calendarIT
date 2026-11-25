@@ -31,7 +31,7 @@ export default function QuickCreate({
   draft,
   calendars,
   color,
-  categoryName,
+  inheritedCategory,
   mobile,
   onChange,
   onSave,
@@ -43,7 +43,7 @@ export default function QuickCreate({
   /** The color the event will show in (its category's, else its calendar's default). */
   color: string
   /** The calendar default it inherits, when it has no category of its own: shown as the empty choice. */
-  categoryName?: string
+  inheritedCategory?: { name: string; color: string }
   mobile: boolean
   onChange: (draft: EventDraft) => void
   onSave: (draft: EventDraft) => void
@@ -308,7 +308,8 @@ export default function QuickCreate({
             <CategoryPicker
               value={draft.categoryId}
               onChange={(categoryId) => set({ categoryId })}
-              emptyLabel={categoryName ? `From calendar · ${categoryName}` : 'No category'}
+              emptyLabel={inheritedCategory ? `From calendar · ${inheritedCategory.name}` : 'No category'}
+              emptyColor={inheritedCategory?.color}
               ariaLabel="Category"
             />
           </div>

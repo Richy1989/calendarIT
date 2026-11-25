@@ -427,6 +427,7 @@ export default function EventModal({
               value={categoryId}
               onChange={setCategoryId}
               emptyLabel={inherited ? `From calendar · ${inherited.name}` : 'No category'}
+              emptyColor={inherited?.color}
               ariaLabel="Category"
             />
           </div>

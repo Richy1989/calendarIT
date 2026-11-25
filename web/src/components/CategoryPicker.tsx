@@ -1,20 +1,26 @@
-import { useState } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createCategory, listCategories } from '../api/categories'
 import { nextCategoryColor } from '../lib/categoryColors'
+import { anchorBelow, Popover, type Anchor } from './Popover'
+import { FormIcon } from './FormIcons'
 
-/** The select's "create one" entry; never a category id. */
-const NEW = '__new__'
+/** A category's color; dashed and empty for "none". */
+function Dot({ color }: { color?: string }) {
+  return <span className={'cat-dot' + (color ? '' : ' cat-dot-none')} style={color ? { background: color } : undefined} aria-hidden="true" />
+}
 
 /**
  * Picks a category — or creates one on the spot ("＋ New category…"), so choosing a calendar's
  * category never means a detour through the Categories page first. Creating one selects it.
+ * A button and a listbox rather than a native <select>, so every choice shows its color.
  */
 export default function CategoryPicker({
   value,
   onChange,
   suggestedName,
   emptyLabel = 'No category',
+  emptyColor,
   id,
   ariaLabel,
   disabled,
@@ -24,6 +30,8 @@ export default function CategoryPicker({
   /** Pre-fills a new category's name (e.g. the calendar's name: "Holidays"). */
   suggestedName?: string
   emptyLabel?: string
+  /** The empty choice's color, when it stands for an inherited category ("From calendar · Work"). */
+  emptyColor?: string
   id?: string
   ariaLabel?: string
   disabled?: boolean
@@ -33,6 +41,9 @@ export default function CategoryPicker({
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [color, setColor] = useState<string | null>(null)
+  const [menu, setMenu] = useState<Anchor | null>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   const create = useMutation({
     mutationFn: () => createCategory(name.trim(), color ?? nextCategoryColor(categories.length)),
@@ -53,30 +64,102 @@ export default function CategoryPicker({
     setCreating(true)
   }
 
+  const closeMenu = () => {
+    setMenu(null)
+    buttonRef.current?.focus()
+  }
+  const choose = (categoryId: string | null) => {
+    setCreating(false)
+    onChange(categoryId)
+    closeMenu()
+  }
+  const openMenu = () => {
+    if (buttonRef.current) setMenu(anchorBelow(buttonRef.current, 4))
+    // Focus the current choice once the list is on screen, so arrows and Enter work at once.
+    requestAnimationFrame(() =>
+      (listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]') ??
+        listRef.current?.querySelector<HTMLElement>('[role="option"]'))?.focus(),
+    )
+  }
+  const onListKey = (e: KeyboardEvent) => {
+    const items = [...(listRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])]
+    const at = items.indexOf(document.activeElement as HTMLElement)
+    const go = (i: number) => items[Math.max(0, Math.min(items.length - 1, i))]?.focus()
+    if (e.key === 'ArrowDown') go(at + 1)
+    else if (e.key === 'ArrowUp') go(at - 1)
+    else if (e.key === 'Home') go(0)
+    else if (e.key === 'End') go(items.length - 1)
+    else if (e.key === 'Tab') closeMenu()
+    else return
+    e.preventDefault()
+  }
+
   return (
     <div className="category-picker">
-      <span className="category-picker-row">
-        <span
-          className={'cat-dot' + (selected ? '' : ' cat-dot-none')}
-          style={selected ? { background: selected.color } : undefined}
-          aria-hidden="true"
-        />
-        <select
-          id={id}
-          aria-label={ariaLabel}
-          disabled={disabled}
-          value={creating ? NEW : (value ?? '')}
-          onChange={(e) => (e.target.value === NEW ? startCreating() : onChange(e.target.value || null))}
-        >
-          <option value="">{emptyLabel}</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-          <option value={NEW}>＋ New category…</option>
-        </select>
-      </span>
+      <button
+        ref={buttonRef}
+        type="button"
+        id={id}
+        className="category-picker-btn"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={!!menu}
+        disabled={disabled}
+        onClick={() => (menu ? closeMenu() : openMenu())}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault()
+            openMenu()
+          }
+        }}
+      >
+        <Dot color={creating ? shownColor : selected ? selected.color : emptyColor} />
+        <span className="category-picker-label">{creating ? 'New category' : (selected?.name ?? emptyLabel)}</span>
+        <FormIcon name="chevron" className="form-icon-sm" />
+      </button>
+
+      {menu && (
+        <Popover anchor={menu} onClose={closeMenu} className="cal-switcher-menu category-menu">
+          <div ref={listRef} role="listbox" aria-label={ariaLabel ?? 'Category'} onKeyDown={onListKey}>
+            <button
+              type="button"
+              role="option"
+              aria-selected={!creating && !selected}
+              className="cal-switcher-item"
+              onClick={() => choose(null)}
+            >
+              <Dot color={emptyColor} />
+              <span className="category-menu-name">{emptyLabel}</span>
+            </button>
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                role="option"
+                aria-selected={!creating && c.id === value}
+                className="cal-switcher-item"
+                onClick={() => choose(c.id)}
+              >
+                <Dot color={c.color} />
+                <span className="category-menu-name">{c.name}</span>
+              </button>
+            ))}
+            <div className="form-menu-sep" />
+            <button
+              type="button"
+              role="option"
+              aria-selected={creating}
+              className="cal-switcher-item cal-switcher-manage"
+              onClick={() => {
+                setMenu(null)
+                startCreating()
+              }}
+            >
+              ＋ New category…
+            </button>
+          </div>
+        </Popover>
+      )}
 
       {creating && (
         <span className="category-picker-new">

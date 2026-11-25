@@ -100,4 +100,15 @@ public sealed class ProfileController(IProfileService profile) : ControllerBase
         var ok = await profile.SetWeekStartAsync(User.GetUserId(), request.WeekStart, cancellationToken);
         return ok ? NoContent() : BadRequest(new { error = "Unknown week start." });
     }
+
+    /// <summary>Remembers the app's look: theme and the two main colors.</summary>
+    [HttpPut("appearance")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SetAppearance(UpdateAppearanceRequest request, CancellationToken cancellationToken)
+    {
+        var ok = await profile.SetAppearanceAsync(
+            User.GetUserId(), request.Theme, request.AccentColor, request.HighlightColor, cancellationToken);
+        return ok ? NoContent() : BadRequest(new { error = "Unknown theme or invalid color." });
+    }
 }

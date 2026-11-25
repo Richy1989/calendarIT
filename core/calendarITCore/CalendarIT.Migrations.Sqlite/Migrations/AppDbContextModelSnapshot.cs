@@ -447,6 +447,10 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AccentColor")
+                        .HasMaxLength(7)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("INTEGER");
 
@@ -470,6 +474,10 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
 
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("HighlightColor")
+                        .HasMaxLength(7)
+                        .HasColumnType("TEXT");
 
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("INTEGER");
@@ -495,6 +503,10 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("SecurityStamp")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Theme")
+                        .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("TwoFactorEnabled")

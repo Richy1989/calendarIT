@@ -2277,6 +2277,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile/appearance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateAppearanceRequest"];
+                    "text/json": components["schemas"]["UpdateAppearanceRequest"];
+                    "application/*+json": components["schemas"]["UpdateAppearanceRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/push/public-key": {
         parameters: {
             query?: never;
@@ -2612,6 +2662,9 @@ export interface components {
             defaultView: null | string;
             use24HourClock: null | boolean;
             weekStart: null | string;
+            theme?: null | string;
+            accentColor?: null | string;
+            highlightColor?: null | string;
         };
         PushSubscriptionInput: {
             endpoint: string;
@@ -2715,6 +2768,11 @@ export interface components {
         };
         SetCalendarRemindersRequest: {
             reminders?: components["schemas"]["ReminderInput"][];
+        };
+        UpdateAppearanceRequest: {
+            theme: null | string;
+            accentColor: null | string;
+            highlightColor: null | string;
         };
         UpdateClockRequest: {
             use24Hour: boolean;

@@ -4,9 +4,9 @@ export default function Logo({ className = 'brand-mark' }: { className?: string 
     <svg className={className} viewBox="0 0 32 32" fill="none" aria-hidden="true">
       <defs>
         <linearGradient id="calit-grad" x1="2" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#7C6BFF" />
-          <stop offset="0.52" stopColor="#5B8DEF" />
-          <stop offset="1" stopColor="#35E0D4" />
+          <stop style={{ stopColor: 'var(--violet)' }} />
+          <stop offset="0.52" style={{ stopColor: 'var(--accent)' }} />
+          <stop offset="1" style={{ stopColor: 'var(--highlight)' }} />
         </linearGradient>
       </defs>
       <rect x="3.5" y="5.5" width="25" height="23" rx="6" stroke="url(#calit-grad)" strokeWidth="2" />

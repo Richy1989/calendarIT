@@ -12,6 +12,7 @@ import { startLocalReminderPoller, stopLocalReminderPoller } from './push/localR
 import CalendarView from './CalendarView'
 import { ClockProvider, useHour12 } from './clock'
 import { WeekStartProvider } from './weekStart'
+import { ThemeProvider } from './theme'
 import { formatTime } from './lib/dates'
 import SearchBar from './SearchBar'
 import ProfileMenu from './ProfileMenu'
@@ -108,12 +109,22 @@ export default function App() {
     return () => stopLocalReminderPoller()
   }, [tokens])
 
+  // The profile's look; undefined while signed out or loading, so the cached one stays.
+  const serverAppearance = profile
+    ? { theme: profile.theme, accentColor: profile.accentColor, highlightColor: profile.highlightColor }
+    : undefined
+
   if (!tokens) {
-    return <AuthGate onAuthenticated={signedIn} />
+    return (
+      <ThemeProvider>
+        <AuthGate onAuthenticated={signedIn} />
+      </ThemeProvider>
+    )
   }
 
   if (settingsSection) {
     return (
+      <ThemeProvider serverAppearance={serverAppearance}>
       <ClockProvider serverUse24Hour={profile?.use24HourClock ?? null}>
         {/* No `?? null` here: undefined means "profile still loading", which the provider has to
             tell apart from a stored null ("follow my locale") so it doesn't clear the cache. */}
@@ -125,10 +136,12 @@ export default function App() {
           />
         </WeekStartProvider>
       </ClockProvider>
+      </ThemeProvider>
     )
   }
 
   return (
+    <ThemeProvider serverAppearance={serverAppearance}>
     <ClockProvider serverUse24Hour={profile?.use24HourClock ?? null}>
     <WeekStartProvider serverWeekStart={profile?.weekStart}>
     <div className="app">
@@ -175,6 +188,7 @@ export default function App() {
     </div>
     </WeekStartProvider>
     </ClockProvider>
+    </ThemeProvider>
   )
 }
 

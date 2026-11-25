@@ -9,6 +9,7 @@ import { deleteMailAccount, getMailAccount, saveMailAccount, testMailAccount } f
 import { changePassword } from './api/password'
 import { useClock } from './clock'
 import { useWeekStart, type WeekStartPref } from './weekStart'
+import { COLOR_PRESETS, THEMES, useAppearance, type ThemeId } from './lib/appearance'
 import {
   disableNotifications, enableNotifications, getNotifyMode, isLocalNotifySupported,
   pushPermission, type NotifyMode,
@@ -449,6 +450,8 @@ function GeneralSection() {
       </div>
     </div>
 
+    <AppearanceCard />
+
     <div className="settings-card">
       <h2>Display</h2>
       <p className="settings-sub">How dates and times are shown across the app — the calendar, agenda, search, and header clock.</p>
@@ -825,6 +828,133 @@ function CalendarRow({
   )
 }
 
+
+/** Theme and the two main colors. Every choice applies at once and follows the user to other devices. */
+function AppearanceCard() {
+  const { appearance, setAppearance } = useAppearance()
+  const theme = THEMES.find((t) => t.id === appearance.theme)!
+  const chooseTheme = (id: ThemeId) => setAppearance({ ...appearance, theme: id })
+  const customized = appearance.accent !== null || appearance.highlight !== null
+
+  return (
+    <div className="settings-card">
+      <h2>Appearance</h2>
+      <p className="settings-sub">Pick a theme, then make it yours with your own main colors. Changes apply right away and follow you to your other devices.</p>
+
+      <div className="theme-grid" role="radiogroup" aria-label="Theme">
+        {THEMES.map((t) => {
+          const accent = appearance.theme === t.id ? (appearance.accent ?? t.accent) : t.accent
+          const highlight = appearance.theme === t.id ? (appearance.highlight ?? t.highlight) : t.highlight
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="radio"
+              aria-checked={appearance.theme === t.id}
+              className={'theme-tile' + (appearance.theme === t.id ? ' active' : '')}
+              onClick={() => chooseTheme(t.id)}
+            >
+              <span className="theme-preview" aria-hidden="true" style={{ background: t.bg, borderColor: t.hairline }}>
+                <span className="theme-preview-bar" style={{ background: t.surface, borderColor: t.hairline }}>
+                  <span style={{ background: `linear-gradient(115deg, ${accent}, ${highlight})` }} />
+                </span>
+                <span className="theme-preview-grid">
+                  <span className="theme-preview-event" style={{ background: `${accent}2e`, borderColor: accent }} />
+                  <span className="theme-preview-event is-short" style={{ background: `${highlight}2e`, borderColor: highlight }} />
+                  <span className="theme-preview-now" style={{ background: highlight }} />
+                  <span className="theme-preview-line" style={{ background: t.textDim }} />
+                  <span className="theme-preview-line is-short" style={{ background: t.textDim }} />
+                </span>
+              </span>
+              <span className="theme-name">{t.name}</span>
+              <span className="theme-desc">{t.description}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      <ColorChoice
+        label="Accent"
+        hint="Buttons, links, focus and today."
+        value={appearance.accent}
+        themeColor={theme.accent}
+        onChange={(accent) => setAppearance({ ...appearance, accent })}
+      />
+      <ColorChoice
+        label="Highlight"
+        hint="The current-time line, selections and the far end of the gradient."
+        value={appearance.highlight}
+        themeColor={theme.highlight}
+        onChange={(highlight) => setAppearance({ ...appearance, highlight })}
+      />
+
+      {customized && (
+        <button type="button" className="btn-ghost theme-reset" onClick={() => setAppearance({ ...appearance, accent: null, highlight: null })}>
+          Use {theme.name}&rsquo;s own colors
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** One main color: the theme's own, a preset, or any color from the picker. */
+function ColorChoice({
+  label,
+  hint,
+  value,
+  themeColor,
+  onChange,
+}: {
+  label: string
+  hint: string
+  /** The user's color, or null for the theme's own. */
+  value: string | null
+  themeColor: string
+  onChange: (color: string | null) => void
+}) {
+  const current = value ?? themeColor
+  const custom = value !== null && !COLOR_PRESETS.includes(value)
+  return (
+    <div className="color-choice">
+      <div className="color-choice-head">
+        <span className="color-choice-label">{label}</span>
+        <span className="settings-hint">{hint}</span>
+      </div>
+      <div className="swatches" role="radiogroup" aria-label={`${label} color`}>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value === null}
+          className={'swatch swatch-theme' + (value === null ? ' active' : '')}
+          style={{ ['--sw']: themeColor } as React.CSSProperties}
+          title="The theme's own"
+          onClick={() => onChange(null)}
+        >
+          <span className="sr-only">The theme&rsquo;s own</span>
+        </button>
+        <span className="swatch-sep" aria-hidden="true" />
+        {COLOR_PRESETS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            role="radio"
+            aria-checked={value === c}
+            className={'swatch' + (value === c ? ' active' : '')}
+            style={{ ['--sw']: c } as React.CSSProperties}
+            title={c}
+            onClick={() => onChange(c)}
+          >
+            <span className="sr-only">{c}</span>
+          </button>
+        ))}
+        <label className={'swatch swatch-custom' + (custom ? ' active' : '')} style={{ ['--sw']: current } as React.CSSProperties} title="Any color">
+          <span className="sr-only">Any {label.toLowerCase()} color</span>
+          <input type="color" value={current} onChange={(e) => onChange(e.target.value.toLowerCase())} />
+        </label>
+      </div>
+    </div>
+  )
+}
 
 /** A calendar's default reminders: chips to adjust or remove, and one to add. */
 function DefaultRemindersEditor({ calendar, onChange }: { calendar: CalendarDto; onChange: (r: ReminderDefault[]) => void }) {

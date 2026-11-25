@@ -42,6 +42,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             entity.Property(u => u.AvatarContentType).HasMaxLength(100);
             entity.Property(u => u.WeekStart).HasMaxLength(16);
+            entity.Property(u => u.Theme).HasMaxLength(16);
+            entity.Property(u => u.AccentColor).HasMaxLength(7);
+            entity.Property(u => u.HighlightColor).HasMaxLength(7);
         });
 
         builder.Entity<RefreshToken>(entity =>

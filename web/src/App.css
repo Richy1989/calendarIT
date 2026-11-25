@@ -17,7 +17,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.8rem 1.5rem;
-  background: rgba(10, 13, 20, 0.62);
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
   backdrop-filter: blur(14px) saturate(140%);
   -webkit-backdrop-filter: blur(14px) saturate(140%);
   border-bottom: 1px solid var(--hairline);
@@ -104,7 +104,7 @@
 
 .search-hit.is-active {
   background: var(--surface-3);
-  box-shadow: inset 2px 0 0 var(--cyan); /* clear keyboard-navigation marker */
+  box-shadow: inset 2px 0 0 var(--highlight); /* clear keyboard-navigation marker */
 }
 
 .search-hit-dot {
@@ -180,7 +180,7 @@
   display: grid;
   place-items: center;
   background: var(--grad);
-  color: #081018;
+  color: var(--on-accent);
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 0.95rem;
@@ -202,10 +202,10 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  background: linear-gradient(180deg, rgba(26, 32, 47, 0.98), rgba(18, 22, 33, 0.98));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 98%, transparent), color-mix(in srgb, var(--surface) 98%, transparent));
   border: 1px solid var(--hairline-strong);
   border-radius: 12px;
-  box-shadow: 0 20px 50px -18px rgba(0, 0, 0, 0.85);
+  box-shadow: 0 20px 50px -18px color-mix(in srgb, var(--shadow-ink) 85%, transparent);
   animation: pop 0.13s ease both;
 }
 
@@ -336,7 +336,7 @@
 .settings-nav-item.active {
   background: var(--grad-soft);
   color: var(--text);
-  box-shadow: inset 0 0 0 1px rgba(124, 107, 255, 0.3);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--violet) 30%, transparent);
 }
 
 .settings-nav-item.active svg {
@@ -350,8 +350,8 @@
 }
 
 .settings-signout:hover {
-  color: #ffd9d9;
-  background: rgba(255, 107, 107, 0.1);
+  color: var(--danger-ink);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 .settings-content {
@@ -422,7 +422,7 @@
   border-radius: 50%;
   border: 3px solid var(--surface);
   background: var(--violet);
-  color: #fff;
+  color: var(--on-accent);
   transition: filter 0.15s, transform 0.12s;
 }
 
@@ -587,7 +587,7 @@
 .header-actions .notice {
   font-family: var(--font-mono);
   font-size: 0.72rem;
-  color: var(--cyan);
+  color: var(--highlight);
   margin-right: 0.25rem;
 }
 
@@ -611,7 +611,7 @@
   width: 32px;
   height: 32px;
   flex: none;
-  filter: drop-shadow(0 6px 16px rgba(124, 107, 255, 0.45));
+  filter: drop-shadow(0 6px 16px color-mix(in srgb, var(--violet) 45%, transparent));
 }
 
 .brand-word {
@@ -646,8 +646,8 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--cyan);
-  box-shadow: 0 0 8px var(--cyan);
+  background: var(--highlight);
+  box-shadow: 0 0 8px var(--highlight);
 }
 
 /* The live clock next to the date: brighter than the faint date, tabular so the
@@ -671,18 +671,18 @@
   padding: 0.82rem 1rem;
   font-weight: 600;
   font-size: 0.95rem;
-  color: #071018;
+  color: var(--on-accent);
   background: var(--grad);
   background-size: 160% 160%;
   background-position: left center;
-  box-shadow: 0 12px 32px -12px rgba(53, 224, 212, 0.5);
+  box-shadow: 0 12px 32px -12px color-mix(in srgb, var(--highlight) 50%, transparent);
   transition: transform 0.12s ease, box-shadow 0.2s ease, background-position 0.45s ease;
 }
 
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-1px);
   background-position: right center;
-  box-shadow: 0 16px 40px -12px rgba(124, 107, 255, 0.55);
+  box-shadow: 0 16px 40px -12px color-mix(in srgb, var(--violet) 55%, transparent);
 }
 
 .btn-primary:disabled {
@@ -722,7 +722,7 @@
   flex-direction: column;
   gap: 1.15rem;
   padding: 2.3rem 2.1rem 2.1rem;
-  background: linear-gradient(180deg, rgba(23, 29, 43, 0.92), rgba(16, 20, 30, 0.92));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 92%, transparent), color-mix(in srgb, var(--surface) 92%, transparent));
   border: 1px solid var(--hairline);
   border-radius: var(--r-xl);
   box-shadow: var(--shadow-glow);
@@ -786,7 +786,7 @@
 .segmented button.active {
   color: var(--text);
   background: var(--grad-soft);
-  box-shadow: inset 0 0 0 1px rgba(124, 107, 255, 0.35);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--violet) 35%, transparent);
 }
 
 /* Fields */
@@ -881,16 +881,16 @@
 .field-error {
   margin: 0.1rem 0 0;
   font-size: 0.75rem;
-  color: #ff9d9d;
+  color: var(--danger-ink);
 }
 
 input[aria-invalid='true'] {
-  border-color: rgba(255, 107, 107, 0.55);
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
 }
 
 input[aria-invalid='true']:focus-visible {
-  border-color: rgba(255, 107, 107, 0.8);
-  box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.18);
+  border-color: color-mix(in srgb, var(--danger) 80%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
 }
 
 /* --- Date/time field (custom picker trigger) -----------------------------
@@ -958,7 +958,7 @@ input[aria-invalid='true']:focus-visible {
 .dtf-pop {
   width: 268px;
   padding: 0.7rem;
-  background: linear-gradient(180deg, rgba(23, 29, 43, 0.99), rgba(16, 20, 30, 0.99));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 99%, transparent), color-mix(in srgb, var(--surface) 99%, transparent));
   border: 1px solid var(--hairline-strong);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-card);
@@ -1055,7 +1055,7 @@ input[aria-invalid='true']:focus-visible {
 
 .mcal-day.is-selected {
   background: var(--grad);
-  color: #fff;
+  color: var(--on-accent);
   border-color: transparent;
 }
 
@@ -1186,8 +1186,8 @@ input[aria-invalid='true']:focus-visible {
 }
 
 .reminder-remove:hover {
-  color: #ffd9d9;
-  background: rgba(255, 107, 107, 0.14);
+  color: var(--danger-ink);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
 /* Guests: email chips + inline input, styled like a themed field. */
@@ -1222,11 +1222,11 @@ input[aria-invalid='true']:focus-visible {
 }
 
 .guest-chip-status.ok {
-  color: var(--cyan);
+  color: var(--highlight);
 }
 
 .guest-chip-status.no {
-  color: #ff8a8a;
+  color: var(--danger-ink);
 }
 
 .guest-chip-remove {
@@ -1242,8 +1242,8 @@ input[aria-invalid='true']:focus-visible {
 }
 
 .guest-chip-remove:hover {
-  color: #ffd9d9;
-  background: rgba(255, 107, 107, 0.14);
+  color: var(--danger-ink);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
 .reminder-add {
@@ -1347,9 +1347,9 @@ input[aria-invalid='true']:focus-visible {
   margin: 0;
   padding: 0.6rem 0.75rem;
   font-size: 0.82rem;
-  color: #ffd9d9;
-  background: rgba(255, 107, 107, 0.1);
-  border: 1px solid rgba(255, 107, 107, 0.3);
+  color: var(--danger-ink);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
   border-radius: 9px;
 }
 
@@ -1365,7 +1365,7 @@ input[aria-invalid='true']:focus-visible {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, rgba(18, 23, 35, 0.72), rgba(13, 17, 26, 0.72));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 72%, transparent), color-mix(in srgb, var(--bg-2) 72%, transparent));
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
   padding: 1.1rem 1.2rem 1.2rem;
@@ -1385,10 +1385,10 @@ input[aria-invalid='true']:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  background: linear-gradient(180deg, rgba(26, 32, 47, 0.98), rgba(18, 22, 33, 0.98));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 98%, transparent), color-mix(in srgb, var(--surface) 98%, transparent));
   border: 1px solid var(--hairline-strong);
   border-radius: 12px;
-  box-shadow: 0 20px 50px -18px rgba(0, 0, 0, 0.85);
+  box-shadow: 0 20px 50px -18px color-mix(in srgb, var(--shadow-ink) 85%, transparent);
   animation: pop 0.13s ease both;
   z-index: 45;
 }
@@ -1472,7 +1472,7 @@ input[aria-invalid='true']:focus-visible {
   height: 10px;
   border-radius: 50%;
   flex: none;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--shadow-ink) 30%, transparent);
 }
 
 .cat-dot-none {
@@ -1494,16 +1494,16 @@ input[aria-invalid='true']:focus-visible {
 }
 
 .cal-check.on {
-  background: rgba(53, 224, 212, 0.18);
-  border-color: var(--cyan);
+  background: color-mix(in srgb, var(--highlight) 18%, transparent);
+  border-color: var(--highlight);
 }
 
 .cal-check.on::after {
   content: '';
   position: absolute;
   inset: 3px 2px 4px;
-  border-left: 2px solid var(--cyan);
-  border-bottom: 2px solid var(--cyan);
+  border-left: 2px solid var(--highlight);
+  border-bottom: 2px solid var(--highlight);
   transform: rotate(-48deg);
 }
 
@@ -1542,7 +1542,7 @@ input[aria-invalid='true']:focus-visible {
   place-items: center;
   border-radius: 10px;
   background: var(--grad);
-  color: #081018;
+  color: var(--on-accent);
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 0.95rem;
@@ -1585,7 +1585,7 @@ input[aria-invalid='true']:focus-visible {
 }
 
 .cal-item-rename:focus {
-  border-bottom-color: var(--cyan);
+  border-bottom-color: var(--highlight);
 }
 
 .cal-item-meta {
@@ -1625,8 +1625,8 @@ input[aria-invalid='true']:focus-visible {
 }
 
 .cal-item-action.danger:hover:not(:disabled) {
-  color: #ffd9d9;
-  background: rgba(255, 107, 107, 0.14);
+  color: var(--danger-ink);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
 .cal-item-action:disabled {
@@ -1726,7 +1726,7 @@ input[aria-invalid='true']:focus-visible {
 .mail-notice-ok {
   margin: 0.8rem 0 0;
   font-size: 0.8rem;
-  color: var(--cyan);
+  color: var(--highlight);
 }
 
 @media (max-width: 560px) {
@@ -1809,16 +1809,16 @@ input[aria-invalid='true']:focus-visible {
   background: var(--grad);
   background-size: 150% 150%;
   border: none;
-  color: #071018;
+  color: var(--on-accent);
   font-weight: 600;
   letter-spacing: 0.01em;
-  box-shadow: 0 8px 22px -10px rgba(53, 224, 212, 0.55);
+  box-shadow: 0 8px 22px -10px color-mix(in srgb, var(--highlight) 55%, transparent);
 }
 
 .calendar-shell .fc .fc-addEvent-button:hover {
   background: var(--grad);
   background-position: right center;
-  color: #071018;
+  color: var(--on-accent);
   filter: brightness(1.05);
 }
 
@@ -1830,7 +1830,7 @@ input[aria-invalid='true']:focus-visible {
   display: grid;
   place-items: center;
   padding: 1.25rem;
-  background: rgba(6, 8, 13, 0.62);
+  background: color-mix(in srgb, var(--overlay-ink) 62%, transparent);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   animation: fade 0.18s ease both;
@@ -1844,7 +1844,7 @@ input[aria-invalid='true']:focus-visible {
   flex-direction: column;
   gap: 1.05rem;
   padding: 1.5rem 1.5rem 1.35rem;
-  background: linear-gradient(180deg, rgba(23, 29, 43, 0.98), rgba(16, 20, 30, 0.98));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 98%, transparent), color-mix(in srgb, var(--surface) 98%, transparent));
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-glow);
@@ -2034,7 +2034,7 @@ input[aria-invalid='true']:focus-visible {
   height: 12px;
   border-radius: 50%;
   background: var(--sw);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--shadow-ink) 30%, transparent);
   flex: none;
 }
 
@@ -2062,7 +2062,7 @@ input[aria-invalid='true']:focus-visible {
   height: 16px;
   border-radius: 50%;
   background: var(--sw);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--shadow-ink) 30%, transparent);
 }
 
 .category-dot-pick input {
@@ -2086,9 +2086,9 @@ input[aria-invalid='true']:focus-visible {
 }
 
 .btn-danger {
-  background: rgba(255, 107, 107, 0.1);
-  border: 1px solid rgba(255, 107, 107, 0.32);
-  color: #ffb0b0;
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent);
+  color: var(--danger-ink);
   border-radius: 10px;
   padding: 0.55rem 0.85rem;
   font-weight: 500;
@@ -2097,8 +2097,8 @@ input[aria-invalid='true']:focus-visible {
 }
 
 .btn-danger:hover {
-  background: rgba(255, 107, 107, 0.18);
-  color: #ffd9d9;
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger-ink);
 }
 
 /* --- Right-click context menu ------------------------------------------- */
@@ -2117,10 +2117,10 @@ input[aria-invalid='true']:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  background: linear-gradient(180deg, rgba(26, 32, 47, 0.98), rgba(18, 22, 33, 0.98));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 98%, transparent), color-mix(in srgb, var(--surface) 98%, transparent));
   border: 1px solid var(--hairline-strong);
   border-radius: 12px;
-  box-shadow: 0 20px 50px -18px rgba(0, 0, 0, 0.85);
+  box-shadow: 0 20px 50px -18px color-mix(in srgb, var(--shadow-ink) 85%, transparent);
   animation: pop 0.13s ease both;
 }
 
@@ -2145,8 +2145,8 @@ input[aria-invalid='true']:focus-visible {
 }
 
 .ctx-item.danger:hover {
-  background: rgba(255, 107, 107, 0.14);
-  color: #ffd9d9;
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger-ink);
 }
 
 /* Year quick-jump popover (opened from the calendar toolbar title). */
@@ -2154,10 +2154,10 @@ input[aria-invalid='true']:focus-visible {
   position: fixed;
   transform: translateX(-50%);
   padding: 8px;
-  background: linear-gradient(180deg, rgba(26, 32, 47, 0.98), rgba(18, 22, 33, 0.98));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 98%, transparent), color-mix(in srgb, var(--surface) 98%, transparent));
   border: 1px solid var(--hairline-strong);
   border-radius: 12px;
-  box-shadow: 0 20px 50px -18px rgba(0, 0, 0, 0.85);
+  box-shadow: 0 20px 50px -18px color-mix(in srgb, var(--shadow-ink) 85%, transparent);
   animation: pop 0.13s ease both;
 }
 
@@ -2213,7 +2213,7 @@ input[aria-invalid='true']:focus-visible {
 }
 
 .year-pop-grid button.active {
-  background: rgba(53, 224, 212, 0.14);
+  background: color-mix(in srgb, var(--highlight) 14%, transparent);
   color: var(--text);
 }
 
@@ -2491,20 +2491,61 @@ input[aria-invalid='true']:focus-visible {
   gap: 0.4rem;
   min-width: 0;
 }
-.category-picker-row {
-  display: flex;
+.category-picker-btn {
+  display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-}
-.category-picker select {
   min-width: 0;
   max-width: 16rem;
   padding: 0.3rem 0.5rem;
+  font: inherit;
   font-size: 0.82rem;
   color: var(--text);
   background: var(--bg-2);
   border: 1px solid var(--hairline);
   border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.category-picker-btn:hover:not(:disabled) {
+  border-color: var(--hairline-strong);
+}
+.category-picker-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.category-picker-label,
+.category-menu-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.category-picker-btn .form-icon-sm {
+  flex: none;
+  color: var(--text-faint);
+}
+/* The category list: the switcher menu's look, scrolling when there are many. */
+.category-menu {
+  max-height: min(22rem, 60vh);
+  max-width: 18rem;
+  overflow-y: auto;
+}
+.category-menu [role='listbox'] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.category-menu [aria-selected='true'] {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.category-menu .cal-switcher-item:focus-visible {
+  outline: none;
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--ring);
 }
 .category-picker-new {
   display: flex;
@@ -2690,7 +2731,7 @@ input[aria-invalid='true']:focus-visible {
   align-items: flex-start;
   gap: 0.45rem;
 }
-.form-where .category-picker select {
+.form-where .category-picker-btn {
   padding: 0.4rem 0.55rem;
   font-size: 0.86rem;
   background: var(--surface-2);
@@ -2780,19 +2821,19 @@ input[aria-invalid='true']:focus-visible {
   cursor: pointer;
 }
 .reminder-chip-remove:hover {
-  color: #ffd9d9;
-  background: rgba(255, 107, 107, 0.14);
+  color: var(--danger-ink);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 .form-link {
   padding: 0.3rem 0.2rem;
   background: none;
   border: 0;
-  color: #9db0ff;
+  color: var(--link);
   font-size: 0.84rem;
   cursor: pointer;
 }
 .form-link:hover {
-  color: #c3cfff;
+  color: var(--link-hover);
 }
 
 .form-kbd {
@@ -2817,7 +2858,7 @@ input[aria-invalid='true']:focus-visible {
   color: var(--text-dim);
 }
 .form-menu-btn:hover {
-  color: #c3cfff;
+  color: var(--link-hover);
 }
 .qc-repeat {
   position: relative;
@@ -2865,10 +2906,10 @@ input[aria-invalid='true']:focus-visible {
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
   overflow-y: auto;
-  background: linear-gradient(180deg, rgba(23, 29, 43, 0.99), rgba(16, 20, 30, 0.99));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 99%, transparent), color-mix(in srgb, var(--surface) 99%, transparent));
   border: 1px solid var(--hairline-strong);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-card), 0 0 0 1px rgba(124, 107, 255, 0.1);
+  box-shadow: var(--shadow-card), 0 0 0 1px color-mix(in srgb, var(--violet) 10%, transparent);
   animation: rise 0.18s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 .qc-grip {
@@ -2925,7 +2966,7 @@ input[aria-invalid='true']:focus-visible {
   position: fixed;
   inset: 0;
   z-index: 55;
-  background: rgba(6, 8, 13, 0.55);
+  background: color-mix(in srgb, var(--overlay-ink) 55%, transparent);
   animation: fade 0.18s ease both;
 }
 .quick-create.is-sheet {
@@ -2984,4 +3025,187 @@ input[aria-invalid='true']:focus-visible {
 .form-bare input:focus-visible {
   border-radius: 0;
   box-shadow: inset 0 -1px 0 var(--accent);
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Settings → Appearance: theme tiles and color swatches. */
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1.6rem;
+}
+@media (max-width: 640px) {
+  .theme-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.theme-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  padding: 0.6rem 0.6rem 0.75rem;
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  color: var(--text);
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.theme-tile:hover {
+  border-color: var(--hairline-strong);
+}
+.theme-tile.active {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.theme-preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 86px;
+  margin-bottom: 0.45rem;
+  overflow: hidden;
+  border: 1px solid;
+  border-radius: var(--r-sm);
+}
+.theme-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 16px;
+  padding: 0 6px;
+  border-bottom: 1px solid;
+}
+.theme-preview-bar > span {
+  width: 26px;
+  height: 7px;
+  border-radius: 4px;
+}
+.theme-preview-grid {
+  position: relative;
+  flex: 1;
+}
+.theme-preview-event {
+  position: absolute;
+  left: 10%;
+  top: 10px;
+  width: 34%;
+  height: 22px;
+  border-left: 3px solid;
+  border-radius: 3px;
+}
+.theme-preview-event.is-short {
+  left: 52%;
+  top: 30px;
+  height: 16px;
+}
+.theme-preview-now {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 40px;
+  height: 2px;
+  border-radius: 1px;
+}
+.theme-preview-line {
+  position: absolute;
+  left: 10%;
+  bottom: 9px;
+  width: 50%;
+  height: 4px;
+  border-radius: 2px;
+  opacity: 0.7;
+}
+.theme-preview-line.is-short {
+  bottom: 17px;
+  width: 30%;
+}
+.theme-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.theme-desc {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.color-choice {
+  margin-bottom: 1.2rem;
+}
+.color-choice-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+}
+.color-choice-label {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.color-choice-head .settings-hint {
+  margin: 0;
+}
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+.swatch {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: var(--sw);
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--hairline-strong);
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.15s;
+}
+.swatch:hover {
+  transform: scale(1.08);
+}
+.swatch.active {
+  box-shadow: 0 0 0 2px var(--text);
+}
+/* The theme's own color: half the swatch shows it, with a slash for "default". */
+.swatch-theme {
+  background: linear-gradient(135deg, var(--sw) 50%, transparent 50%), var(--bg-2);
+}
+.swatch-sep {
+  width: 1px;
+  height: 22px;
+  margin: 0 0.15rem;
+  background: var(--hairline);
+}
+/* Any color: a rainbow ring around the current one, opening the native picker. */
+.swatch-custom {
+  display: grid;
+  place-items: center;
+  background: conic-gradient(#ef4444, #eab308, #22c55e, #14b8a6, #3b82f6, #8b5cf6, #ec4899, #ef4444);
+}
+.swatch-custom::after {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--sw);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.swatch-custom input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.theme-reset {
+  margin-top: 0.2rem;
 }

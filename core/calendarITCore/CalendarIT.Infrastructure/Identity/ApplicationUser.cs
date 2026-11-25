@@ -34,4 +34,13 @@ public sealed class ApplicationUser : IdentityUser<Guid>
     /// third day later is a validation change instead of a migration.
     /// </summary>
     public string? WeekStart { get; set; }
+
+    /// <summary>The app's look: "midnight", "daylight" or "graphite". Null = the default (midnight).</summary>
+    public string? Theme { get; set; }
+
+    /// <summary>The user's accent color, "#rrggbb", over the theme's. Null = the theme's own.</summary>
+    public string? AccentColor { get; set; }
+
+    /// <summary>The user's highlight color, "#rrggbb", over the theme's. Null = the theme's own.</summary>
+    public string? HighlightColor { get; set; }
 }

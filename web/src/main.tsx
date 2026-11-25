@@ -6,6 +6,10 @@ import '@fontsource-variable/inter'
 import '@fontsource-variable/jetbrains-mono'
 import './index.css'
 import App from './App.tsx'
+import { applyAppearance, getCachedAppearance } from './lib/appearance'
+
+// Before the first render, so the page never paints in the wrong theme.
+applyAppearance(getCachedAppearance())
 
 const queryClient = new QueryClient({
   defaultOptions: {

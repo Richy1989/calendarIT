@@ -96,4 +96,56 @@ public sealed class ProfileServiceTests : IDisposable
         var dto = await _profile.GetAsync(_userId);
         Assert.Null(dto!.WeekStart);
     }
+
+    [Fact]
+    public async Task Appearance_IsTheDefaultForANewAccount()
+    {
+        var dto = await _profile.GetAsync(_userId);
+
+        Assert.Null(dto!.Theme);
+        Assert.Null(dto.AccentColor);
+        Assert.Null(dto.HighlightColor);
+    }
+
+    [Fact]
+    public async Task Appearance_IsStoredNormalized()
+    {
+        Assert.True(await _profile.SetAppearanceAsync(_userId, " Daylight ", "#4A63E0", " #0b8f86 "));
+
+        var dto = await _profile.GetAsync(_userId);
+        Assert.Equal("daylight", dto!.Theme);
+        Assert.Equal("#4a63e0", dto.AccentColor);
+        Assert.Equal("#0b8f86", dto.HighlightColor);
+    }
+
+    [Fact]
+    public async Task Appearance_CanGoBackToTheDefaults()
+    {
+        await _profile.SetAppearanceAsync(_userId, "graphite", "#112233", "#445566");
+
+        Assert.True(await _profile.SetAppearanceAsync(_userId, null, null, null));
+
+        var dto = await _profile.GetAsync(_userId);
+        Assert.Null(dto!.Theme);
+        Assert.Null(dto.AccentColor);
+        Assert.Null(dto.HighlightColor);
+    }
+
+    [Theory]
+    [InlineData("neon", null, null)]
+    [InlineData("midnight", "red", null)]
+    [InlineData("midnight", "#12345", null)]
+    [InlineData("midnight", null, "#12345g")]
+    [InlineData("midnight", "#123456;background:url(x)", null)] // it ends up in a CSS property
+    [InlineData("midnight", "", null)]
+    public async Task Appearance_RejectsAnythingInvalidWithoutWriting(string? theme, string? accent, string? highlight)
+    {
+        await _profile.SetAppearanceAsync(_userId, "graphite", "#112233", null);
+
+        Assert.False(await _profile.SetAppearanceAsync(_userId, theme, accent, highlight));
+
+        var dto = await _profile.GetAsync(_userId);
+        Assert.Equal("graphite", dto!.Theme);
+        Assert.Equal("#112233", dto.AccentColor);
+    }
 }

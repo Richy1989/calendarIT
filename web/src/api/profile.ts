@@ -70,3 +70,17 @@ export async function saveClockFormat(use24Hour: boolean): Promise<void> {
   })
   if (!res.ok) throw new Error('Failed to save clock format')
 }
+
+/** Remembers the app's look server-side: theme and the two main colors (null = theme's own). */
+export async function saveAppearance(a: { theme: string; accent: string | null; highlight: string | null }): Promise<void> {
+  const token = await ensureAccessToken()
+  const res = await fetch('/api/profile/appearance', {
+    method: 'PUT',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ theme: a.theme === 'midnight' ? null : a.theme, accentColor: a.accent, highlightColor: a.highlight }),
+  })
+  if (!res.ok) throw new Error('Failed to save appearance')
+}

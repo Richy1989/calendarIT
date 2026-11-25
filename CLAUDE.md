@@ -200,6 +200,12 @@ on phones) on a draft `CalendarView` owns and draws live as a `.fc-draft-ghost` 
 options", editing, and the list view use `EventModal`. Both share `lib/eventForm.ts` (repeat
 presets, reminder wording) and take a new timed event's reminders from its calendar
 (`Calendar.DefaultReminders`, set in Settings → Calendars; all-day events start with none).
+**Themes**: `index.css` defines Midnight (`:root`, default), Daylight and Graphite
+(`:root[data-theme=…]`); every color in the CSS comes from those tokens (`color-mix()` for
+alphas, never a hard-coded rgba/hex). The user's accent/highlight override `--accent` /
+`--highlight` on `<html>`, and the gradient, links and ring derive from them, so set those two,
+not their derivatives. `lib/appearance.ts` applies it before the first render (`main.tsx`);
+`theme.tsx` syncs it with the profile (`Theme`/`AccentColor`/`HighlightColor`).
 Cross-cutting prefs (clock 12/24h, week-start) are React contexts that seed from
 localStorage for first paint and reconcile to the server profile.
 

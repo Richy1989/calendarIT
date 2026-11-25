@@ -25,4 +25,11 @@ public interface IProfileService
     /// choice the user already made.
     /// </summary>
     Task<bool> SetWeekStartAsync(Guid userId, string? weekStart, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Remembers the app's look: a known theme (or null for the default) and two "#rrggbb" colors
+    /// (or null for the theme's own). Returns false, writing nothing, if any part is invalid.
+    /// </summary>
+    Task<bool> SetAppearanceAsync(
+        Guid userId, string? theme, string? accentColor, string? highlightColor, CancellationToken cancellationToken = default);
 }

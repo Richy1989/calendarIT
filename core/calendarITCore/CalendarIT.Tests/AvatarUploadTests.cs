@@ -30,6 +30,7 @@ public sealed class AvatarUploadTests
         public Task<bool> SetDefaultViewAsync(Guid userId, string view, CancellationToken cancellationToken = default) => Task.FromResult(true);
         public Task SetClockFormatAsync(Guid userId, bool use24Hour, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<bool> SetWeekStartAsync(Guid userId, string? weekStart, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> SetAppearanceAsync(Guid userId, string? theme, string? accentColor, string? highlightColor, CancellationToken cancellationToken = default) => Task.FromResult(true);
     }
 
     private static async Task<(int Status, RecordingProfileService Service)> UploadAsync(string contentType, byte[] body)

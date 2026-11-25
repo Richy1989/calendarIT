@@ -5,10 +5,12 @@ namespace CalendarIT.Application.Profile;
 /// <paramref name="DefaultView"/> is the remembered calendar view (or null).
 /// <paramref name="Use24HourClock"/> is the time-format preference (null = use locale default).
 /// <paramref name="WeekStart"/> is the day grids start on, "sunday" or "monday"
-/// (null = use locale default).
+/// (null = use locale default). <paramref name="Theme"/>, <paramref name="AccentColor"/> and
+/// <paramref name="HighlightColor"/> are the app's look (null = the default theme, its own colors).
 /// </summary>
 public sealed record ProfileDto(
-    string? Email, string? AvatarDataUrl, string? DefaultView, bool? Use24HourClock, string? WeekStart);
+    string? Email, string? AvatarDataUrl, string? DefaultView, bool? Use24HourClock, string? WeekStart,
+    string? Theme = null, string? AccentColor = null, string? HighlightColor = null);
 
 /// <summary>Payload for remembering the user's chosen calendar view.</summary>
 public sealed record UpdateViewRequest(string View);
@@ -21,3 +23,9 @@ public sealed record UpdateClockRequest(bool Use24Hour);
 /// the browser locale. The setting has three states, so null has to be expressible.
 /// </summary>
 public sealed record UpdateWeekStartRequest(string? WeekStart);
+
+/// <summary>
+/// Payload for the app's look: a theme ("midnight", "daylight", "graphite"; null = default) and
+/// the two main colors as "#rrggbb" (null = the theme's own). Saved as a whole.
+/// </summary>
+public sealed record UpdateAppearanceRequest(string? Theme, string? AccentColor, string? HighlightColor);
