@@ -22,7 +22,9 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+// A plain Application: the real one reschedules reminders on start, in the background, writing the
+// same prefs and alarms as the test (that race made this test fail now and then on CI).
+@Config(sdk = [35], application = android.app.Application::class)
 class ReminderSchedulerTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private lateinit var db: AppDatabase
