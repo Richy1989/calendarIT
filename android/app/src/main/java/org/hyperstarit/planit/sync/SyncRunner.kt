@@ -19,6 +19,8 @@ class SyncRunner(
     private val db: PlanItDatabase,
     private val accounts: Accounts,
     private val planIt: PlanItSync,
+    /** What changed may move reminders: they are set again after every sync. */
+    private val afterSync: suspend () -> Unit = {},
 ) {
     private val mutex = Mutex()
     private var devicesRegistered = false
@@ -51,6 +53,7 @@ class SyncRunner(
             }
         }
         devicesRegistered = true
+        runCatching { afterSync() }
         allDone
     }
 }

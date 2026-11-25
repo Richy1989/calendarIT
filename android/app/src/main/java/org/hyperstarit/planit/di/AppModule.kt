@@ -16,6 +16,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import org.hyperstarit.planit.BuildConfig
@@ -102,8 +103,23 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun localChanges(db: PlanItDatabase, clock: Clock, scheduler: SyncScheduler) =
-        LocalChanges(db, clock, onQueued = scheduler::requestNow)
+    fun reminderPrefs(@ApplicationContext context: Context) = org.hyperstarit.planit.reminders.ReminderPrefs(context)
+
+    @Provides
+    @Singleton
+    fun reminderScheduler(@ApplicationContext context: Context, db: PlanItDatabase, prefs: org.hyperstarit.planit.reminders.ReminderPrefs, clock: Clock) =
+        org.hyperstarit.planit.reminders.ReminderScheduler(context, db, prefs, clock)
+
+    /** A change is shown at once, queued for the server, and its reminders set at once (even offline). */
+    @Provides
+    @Singleton
+    fun localChanges(
+        db: PlanItDatabase, clock: Clock, scheduler: SyncScheduler,
+        reminders: org.hyperstarit.planit.reminders.ReminderScheduler, scope: CoroutineScope,
+    ) = LocalChanges(db, clock, onQueued = {
+        scheduler.requestNow()
+        scope.launch { reminders.reschedule() }
+    })
 
     @Provides
     @Singleton
@@ -112,5 +128,6 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun runner(db: PlanItDatabase, accounts: Accounts, planIt: PlanItSync) = SyncRunner(db, accounts, planIt)
+    fun runner(db: PlanItDatabase, accounts: Accounts, planIt: PlanItSync, reminders: org.hyperstarit.planit.reminders.ReminderScheduler) =
+        SyncRunner(db, accounts, planIt, afterSync = { reminders.reschedule() })
 }

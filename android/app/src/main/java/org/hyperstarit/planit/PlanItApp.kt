@@ -16,13 +16,16 @@ class PlanItApp : Application(), Configuration.Provider {
     @Inject lateinit var accounts: Accounts
     @Inject lateinit var scheduler: SyncScheduler
     @Inject lateinit var scope: CoroutineScope
+    @Inject lateinit var reminders: org.hyperstarit.planit.reminders.ReminderScheduler
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder().setWorkerFactory(workerFactory).build()
 
     override fun onCreate() {
         super.onCreate()
+        org.hyperstarit.planit.reminders.ReminderReceiver.createChannel(this)
         scope.launch {
+            reminders.reschedule()
             accounts.adoptLegacySession()
             scheduler.schedulePeriodic()
             scheduler.requestNow()

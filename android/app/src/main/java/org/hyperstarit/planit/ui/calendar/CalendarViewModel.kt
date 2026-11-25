@@ -41,7 +41,21 @@ class CalendarViewModel @Inject constructor(
     private val runner: SyncRunner,
     private val changes: org.hyperstarit.planit.sync.LocalChanges,
     private val appScope: kotlinx.coroutines.CoroutineScope,
+    private val reminderPrefs: org.hyperstarit.planit.reminders.ReminderPrefs,
+    private val reminders: org.hyperstarit.planit.reminders.ReminderScheduler,
 ) : ViewModel() {
+    var remindersOn by mutableStateOf(reminderPrefs.enabled)
+        private set
+
+    fun turnReminders(on: Boolean) {
+        reminderPrefs.enabled = on
+        remindersOn = on
+        appScope.launch { reminders.reschedule() }
+    }
+
+    /** True once: the first time the calendar shows, the app asks to show notifications. */
+    fun shouldAskForNotifications(): Boolean = !reminderPrefs.askedForPermission.also { reminderPrefs.askedForPermission = true }
+
     val zone: ZoneId = ZoneId.systemDefault()
 
     var mode by mutableStateOf(ViewMode.MONTH)

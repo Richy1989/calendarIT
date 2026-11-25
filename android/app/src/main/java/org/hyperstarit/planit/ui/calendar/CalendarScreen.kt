@@ -77,6 +77,16 @@ fun CalendarScreen(onAccounts: () -> Unit, onTasks: () -> Unit, viewModel: Calen
     val pending by viewModel.pendingDelete.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val canCreate = calendars.any { !it.readOnly }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var notificationsAllowed by remember { mutableStateOf(androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) }
+    val askPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { notificationsAllowed = it }
+    LaunchedEffect(Unit) {
+        if (!notificationsAllowed && viewModel.shouldAskForNotifications()) {
+            askPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
     var viewMenu by remember { mutableStateOf(false) }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -106,6 +116,25 @@ fun CalendarScreen(onAccounts: () -> Unit, onTasks: () -> Unit, viewModel: Calen
                         }
                     }
                     HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    ListItem(
+                        supportingContent = {
+                            if (viewModel.remindersOn && !notificationsAllowed) {
+                                Text("Notifications are off for PlanIt.", color = MaterialTheme.colorScheme.error)
+                            } else {
+                                Text("Notification reminders ring here; email ones come from the server.")
+                            }
+                        },
+                        trailingContent = { androidx.compose.material3.Switch(viewModel.remindersOn, viewModel::turnReminders) },
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    ) { Text("Reminders on this phone") }
+                    if (viewModel.remindersOn && !notificationsAllowed) {
+                        TextButton(onClick = {
+                            context.startActivity(
+                                android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName),
+                            )
+                        }, modifier = Modifier.padding(horizontal = 16.dp)) { Text("Turn on notifications") }
+                    }
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.AccountCircle, contentDescription = null) },
                         label = { Text(if (problem) "Accounts · needs attention" else "Accounts") },

@@ -298,6 +298,18 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   (`event.occurrence.*`, `event.following.*`, `event.rsvp`). Deletes are held behind an Undo
   snackbar (`CalendarViewModel.pendingDelete`) and only then queued. The editor's view model
   outlives the dialog: each opening passes a fresh session token.
+- **Reminders on the phone** (`reminders/`): `ReminderPlanner` (pure, server rules: only channel
+  `WebPush` — email stays the server's; timed = start − minutes; all-day from midnight in the
+  event's zone, else its calendar's, else the phone's; tasks before the due or 09:00 of a due
+  date; keys name the occurrence so a reschedule keeps them) → `ReminderScheduler` sets exact
+  alarms (`USE_EXACT_ALARM`) for the next 8 days, max 200, after every sync, local change, app
+  start, boot, app update and clock/zone change (`RescheduleReceiver`, checks the action); a
+  reminder missed by ≤15 min rings at once; rung keys are remembered (`ReminderPrefs`, plain
+  SharedPreferences) so none rings twice. `ReminderReceiver` posts the notification (channel
+  `reminders`) with Snooze 10 min and, for tasks, Done; everything it shows rides in the alarm's
+  intent (no DB read when it fires). The phone is never a server push subscription, so web and
+  phone reminders don't double. Drawer switch "Reminders on this phone"; notification permission
+  asked once.
 - Tests: Robolectric + MockWebServer (`SyncEngineTest`, `CertificatesTest` with a real
   self-signed TLS server, `MigrationTest`); `LiveServerTest` runs against a real backend only with
   `PLANIT_LIVE_URL`/`_EMAIL`/`_PASSWORD` set (throwaway account).
