@@ -599,6 +599,30 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.ToTable("Tasks", (string)null);
                 });
 
+            modelBuilder.Entity("CalendarIT.Domain.TaskReminder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MinutesBefore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TaskId");
+
+                    b.ToTable("TaskReminders");
+                });
+
             modelBuilder.Entity("CalendarIT.Infrastructure.Identity.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1009,6 +1033,17 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("CalendarIT.Domain.TaskReminder", b =>
+                {
+                    b.HasOne("CalendarIT.Domain.TaskItem", "Task")
+                        .WithMany("Reminders")
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Task");
+                });
+
             modelBuilder.Entity("CalendarIT.Infrastructure.Identity.RefreshToken", b =>
                 {
                     b.HasOne("CalendarIT.Infrastructure.Identity.ApplicationUser", null)
@@ -1090,6 +1125,8 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
 
             modelBuilder.Entity("CalendarIT.Domain.TaskItem", b =>
                 {
+                    b.Navigation("Reminders");
+
                     b.Navigation("Subtasks");
                 });
 #pragma warning restore 612, 618

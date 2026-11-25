@@ -18,7 +18,7 @@ public sealed class TaskService(AppDbContext db, TimeProvider timeProvider) : IT
 
     public async Task<IReadOnlyList<TaskDto>> ListAsync(Guid userId, bool includeDone, CancellationToken cancellationToken = default)
     {
-        var own = db.Tasks.AsNoTracking().Where(t => t.Calendar!.OwnerUserId == userId);
+        var own = db.Tasks.AsNoTracking().Include(t => t.Reminders).Where(t => t.Calendar!.OwnerUserId == userId);
         var open = await own
             .Where(t => t.Status == TaskItemStatus.NeedsAction || t.Status == TaskItemStatus.InProcess)
             .ToListAsync(cancellationToken);
@@ -35,7 +35,7 @@ public sealed class TaskService(AppDbContext db, TimeProvider timeProvider) : IT
 
     public async Task<TaskDto?> GetAsync(Guid userId, Guid taskId, CancellationToken cancellationToken = default)
     {
-        var task = await db.Tasks.AsNoTracking()
+        var task = await db.Tasks.AsNoTracking().Include(t => t.Reminders)
             .SingleOrDefaultAsync(t => t.Id == taskId && t.Calendar!.OwnerUserId == userId, cancellationToken);
         return task is null ? null : ToDto(task);
     }
@@ -117,6 +117,7 @@ public sealed class TaskService(AppDbContext db, TimeProvider timeProvider) : IT
         db.Tasks
             .Include(t => t.Subtasks)
             .Include(t => t.Parent)
+            .Include(t => t.Reminders)
             .SingleOrDefaultAsync(t => t.Id == taskId && t.Calendar!.OwnerUserId == userId, cancellationToken);
 
     private static void SetDone(TaskItem task, bool done, DateTime now)
@@ -191,6 +192,36 @@ public sealed class TaskService(AppDbContext db, TimeProvider timeProvider) : IT
             task.TimeZoneId = null;
         }
 
+        if (request.Reminders is { } reminders)
+        {
+            foreach (var old in task.Reminders.ToList())
+            {
+                task.Reminders.Remove(old);
+                if (!isNew)
+                {
+                    db.TaskReminders.Remove(old);
+                }
+            }
+            foreach (var r in reminders.DistinctBy(r => (r.MinutesBefore, r.Channel.ToLowerInvariant())))
+            {
+                var reminder = new TaskReminder
+                {
+                    Id = Guid.NewGuid(),
+                    TaskId = task.Id,
+                    MinutesBefore = r.MinutesBefore,
+                    Channel = Enum.TryParse<ReminderChannel>(r.Channel, ignoreCase: true, out var c) && Enum.IsDefined(c)
+                        && !int.TryParse(r.Channel, out _)
+                        ? c
+                        : throw new InvalidInputException("A reminder goes by Email or WebPush."),
+                };
+                if (!isNew)
+                {
+                    db.Entry(reminder).State = EntityState.Added; // a preset key: insert, not update
+                }
+                EventService.AddOnce(task.Reminders, reminder); // tracking it may already have linked it
+            }
+        }
+
         if (request.SortOrder is { } order)
         {
             task.SortOrder = order;
@@ -245,5 +276,6 @@ public sealed class TaskService(AppDbContext db, TimeProvider timeProvider) : IT
         PriorityName(t.Priority),
         t.ParentId,
         t.SortOrder,
-        new DateTimeOffset(DateTime.SpecifyKind(t.UpdatedAt, DateTimeKind.Utc)));
+        new DateTimeOffset(DateTime.SpecifyKind(t.UpdatedAt, DateTimeKind.Utc)),
+        t.Reminders.OrderBy(r => r.MinutesBefore).Select(r => new ReminderDto(r.MinutesBefore, r.Channel.ToString())).ToList());
 }

@@ -74,6 +74,17 @@ public sealed class DueReminderQuery(AppDbContext db, TimeProvider clock, Remind
                 snoozes?.CreateToken(userId, s.ReminderId, s.OccurrenceStartUtc),
                 new DateTimeOffset(DateTime.SpecifyKind(s.DueAtUtc, DateTimeKind.Utc))));
         }
+        // Browser reminders on tasks, for the same window.
+        foreach (var (reminder, task, _) in await TaskReminders.InWindowAsync(
+                     db, windowStart, now, userId, ReminderChannel.WebPush, cancellationToken))
+        {
+            items.Add(new DueReminderDto(
+                reminder.Id,
+                new DateTimeOffset(DateTime.SpecifyKind(task.DueUtc!.Value, DateTimeKind.Utc)),
+                $"Task: {task.Title}",
+                null,
+                task.DueAllDay));
+        }
         return items;
     }
 }

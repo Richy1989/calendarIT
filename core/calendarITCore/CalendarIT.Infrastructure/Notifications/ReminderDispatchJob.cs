@@ -62,6 +62,20 @@ public sealed class ReminderDispatchJob(
             db.ChangeTracker.Clear();
         }
 
+        // Tasks, on their own: whatever happens there, the event reminders below still go out.
+        try
+        {
+            if (await TaskReminders.DispatchAsync(db, mail, push, windowStart, now, logger, cancellationToken) > 0)
+            {
+                outboxSignal?.Poke();
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Task reminders could not be evaluated this run");
+            db.ChangeTracker.Clear();
+        }
+
         // Only reminders that could possibly be due are read. A one-off event fires at
         // Start - offset, so for its trigger to land in (windowStart, now] its start must lie in
         // (windowStart, now + longest offset] — a bounded range the database can filter on,

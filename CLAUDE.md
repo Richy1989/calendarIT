@@ -149,6 +149,10 @@ resource name space per calendar: a UID is either an event or a task, PUT of the
 409). `TaskICalMapper`/`TaskWriter` map VTODOs; subtasks are one level deep — `RelatedToUid`
 keeps the RELATED-TO as sent (a child may arrive before its parent and is linked later), deeper
 trees are flattened onto the top task. Tasks don't repeat; a phone's RRULE is only kept.
+Task reminders (`TaskReminder`, `TaskReminders`) run inside `ReminderDispatchJob` and the
+polling query: they count back from the due time — 09:00 in the calendar's zone for a date-only
+due — and are logged in `NotificationLog` under the stored due, so a moved due reminds again.
+They aren't synced as VALARMs (a phone would alarm twice).
 
 ### Auth
 

@@ -32,6 +32,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
 
+    public DbSet<TaskReminder> TaskReminders => Set<TaskReminder>();
+
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
     public DbSet<MailAccount> MailAccounts => Set<MailAccount>();
@@ -201,6 +203,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                 .WithMany(t => t.Subtasks)
                 .HasForeignKey(t => t.ParentId)
                 .OnDelete(DeleteBehavior.ClientCascade);
+        });
+
+        builder.Entity<TaskReminder>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.Channel).HasConversion<string>().HasMaxLength(16);
+            entity.HasOne(r => r.Task)
+                .WithMany(t => t.Reminders)
+                .HasForeignKey(r => r.TaskId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<DeletedResource>(entity =>

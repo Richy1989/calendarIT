@@ -3383,6 +3383,7 @@ export interface components {
             parentId?: null | string;
             /** Format: int32 */
             sortOrder?: null | number | string;
+            reminders?: null | components["schemas"]["ReminderInput"][];
         };
         SessionDto: {
             /** Format: uuid */
@@ -3445,6 +3446,7 @@ export interface components {
             sortOrder: number | string;
             /** Format: date-time */
             updatedAt: string;
+            reminders?: null | components["schemas"]["ReminderDto"][];
         };
         UpdateAppearanceRequest: {
             theme: null | string;

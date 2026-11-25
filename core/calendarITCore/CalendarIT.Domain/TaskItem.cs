@@ -71,4 +71,6 @@ public class TaskItem
     public TaskItem? Parent { get; set; }
 
     public ICollection<TaskItem> Subtasks { get; set; } = new List<TaskItem>();
+
+    public ICollection<TaskReminder> Reminders { get; set; } = new List<TaskReminder>();
 }

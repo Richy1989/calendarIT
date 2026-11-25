@@ -21,7 +21,8 @@ public sealed record TaskDto(
     string? Priority,
     Guid? ParentId,
     int SortOrder,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    IReadOnlyList<ReminderDto>? Reminders = null);
 
 /// <summary>Create/edit payload for a task.</summary>
 public sealed class SaveTaskRequest
@@ -52,6 +53,10 @@ public sealed class SaveTaskRequest
 
     /// <summary>Its place among its siblings; null keeps it (or, new, puts it last).</summary>
     public int? SortOrder { get; init; }
+
+    /// <summary>Reminders before it is due; null keeps the task's (none, when new).</summary>
+    [MaxLength(SaveEventRequest.MaxReminders)]
+    public IReadOnlyList<ReminderInput>? Reminders { get; init; }
 }
 
 /// <summary>Ticks a task off (or opens it again).</summary>

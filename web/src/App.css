@@ -3608,3 +3608,31 @@ input[aria-invalid='true']:focus-visible {
     background: var(--bg);
   }
 }
+.task-reminders {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.task-reminder-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.task-reminder-add .form-select {
+  padding: 0.3rem 0.45rem;
+  font-size: 0.82rem;
+}
+.task-reminder-add .btn-ghost {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.82rem;
+}
+.task-reminders .field-hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+.reminder-chip-text {
+  color: var(--text);
+  padding-right: 0.15rem;
+}

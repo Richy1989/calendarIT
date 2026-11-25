@@ -604,6 +604,30 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.ToTable("Tasks", (string)null);
                 });
 
+            modelBuilder.Entity("CalendarIT.Domain.TaskReminder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int>("MinutesBefore")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TaskId");
+
+                    b.ToTable("TaskReminders");
+                });
+
             modelBuilder.Entity("CalendarIT.Infrastructure.Identity.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1018,6 +1042,17 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("CalendarIT.Domain.TaskReminder", b =>
+                {
+                    b.HasOne("CalendarIT.Domain.TaskItem", "Task")
+                        .WithMany("Reminders")
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Task");
+                });
+
             modelBuilder.Entity("CalendarIT.Infrastructure.Identity.RefreshToken", b =>
                 {
                     b.HasOne("CalendarIT.Infrastructure.Identity.ApplicationUser", null)
@@ -1099,6 +1134,8 @@ namespace CalendarIT.Migrations.Postgres.Migrations
 
             modelBuilder.Entity("CalendarIT.Domain.TaskItem", b =>
                 {
+                    b.Navigation("Reminders");
+
                     b.Navigation("Subtasks");
                 });
 #pragma warning restore 612, 618

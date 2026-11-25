@@ -14,6 +14,7 @@ import DateTimeField from './DateTimeField'
 import { FormIcon } from './FormIcons'
 import { allDayDate, dayKey, toLocalInput } from '../lib/dates'
 import { dueToApi, isDone } from '../lib/tasks'
+import { REMINDER_OFFSETS, describeReminder, type ReminderValue } from '../lib/eventForm'
 
 const PRIORITIES: { value: TaskPriority | null; label: string }[] = [
   { value: null, label: 'None' },
@@ -28,6 +29,10 @@ function dueField(t: TaskDto | null): { value: string; allDay: boolean } | null 
   return t.dueAllDay ? { value: dayKey(allDayDate(t.due)), allDay: true } : { value: toLocalInput(new Date(t.due)), allDay: false }
 }
 
+
+/** "1 day before · Browser", or "When due · Email" for no lead time ("At start" fits appointments). */
+const taskReminderLabel = (r: ReminderValue) =>
+  r.minutesBefore === 0 ? describeReminder(r).replace(/^At start/, 'When due') : describeReminder(r)
 
 /**
  * Edits one task — or creates one (task null). Title, notes, due date (with or without a time),
@@ -59,6 +64,11 @@ export default function TaskEditor({
   const [priority, setPriority] = useState<TaskPriority | null>((task?.priority as TaskPriority | null) ?? null)
   const [calendarId, setCalendarId] = useState(task?.calendarId ?? defaultCalendarId ?? calendars[0]?.id ?? '')
   const [newSub, setNewSub] = useState('')
+  const [reminders, setReminders] = useState<ReminderValue[]>(
+    (task?.reminders ?? []).map((r) => ({ minutesBefore: Number(r.minutesBefore), channel: r.channel })),
+  )
+  const [addOffset, setAddOffset] = useState(0)
+  const [addChannel, setAddChannel] = useState('WebPush')
   const isSubtask = !!task?.parentId
   // Its checklist, finished items included.
   const { data: all = [] } = useQuery({ queryKey: ['tasks', true], queryFn: () => listTasks(true), enabled: !!task && !isSubtask })
@@ -85,6 +95,8 @@ export default function TaskEditor({
       calendarId: isSubtask ? null : calendarId,
       parentId: task?.parentId ?? null,
       sortOrder: task ? Number(task.sortOrder) : null,
+      // Without a due date there is nothing to count back from.
+      reminders: due ? reminders : [],
     })
   }
 
@@ -134,6 +146,52 @@ export default function TaskEditor({
             )}
           </div>
         </div>
+
+        {due !== null && (
+          <div className="form-row form-row-top">
+            <FormIcon name="bell" />
+            <div className="form-row-body task-reminders">
+              {reminders.map((r, i) => (
+                <span key={`${r.minutesBefore}:${r.channel}`} className="reminder-chip">
+                  <span className="reminder-chip-text">{taskReminderLabel(r)}</span>
+                  <button
+                    type="button"
+                    className="reminder-chip-remove"
+                    aria-label={`Remove reminder ${taskReminderLabel(r)}`}
+                    onClick={() => setReminders(reminders.filter((_, j) => j !== i))}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+              <span className="task-reminder-add">
+                <select className="form-select" aria-label="When" value={addOffset} onChange={(e) => setAddOffset(Number(e.target.value))}>
+                  {REMINDER_OFFSETS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.value === 0 ? 'When it is due' : o.label}
+                    </option>
+                  ))}
+                </select>
+                <select className="form-select" aria-label="How" value={addChannel} onChange={(e) => setAddChannel(e.target.value)}>
+                  <option value="WebPush">Browser</option>
+                  <option value="Email">Email</option>
+                </select>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    if (!reminders.some((r) => r.minutesBefore === addOffset && r.channel === addChannel)) {
+                      setReminders([...reminders, { minutesBefore: addOffset, channel: addChannel }].sort((a, b) => a.minutesBefore - b.minutesBefore))
+                    }
+                  }}
+                >
+                  ＋ Reminder
+                </button>
+              </span>
+              {allDay && <p className="field-hint">A task due on a day reminds you counting from 9:00 that morning.</p>}
+            </div>
+          </div>
+        )}
 
         <div className="form-row">
           <span className="form-icon task-priority-icon" aria-hidden="true">!</span>
