@@ -201,7 +201,7 @@ public sealed class EventService(
 
         var entity = new CalendarEvent
         {
-            Id = Guid.NewGuid(),
+            Id = await ClientIds.ResolveAsync(db.Events, id => e => e.Id == id, request.Id, cancellationToken),
             CalendarId = calendarId,
             Uid = $"{Guid.NewGuid():N}@calendarit",
             CreatedAt = now,
@@ -520,7 +520,7 @@ public sealed class EventService(
 
         var next = new CalendarEvent
         {
-            Id = Guid.NewGuid(),
+            Id = await ClientIds.ResolveAsync(db.Events, id => e => e.Id == id, request.Id, cancellationToken),
             CalendarId = master.CalendarId,
             Uid = $"{Guid.NewGuid():N}@calendarit",
             Color = master.Color,

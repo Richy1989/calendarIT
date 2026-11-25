@@ -154,6 +154,17 @@ polling query: they count back from the due time — 09:00 in the calendar's zon
 due — and are logged in `NotificationLog` under the stored due, so a moved due reminds again.
 They aren't synced as VALARMs (a phone would alarm twice).
 
+**App sync API** (`/api/sync`, `/api/devices`; `Infrastructure/Sync`) — for the native Android app
+(PlanIt, `org.hyperstarit.planit`, offline-first). Pull = paged delta by an opaque cursor (same
+`UpdatedAt` + 2-min overlap + `DeletedResources` facts as CalDAV sync; tombstones carry
+`Kind`/`EntityId`), events as stored series (master + overrides, never expanded), calendars and
+categories always whole. Push = ordered ops that each call the same service method as the REST
+endpoint (`SyncOps`), creates take client-chosen ids (`Save*Request.Id`, `ClientIds`), event/task
+changes need `baseVersion` (µs `UpdatedAt`; the series' for any occurrence) → `conflict` when
+stale, the server copy wins. Devices hold content-free push targets (UnifiedPush/FCM), kept apart
+from browser `PushSubscriptions` (the app alarms locally). Any new write path must keep bumping
+`UpdatedAt`, or the app never sees the change.
+
 ### Auth
 
 ASP.NET Core Identity (Guid keys, `ApplicationUser`) + JWT access tokens with **rotating refresh

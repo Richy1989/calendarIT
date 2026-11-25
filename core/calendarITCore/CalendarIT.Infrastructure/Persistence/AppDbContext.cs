@@ -42,6 +42,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
+    public DbSet<Device> Devices => Set<Device>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -219,9 +221,24 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             entity.HasKey(d => d.Id);
             entity.Property(d => d.Uid).HasMaxLength(255).IsRequired();
+            entity.Property(d => d.Kind).HasMaxLength(16);
             entity.HasIndex(d => new { d.CalendarId, d.DeletedAtUtc });
             // A deleted calendar takes its records along: there is nothing left to sync.
             entity.HasOne<Calendar>().WithMany().HasForeignKey(d => d.CalendarId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<Device>(entity =>
+        {
+            entity.HasKey(d => d.Id);
+            entity.Property(d => d.Name).HasMaxLength(100).IsRequired();
+            entity.Property(d => d.Platform).HasMaxLength(16).IsRequired();
+            entity.Property(d => d.AppVersion).HasMaxLength(32);
+            entity.Property(d => d.PushKind).HasMaxLength(16);
+            entity.Property(d => d.PushEndpoint).HasMaxLength(2048);
+            entity.Property(d => d.PushP256dh).HasMaxLength(255);
+            entity.Property(d => d.PushAuth).HasMaxLength(255);
+            entity.HasIndex(d => d.UserId);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(d => d.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<ReminderSnooze>(entity =>
@@ -348,6 +365,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                     Id = Guid.NewGuid(),
                     CalendarId = calendarId.OriginalValue,
                     Uid = entry.Property(e => e.Uid).OriginalValue,
+                    Kind = DeletedResourceKinds.Event,
+                    EntityId = entry.Entity.Id,
                     DeletedAtUtc = now,
                 });
             }
@@ -364,6 +383,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                     Id = Guid.NewGuid(),
                     CalendarId = calendarId.OriginalValue,
                     Uid = entry.Property(t => t.Uid).OriginalValue,
+                    Kind = DeletedResourceKinds.Task,
+                    EntityId = entry.Entity.Id,
                     DeletedAtUtc = now,
                 });
             }

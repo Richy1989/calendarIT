@@ -262,6 +262,13 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.Property<DateTime>("DeletedAtUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Uid")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -272,6 +279,58 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.HasIndex("CalendarId", "DeletedAtUtc");
 
                     b.ToTable("DeletedResources");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.Device", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AppVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastSeenAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Platform")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PushAuth")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PushEndpoint")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PushKind")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PushP256dh")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Devices");
                 });
 
             modelBuilder.Entity("CalendarIT.Domain.MailAccount", b =>
@@ -962,6 +1021,15 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.HasOne("CalendarIT.Domain.Calendar", null)
                         .WithMany()
                         .HasForeignKey("CalendarId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.Device", b =>
+                {
+                    b.HasOne("CalendarIT.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

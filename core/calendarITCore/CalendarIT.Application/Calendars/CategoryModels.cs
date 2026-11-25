@@ -13,6 +13,10 @@ public sealed record CategoryDto(Guid Id, string Name, string Color, int EventCo
 /// <summary>Create/update payload for a category.</summary>
 public sealed class SaveCategoryRequest
 {
+    /// <summary>Create only: the id the new category gets, chosen by an offline client (the app) so it
+    /// can refer to it before the server has seen it. Null = the server picks one. Ignored on edit.</summary>
+    public Guid? Id { get; init; }
+
     [Required, MaxLength(100)]
     public string Name { get; init; } = string.Empty;
 

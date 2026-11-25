@@ -264,6 +264,9 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Tasks — to-dos in your calendars with due dates (a day or a time), priority, reminders
   (browser or email, counting from 9:00 for a task due on a day) and one level of subtasks: a task panel beside the calendar, due tasks in the grid (tick off, drag to
   reschedule), and two-way sync as `VTODO` with phone task apps over CalDAV
+- 🚧 Native Android app (PlanIt) — server side ready: an offline-first delta sync API
+  (`/api/sync`) with conflict detection, and device registration (`/api/devices`); the app itself
+  is in progress
 - ✅ Calendar subscriptions — subscribe to a published .ics / `webcal://` calendar (holidays, a
   team's schedule); it refreshes on its own schedule and stays read-only
 - ✅ Categories — events take their color from a named category (managed in Settings);

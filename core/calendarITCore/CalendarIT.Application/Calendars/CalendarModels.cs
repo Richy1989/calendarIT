@@ -57,6 +57,10 @@ public interface ICalendarSubscriptionService
 /// <summary>Create/rename payload for a calendar.</summary>
 public sealed class SaveCalendarRequest
 {
+    /// <summary>Create only: the id the new calendar gets, chosen by an offline client (the app) so it
+    /// can refer to it before the server has seen it. Null = the server picks one. Ignored on edit.</summary>
+    public Guid? Id { get; init; }
+
     [Required, MaxLength(200)]
     public string Name { get; init; } = string.Empty;
 

@@ -45,7 +45,7 @@ public sealed class TaskService(AppDbContext db, TimeProvider timeProvider) : IT
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var task = new TaskItem
         {
-            Id = Guid.NewGuid(),
+            Id = await ClientIds.ResolveAsync(db.Tasks, id => t => t.Id == id, request.Id, cancellationToken),
             Uid = $"{Guid.NewGuid():N}@calendarit",
             Status = TaskItemStatus.NeedsAction,
             CreatedAt = now,

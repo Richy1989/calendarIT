@@ -1,3 +1,5 @@
+using CalendarIT.Application.Sync;
+using CalendarIT.Infrastructure.Sync;
 using CalendarIT.Application.Auth;
 using CalendarIT.Application.Calendars;
 using CalendarIT.Infrastructure.Auth;
@@ -90,6 +92,8 @@ public static class DependencyInjection
         services.AddScoped<CalendarSubscriptionService>();
         services.AddScoped<ICalendarSubscriptionService>(sp => sp.GetRequiredService<CalendarSubscriptionService>());
         services.AddScoped<ICategoryService, CategoryService>();
+        services.AddScoped<ISyncService, SyncService>();
+        services.AddScoped<IDeviceService, DeviceService>();
         services.AddScoped<ICalendarIoService, CalendarIoService>();
         services.AddScoped<IProfileService, ProfileService>();
 

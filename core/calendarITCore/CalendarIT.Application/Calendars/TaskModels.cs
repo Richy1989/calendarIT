@@ -27,6 +27,10 @@ public sealed record TaskDto(
 /// <summary>Create/edit payload for a task.</summary>
 public sealed class SaveTaskRequest
 {
+    /// <summary>Create only: the id the new task gets, chosen by an offline client (the app) so it
+    /// can refer to it before the server has seen it. Null = the server picks one. Ignored on edit.</summary>
+    public Guid? Id { get; init; }
+
     /// <summary>Null on create = the default calendar; on edit = stays where it is.</summary>
     public Guid? CalendarId { get; init; }
 

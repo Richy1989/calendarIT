@@ -72,6 +72,10 @@ public sealed class SaveEventRequest : IValidatableObject
     /// <summary>Reminders per event; each is a delivery per occurrence.</summary>
     public const int MaxReminders = 20;
 
+    /// <summary>Create only: the id the new event (and, for "this and following", the new series) gets, chosen by an offline client (the app) so it
+    /// can refer to it before the server has seen it. Null = the server picks one. Ignored on edit.</summary>
+    public Guid? Id { get; init; }
+
     [Required, MaxLength(500)]
     public string Title { get; init; } = string.Empty;
 

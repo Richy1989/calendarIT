@@ -42,7 +42,7 @@ public sealed class CategoryService(AppDbContext db, TimeProvider timeProvider) 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var entity = new Category
         {
-            Id = Guid.NewGuid(),
+            Id = await ClientIds.ResolveAsync(db.Categories, id => c => c.Id == id, request.Id, cancellationToken),
             OwnerUserId = userId,
             Name = name,
             Color = request.Color,

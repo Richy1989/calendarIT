@@ -38,7 +38,8 @@ public sealed class CalendarService(AppDbContext db, TimeProvider timeProvider) 
     public async Task<CalendarDto> CreateAsync(Guid userId, SaveCalendarRequest request, CancellationToken cancellationToken = default)
     {
         var categoryId = await OwnedCategoryAsync(userId, request.DefaultCategoryId, cancellationToken);
-        var entity = await CreateEntityAsync(userId, request.Name.Trim(), categoryId, cancellationToken);
+        var id = await ClientIds.ResolveAsync(db.Calendars, id => c => c.Id == id, request.Id, cancellationToken);
+        var entity = await CreateEntityAsync(userId, request.Name.Trim(), categoryId, cancellationToken, id);
         return new CalendarDto(entity.Id, entity.Name, 0, entity.DefaultCategoryId, []);
     }
 
@@ -155,12 +156,13 @@ public sealed class CalendarService(AppDbContext db, TimeProvider timeProvider) 
             lastError);
     }
 
-    private async Task<Calendar> CreateEntityAsync(Guid userId, string name, Guid? defaultCategoryId, CancellationToken cancellationToken)
+    private async Task<Calendar> CreateEntityAsync(
+        Guid userId, string name, Guid? defaultCategoryId, CancellationToken cancellationToken, Guid? id = null)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var entity = new Calendar
         {
-            Id = Guid.NewGuid(),
+            Id = id ?? Guid.NewGuid(),
             OwnerUserId = userId,
             Name = string.IsNullOrWhiteSpace(name) ? "Untitled" : name,
             DefaultCategoryId = defaultCategoryId,

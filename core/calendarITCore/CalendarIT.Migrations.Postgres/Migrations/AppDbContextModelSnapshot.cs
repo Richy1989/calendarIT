@@ -267,6 +267,13 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Property<DateTime>("DeletedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("Uid")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -277,6 +284,58 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.HasIndex("CalendarId", "DeletedAtUtc");
 
                     b.ToTable("DeletedResources");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.Device", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AppVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LastSeenAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Platform")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("PushAuth")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("PushEndpoint")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("PushKind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("PushP256dh")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Devices");
                 });
 
             modelBuilder.Entity("CalendarIT.Domain.MailAccount", b =>
@@ -971,6 +1030,15 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.HasOne("CalendarIT.Domain.Calendar", null)
                         .WithMany()
                         .HasForeignKey("CalendarId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.Device", b =>
+                {
+                    b.HasOne("CalendarIT.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
