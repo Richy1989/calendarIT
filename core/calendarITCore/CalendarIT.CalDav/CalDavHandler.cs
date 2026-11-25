@@ -15,9 +15,8 @@ namespace CalendarIT.CalDav;
 /// <summary>
 /// Minimal CalDAV server (RFC 4791): discovery (principal → calendar-home → calendars),
 /// PROPFIND listings with ETags/CTag, calendar-query / calendar-multiget REPORTs, and
-/// GET/PUT/DELETE of single VEVENT resources. Enough for DAVx⁵ and similar clients to
-/// sync both ways. No sync-collection (RFC 6578) yet — clients fall back to CTag polling
-/// with full listings, which is fine at personal-calendar scale.
+/// GET/PUT/DELETE of single VEVENT resources, and incremental sync (RFC 6578 sync-collection):
+/// a client sends the token of its last sync and gets back only what changed or went since.
 ///
 /// Layout (hrefs are always absolute paths):
 ///   /dav/                     → root; advertises the current-user-principal
@@ -189,6 +188,11 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
                     new XElement(D + "href", EventHref(cal.Id, u)),
                     new XElement(D + "status", "HTTP/1.1 404 Not Found"))));
             return MultiStatus([.. responses]);
+        }
+
+        if (root == D + "sync-collection")
+        {
+            return await SyncCollectionAsync(cal, body, ctx.RequestAborted);
         }
 
         if (root == C + "calendar-query")
@@ -515,6 +519,13 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             [D + "owner"] = new XElement(D + "href", PrincipalHref),
             [C + "supported-calendar-component-set"] = new XElement(C + "comp", new XAttribute("name", "VEVENT")),
             [CS + "getctag"] = ctag,
+            [D + "sync-token"] = SyncToken(DateTime.UtcNow),
+            [D + "supported-report-set"] = new object[]
+            {
+                SupportedReport(C + "calendar-multiget"),
+                SupportedReport(C + "calendar-query"),
+                SupportedReport(D + "sync-collection"),
+            },
             // A subscription is read-only; clients that read this (iOS, DAVx5) show it so and
             // don't offer to edit. Writes are refused regardless.
             [D + "current-user-privilege-set"] = cal.SourceUrl is null
@@ -524,6 +535,126 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
     }
 
     private static XElement Privilege(string name) => new(D + "privilege", new XElement(D + name));
+
+    private static XElement SupportedReport(XName report) =>
+        new(D + "supported-report", new XElement(D + "report", new XElement(report)));
+
+    // ---------------------------------------------------------------- sync-collection (RFC 6578)
+
+    private const string SyncTokenPrefix = "http://calendarit.app/ns/sync/";
+
+    /// <summary>
+    /// A token is the moment it was handed out. Changes are what was modified from a little
+    /// before then on: a write stamps its time when it starts but becomes visible when it
+    /// commits, so without the overlap one committing just after a token was issued could be
+    /// missed for good. Reporting a few unchanged resources again is harmless — the client sees
+    /// the same ETag.
+    /// </summary>
+    private static readonly TimeSpan SyncOverlap = TimeSpan.FromMinutes(2);
+
+    /// <summary>How far back a token is honoured: as long as deletions are remembered
+    /// (<c>MaintenanceJob</c> keeps them a little longer). An older one means "start over".</summary>
+    public static readonly TimeSpan SyncTokenLifetime = TimeSpan.FromDays(60);
+
+    private static string SyncToken(DateTime utc) => SyncTokenPrefix + utc.Ticks.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>The instant a token stands for; null when it isn't one of ours or has expired.</summary>
+    private static DateTime? ReadSyncToken(string token, DateTime now)
+    {
+        if (!token.StartsWith(SyncTokenPrefix, StringComparison.Ordinal)
+            || !long.TryParse(token.AsSpan(SyncTokenPrefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out var ticks)
+            || ticks > now.AddMinutes(5).Ticks)
+        {
+            return null;
+        }
+        var at = new DateTime(ticks, DateTimeKind.Utc);
+        return at < now - SyncTokenLifetime ? null : at;
+    }
+
+    private async Task<IResult> SyncCollectionAsync(Calendar cal, XDocument body, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var token = body.Root!.Element(D + "sync-token")?.Value.Trim() ?? string.Empty;
+        DateTime? since = null;
+        if (token.Length > 0)
+        {
+            since = ReadSyncToken(token, now);
+            if (since is null)
+            {
+                // RFC 6578 §3.2: the client drops its state and syncs from scratch.
+                return Results.Content(
+                    "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
+                    + new XElement(D + "error", new XAttribute(XNamespace.Xmlns + "d", D.NamespaceName), new XElement(D + "valid-sync-token"))
+                        .ToString(SaveOptions.DisableFormatting),
+                    "application/xml; charset=utf-8",
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+        }
+
+        // Only what was asked for: a first sync usually wants ETags and fetches the data with a
+        // multiget, and sending every calendar's whole content here would defeat the point.
+        var wanted = body.Root!.Element(D + "prop")?.Elements().Select(e => e.Name).ToHashSet() ?? [D + "getetag"];
+        var withData = wanted.Contains(C + "calendar-data");
+
+        var query = db.Events.AsNoTracking().Where(e => e.CalendarId == cal.Id && e.SeriesMasterId == null);
+        if (since is { } from)
+        {
+            var changedFrom = from - SyncOverlap;
+            query = query.Where(e => e.UpdatedAt >= changedFrom);
+        }
+        var changed = withData
+            ? await WithSeries(query).ToListAsync(ct)
+            : (await query.Select(e => new { e.Uid, e.UpdatedAt }).ToListAsync(ct))
+                .Select(e => new DomainEvent { Uid = e.Uid, UpdatedAt = e.UpdatedAt })
+                .ToList();
+
+        var responses = new List<XElement>();
+        foreach (var e in changed)
+        {
+            responses.Add(withData
+                ? EventDataResponse(cal.Id, e)
+                : BuildResponse(EventHref(cal.Id, e.Uid), [.. wanted], new Dictionary<XName, object?>
+                {
+                    [D + "getetag"] = ETagOf(e.UpdatedAt),
+                    [D + "getcontenttype"] = CalendarContentType,
+                }));
+        }
+
+        if (since is { } deletedFrom)
+        {
+            var cutoff = deletedFrom - SyncOverlap;
+            var goneUids = await db.DeletedResources.AsNoTracking()
+                .Where(d => d.CalendarId == cal.Id && d.DeletedAtUtc >= cutoff)
+                .Select(d => d.Uid)
+                .Distinct()
+                .ToListAsync(ct);
+            if (goneUids.Count > 0)
+            {
+                // A UID deleted and written again since is a change, not a removal.
+                var present = await db.Events.AsNoTracking()
+                    .Where(e => e.CalendarId == cal.Id && e.SeriesMasterId == null && goneUids.Contains(e.Uid))
+                    .Select(e => e.Uid)
+                    .ToListAsync(ct);
+                foreach (var uid in goneUids.Except(present, StringComparer.Ordinal))
+                {
+                    responses.Add(new XElement(D + "response",
+                        new XElement(D + "href", EventHref(cal.Id, uid)),
+                        new XElement(D + "status", "HTTP/1.1 404 Not Found")));
+                }
+            }
+        }
+
+        var doc = new XElement(D + "multistatus",
+            new XAttribute(XNamespace.Xmlns + "d", D.NamespaceName),
+            new XAttribute(XNamespace.Xmlns + "c", C.NamespaceName),
+            new XAttribute(XNamespace.Xmlns + "cs", CS.NamespaceName),
+            responses,
+            new XElement(D + "sync-token", SyncToken(now)));
+        return Results.Content(
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>" + doc.ToString(SaveOptions.DisableFormatting),
+            "application/xml; charset=utf-8",
+            statusCode: StatusCodes.Status207MultiStatus);
+    }
 
     private static string CalendarHref(Guid id) => $"{HomeHref}{id:N}/";
 

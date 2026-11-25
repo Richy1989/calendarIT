@@ -120,6 +120,11 @@ real zone with the same clocks (`ZoneDefinition`); unresolvable ids are "floatin
   iMIP. A CalDAV resource = one master with its overrides; overrides never appear as their own
   resource, and any change to an override bumps the master's `UpdatedAt` (the ETag).
 - **CalDAV ETags use microseconds** (`Ticks / 10`) — Postgres truncates timestamps to µs.
+- **CalDAV incremental sync** (RFC 6578 `sync-collection`): the sync token is the time it was
+  issued; changes are masters with `UpdatedAt` from 2 min before it (overlap for late commits),
+  deletions come from `DeletedResources`, which `AppDbContext.SaveChanges` writes for every
+  master deleted or moved to another calendar — so every write path must keep bumping
+  `UpdatedAt` on a change. Tokens live 60 days (records are pruned after 61).
 - The web editor builds custom rules in `web/src/lib/rrule.ts` (FREQ/INTERVAL/BYDAY/COUNT/UNTIL).
   It never rewrites a rule it can't fully parse, and only rebuilds the text when the user changes
   it — a changed rule counts as a moved series server-side, which drops exceptions and overrides.

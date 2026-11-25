@@ -28,6 +28,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public DbSet<ReminderSnooze> ReminderSnoozes => Set<ReminderSnooze>();
 
+    public DbSet<DeletedResource> DeletedResources => Set<DeletedResource>();
+
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
     public DbSet<MailAccount> MailAccounts => Set<MailAccount>();
@@ -174,6 +176,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.HasIndex(n => new { n.ReminderId, n.OccurrenceStartUtc }).IsUnique();
         });
 
+        builder.Entity<DeletedResource>(entity =>
+        {
+            entity.HasKey(d => d.Id);
+            entity.Property(d => d.Uid).HasMaxLength(255).IsRequired();
+            entity.HasIndex(d => new { d.CalendarId, d.DeletedAtUtc });
+            // A deleted calendar takes its records along: there is nothing left to sync.
+            entity.HasOne<Calendar>().WithMany().HasForeignKey(d => d.CalendarId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         builder.Entity<ReminderSnooze>(entity =>
         {
             entity.HasKey(s => s.Id);
@@ -251,5 +262,57 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                 .HasForeignKey(a => a.EventId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        RecordDeletedResources();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        RecordDeletedResources();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    /// <summary>
+    /// Notes every event (series master or one-off — a CalDAV resource) leaving a calendar in this
+    /// save: deleted, or moved to another calendar. Here, rather than at each place that deletes,
+    /// so no path — the API, CalDAV, an invitation cancel, a subscription refresh — can forget it,
+    /// and a phone syncing incrementally never keeps an event that is gone.
+    /// </summary>
+    private void RecordDeletedResources()
+    {
+        ChangeTracker.DetectChanges();
+        var now = DateTime.UtcNow;
+        var gone = new List<DeletedResource>();
+        // A calendar deleted in the same save takes its events along — there is no collection
+        // left to report them in (and the record would point at a row that no longer exists).
+        var deletedCalendars = ChangeTracker.Entries<Calendar>()
+            .Where(c => c.State == EntityState.Deleted)
+            .Select(c => c.Entity.Id)
+            .ToHashSet();
+        foreach (var entry in ChangeTracker.Entries<CalendarEvent>())
+        {
+            if (entry.Property(e => e.SeriesMasterId).OriginalValue is not null)
+            {
+                continue; // an edited occurrence lives inside its master's resource
+            }
+            var calendarId = entry.Property(e => e.CalendarId);
+            var left = entry.State == EntityState.Deleted
+                || (entry.State == EntityState.Modified && calendarId.IsModified && calendarId.OriginalValue != calendarId.CurrentValue);
+            if (left && !deletedCalendars.Contains(calendarId.OriginalValue))
+            {
+                gone.Add(new DeletedResource
+                {
+                    Id = Guid.NewGuid(),
+                    CalendarId = calendarId.OriginalValue,
+                    Uid = entry.Property(e => e.Uid).OriginalValue,
+                    DeletedAtUtc = now,
+                });
+            }
+        }
+        DeletedResources.AddRange(gone);
     }
 }

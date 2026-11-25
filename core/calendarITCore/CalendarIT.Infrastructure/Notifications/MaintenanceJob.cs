@@ -64,6 +64,14 @@ public sealed class MaintenanceJob(
                 .Where(n => n.OccurrenceStartUtc < nowUtc - KeepNotificationLogs)
                 .ExecuteDeleteAsync(cancellationToken));
 
+        // Deleted-resource records for CalDAV incremental sync: kept a little longer than a sync
+        // token is honoured (CalDavHandler.SyncTokenLifetime, 60 days), so any token still
+        // accepted finds every deletion since.
+        await StepAsync("deleted-resource records", () =>
+            db.DeletedResources
+                .Where(d => d.DeletedAtUtc < nowUtc - TimeSpan.FromDays(61))
+                .ExecuteDeleteAsync(cancellationToken));
+
         // A snooze is over once it was due: its token lives two days, so nothing can move it again.
         await StepAsync("reminder snoozes", () =>
             db.ReminderSnoozes

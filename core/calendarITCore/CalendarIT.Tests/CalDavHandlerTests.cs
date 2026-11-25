@@ -466,6 +466,126 @@ public sealed class CalDavHandlerTests : IDisposable
         Assert.Equal("From the phone", _db.Events.AsNoTracking().Single().Title);
     }
 
+    private static string SyncQuery(string token, bool withData = false) =>
+        "<?xml version=\"1.0\"?><d:sync-collection xmlns:d=\"DAV:\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\">" +
+        $"<d:sync-token>{token}</d:sync-token><d:sync-level>1</d:sync-level>" +
+        (withData ? "<d:prop><d:getetag/><c:calendar-data/></d:prop>" : "<d:prop><d:getetag/></d:prop>") +
+        "</d:sync-collection>";
+
+    private async Task<(XDocument Doc, int Status)> SyncAsync(Guid calId, string token, bool withData = false)
+    {
+        var ctx = Context(SyncQuery(token, withData));
+        var xml = await ExecuteAsync(await _handler.Report(calId, ctx), ctx);
+        return (XDocument.Parse(xml), ctx.Response.StatusCode);
+    }
+
+    private static string TokenOf(XDocument doc) => doc.Root!.Element(D + "sync-token")!.Value;
+
+    private static List<(string Href, string Status)> Responses(XDocument doc) =>
+        doc.Descendants(D + "response")
+            .Select(r => (r.Element(D + "href")!.Value,
+                r.Element(D + "status")?.Value ?? r.Element(D + "propstat")!.Element(D + "status")!.Value))
+            .ToList();
+
+    private async Task PutAsync(Guid calId, string uid, string summary)
+    {
+        var ctx = Context(PutIcs.Replace("UID:phone-1@test", $"UID:{uid}").Replace("From the phone", summary));
+        await ExecuteAsync(await _handler.PutEvent(calId, $"{uid}.ics", ctx), ctx);
+    }
+
+    /// <summary>Moves every stored timestamp back, as if those writes happened long ago.</summary>
+    private async Task AgeEverythingAsync(TimeSpan by)
+    {
+        foreach (var e in _db.Events) e.UpdatedAt -= by;
+        foreach (var d in _db.DeletedResources) d.DeletedAtUtc -= by;
+        await _db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task SyncCollection_FirstSync_ListsEverything_WithAToken()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        await PutAsync(calId, "a@test", "A");
+        await PutAsync(calId, "b@test", "B");
+
+        var (doc, status) = await SyncAsync(calId, "");
+
+        Assert.Equal(207, status);
+        Assert.Equal(2, Responses(doc).Count);
+        Assert.Empty(doc.Descendants(C + "calendar-data")); // only asked for ETags
+        Assert.StartsWith("http://calendarit.app/ns/sync/", TokenOf(doc));
+    }
+
+    [Fact]
+    public async Task SyncCollection_ThenOnlyWhatChangedOrWent()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        await PutAsync(calId, "a@test", "A");
+        await PutAsync(calId, "b@test", "B");
+        await PutAsync(calId, "c@test", "C");
+        var (first, _) = await SyncAsync(calId, "");
+        await AgeEverythingAsync(TimeSpan.FromMinutes(10)); // the first sync was a while ago
+
+        await PutAsync(calId, "b@test", "B changed");
+        var ctx = Context();
+        await ExecuteAsync(await _handler.DeleteEvent(calId, "c@test.ics", ctx), ctx);
+        await PutAsync(calId, "d@test", "D new");
+
+        var (next, status) = await SyncAsync(calId, TokenOf(first), withData: true);
+
+        Assert.Equal(207, status);
+        var responses = Responses(next);
+        Assert.Contains(responses, r => r.Href.EndsWith("b%40test.ics") && r.Status.Contains("200"));
+        Assert.Contains(responses, r => r.Href.EndsWith("d%40test.ics") && r.Status.Contains("200"));
+        Assert.Contains(responses, r => r.Href.EndsWith("c%40test.ics") && r.Status.Contains("404"));
+        Assert.DoesNotContain(responses, r => r.Href.EndsWith("a%40test.ics"));
+        Assert.Contains(next.Descendants(C + "calendar-data"), d => d.Value.Contains("B changed"));
+    }
+
+    [Fact]
+    public async Task SyncCollection_AnEventMovedToAnotherCalendar_IsGoneFromTheFirst()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        await PutAsync(calId, "a@test", "A");
+        var (first, _) = await SyncAsync(calId, "");
+        await AgeEverythingAsync(TimeSpan.FromMinutes(10));
+
+        var other = new Calendar { Id = Guid.NewGuid(), OwnerUserId = _db.Calendars.First().OwnerUserId, Name = "Work" };
+        _db.Calendars.Add(other);
+        _db.Events.Single().CalendarId = other.Id;
+        await _db.SaveChangesAsync();
+
+        var (next, _) = await SyncAsync(calId, TokenOf(first));
+        Assert.Contains(Responses(next), r => r.Href.EndsWith("a%40test.ics") && r.Status.Contains("404"));
+    }
+
+    [Theory]
+    [InlineData("garbage")]
+    [InlineData("http://calendarit.app/ns/sync/12")]          // from the year 1
+    [InlineData("http://calendarit.app/ns/sync/999999999999999999")] // from the future
+    public async Task SyncCollection_AnUnknownOrExpiredToken_SaysStartOver(string token)
+    {
+        var calId = await DiscoverCalendarIdAsync();
+
+        var ctx = Context(SyncQuery(token));
+        var xml = await ExecuteAsync(await _handler.Report(calId, ctx), ctx);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, ctx.Response.StatusCode);
+        Assert.Contains("valid-sync-token", xml);
+    }
+
+    [Fact]
+    public async Task TheCalendar_AdvertisesSyncCollection_AndAToken()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        var ctx = Context("<?xml version=\"1.0\"?><d:propfind xmlns:d=\"DAV:\"><d:prop><d:sync-token/><d:supported-report-set/></d:prop></d:propfind>");
+        ctx.Request.Headers["Depth"] = "0";
+        var xml = await ExecuteAsync(await _handler.PropfindCalendar(calId, ctx), ctx);
+
+        Assert.Contains("sync-collection", xml);
+        Assert.Contains("http://calendarit.app/ns/sync/", xml);
+    }
+
     [Fact]
     public async Task Report_CalendarQuery_WithoutAFilter_ReturnsEverything()
     {

@@ -257,8 +257,8 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Mail outbox — all outgoing mail is queued and sent in the background with retries; its
   status is visible (and retryable) in Settings → Email
 - ✅ CalDAV server — two-way sync with standard clients: discovery, ETags/CTag,
-  calendar-query/multiget, create/edit/delete, reminders as VALARM both ways (no RFC 6578
-  sync-tokens yet — clients fall back to CTag polling)
+  calendar-query/multiget, incremental sync (RFC 6578 sync-collection: phones fetch only what
+  changed), create/edit/delete, reminders as VALARM both ways
 - ✅ Multiple calendars — create/rename/delete in Settings, per-calendar visibility
   toggles, each exposed as its own CalDAV collection
 - ✅ Calendar subscriptions — subscribe to a published .ics / `webcal://` calendar (holidays, a

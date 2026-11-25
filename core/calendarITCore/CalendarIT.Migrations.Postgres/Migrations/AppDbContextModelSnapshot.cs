@@ -255,6 +255,30 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.ToTable("Categories");
                 });
 
+            modelBuilder.Entity("CalendarIT.Domain.DeletedResource", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CalendarId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("DeletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Uid")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CalendarId", "DeletedAtUtc");
+
+                    b.ToTable("DeletedResources");
+                });
+
             modelBuilder.Entity("CalendarIT.Domain.MailAccount", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -835,6 +859,15 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.HasOne("CalendarIT.Infrastructure.Identity.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.DeletedResource", b =>
+                {
+                    b.HasOne("CalendarIT.Domain.Calendar", null)
+                        .WithMany()
+                        .HasForeignKey("CalendarId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
