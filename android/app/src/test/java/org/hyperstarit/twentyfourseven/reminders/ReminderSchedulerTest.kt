@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import java.time.Clock
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.hyperstarit.twentyfourseven.data.db.CalendarEntity
 import org.hyperstarit.twentyfourseven.data.db.EventData
@@ -36,6 +37,10 @@ class ReminderSchedulerTest {
     fun setUp() = runBlocking {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         prefs = ReminderPrefs(context)
+        // Each test states the prefs it starts from: an earlier test's asynchronous write (turned
+        // off, then on again) can still be on its way to the file when this one loads it.
+        prefs.enabled = true
+        prefs.scheduled = emptySet()
         scheduler = ReminderScheduler(context, db, prefs, clock)
         db.calendars().upsert(listOf(CalendarEntity("cal", "a", "P", null, null, null, emptyList(), false, 0, "1")))
     }
@@ -87,6 +92,12 @@ class ReminderSchedulerTest {
     fun oneThatAlreadyRang_IsNotSetAgain() = runBlocking {
         event("a", 3_600_000L, listOf(Reminder(10, "WebPush")))
         scheduler.reschedule()
+        if (prefs.scheduled.isEmpty()) {
+            throw AssertionError(
+                "DIAG nothing scheduled: enabled=${prefs.enabled} fired=${prefs.fired()} events=${db.events().observeLive().first().map { it.data.id to it.data.start }} " +
+                    "calendars=${db.calendars().observeAll().first().map { it.id }} zone=${java.time.ZoneId.systemDefault()} alarms=${alarms.size}",
+            )
+        }
         prefs.markFired(prefs.scheduled.single(), now)
         scheduler.reschedule()
         assertEquals(0, alarms.size)
