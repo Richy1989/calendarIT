@@ -195,8 +195,14 @@ public static class SyncOpStatus
     public const string Error = "error";
 }
 
-/// <summary>What became of one change. The new state itself comes with the next pull.</summary>
-public sealed record SyncOpResult(string OpId, string Status, string? Error = null);
+/// <summary>
+/// What became of one change. The new state itself comes with the next pull; <see cref="Versions"/>
+/// (on success) gives the version each series or task it touched has now — the baseVersion for
+/// changes to them still queued on the device. Within one push, a later change to the same thing
+/// is sent on the same baseVersion as the first (or none, after a create in that push).
+/// </summary>
+public sealed record SyncOpResult(
+    string OpId, string Status, string? Error = null, IReadOnlyDictionary<Guid, string>? Versions = null);
 
 public sealed record SyncPushResponse(IReadOnlyList<SyncOpResult> Results);
 

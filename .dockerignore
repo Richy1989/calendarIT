@@ -21,3 +21,6 @@
 
 # The Android app is built by Gradle, not into the server image.
 android/
+
+# Local secrets never go into an image.
+secrets/

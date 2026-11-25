@@ -249,6 +249,36 @@ public sealed class SyncServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ChangesQueuedOffline_GoThroughTogether_OnTheBaseTheyWereMadeOn()
+    {
+        var series = await _events.CreateAsync(_userId, Event("Standup", "FREQ=WEEKLY"));
+        var version = await VersionOf(series.Id);
+        _clock.Now = _clock.Now.AddMinutes(1);
+        var created = Guid.NewGuid();
+
+        var response = await _sync.PushAsync(_userId, new SyncPushRequest
+        {
+            Ops =
+            [
+                Op(SyncOps.EventOccurrenceDelete, series.Id, baseVersion: version, occurrence: Monday.AddDays(7)),
+                Op(SyncOps.EventOccurrenceDelete, series.Id, baseVersion: version, occurrence: Monday.AddDays(14)),
+                Op(SyncOps.EventCreate, created, Event("New")),
+                Op(SyncOps.EventUpdate, created, Event("New, renamed")), // created above: no base yet
+                Op(SyncOps.EventUpdate, series.Id, Event("Standup", "FREQ=WEEKLY"), baseVersion: "12345"), // a real conflict
+            ],
+        });
+
+        Assert.Equal(
+            [SyncOpStatus.Ok, SyncOpStatus.Ok, SyncOpStatus.Ok, SyncOpStatus.Ok, SyncOpStatus.Conflict],
+            response.Results.Select(r => r.Status));
+        var (pages, _) = await PullAll(null);
+        var now = pages.SelectMany(p => p.Events).Single(e => e.Id == series.Id);
+        Assert.Equal(now.Version, response.Results[1].Versions![series.Id]); // the next base for queued changes
+        Assert.Equal([Monday.AddDays(7), Monday.AddDays(14)], now.ExDates);
+        Assert.Equal("New, renamed", pages.SelectMany(p => p.Events).Single(e => e.Id == created).Title);
+    }
+
+    [Fact]
     public async Task AChangeToAnExistingEvent_NeedsItsVersion()
     {
         var created = await _events.CreateAsync(_userId, Event("Original"));

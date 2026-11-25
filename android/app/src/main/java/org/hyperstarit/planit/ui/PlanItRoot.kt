@@ -2,28 +2,38 @@ package org.hyperstarit.planit.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
-import org.hyperstarit.planit.auth.AuthState
-import org.hyperstarit.planit.auth.SessionManager
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import org.hyperstarit.planit.accounts.Accounts
+import org.hyperstarit.planit.ui.accounts.AddAccountScreen
 import org.hyperstarit.planit.ui.home.HomeScreen
-import org.hyperstarit.planit.ui.login.LoginScreen
 
 @HiltViewModel
-class RootViewModel @Inject constructor(session: SessionManager) : ViewModel() {
-    val state = session.state
+class RootViewModel @Inject constructor(accounts: Accounts) : ViewModel() {
+    /** Null until the accounts are read (the splash stays up meanwhile). */
+    val hasAccounts = accounts.all.map { it.isNotEmpty() }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    var addingAccount by mutableStateOf(false)
 }
 
-/** Signed out → the login; signed in → the app. */
+/** No account yet → add one (the first launch); otherwise the app, with "add account" on top when asked. */
 @Composable
-fun PlanItRoot(viewModel: RootViewModel = hiltViewModel()) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
-    when (val s = state) {
-        AuthState.Loading -> Unit // the splash screen is still up
-        is AuthState.SignedOut -> LoginScreen(notice = s.reason)
-        is AuthState.SignedIn -> HomeScreen(server = s.server, email = s.email)
+fun PlanItRoot(viewModel: RootViewModel) {
+    val hasAccounts by viewModel.hasAccounts.collectAsStateWithLifecycle()
+    when {
+        hasAccounts == null -> Unit
+        hasAccounts == false -> AddAccountScreen(onAdded = {}, onCancel = null)
+        viewModel.addingAccount -> AddAccountScreen(
+            onAdded = { viewModel.addingAccount = false },
+            onCancel = { viewModel.addingAccount = false },
+        )
+        else -> HomeScreen(onAddAccount = { viewModel.addingAccount = true })
     }
 }

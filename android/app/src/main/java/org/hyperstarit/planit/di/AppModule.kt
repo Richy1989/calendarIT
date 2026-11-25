@@ -2,6 +2,7 @@ package org.hyperstarit.planit.di
 
 import android.content.Context
 import android.os.Build
+import android.provider.Settings
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
 import dagger.Module
@@ -15,20 +16,22 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import org.hyperstarit.planit.BuildConfig
-import org.hyperstarit.planit.auth.DataStoreSessionStore
+import org.hyperstarit.planit.accounts.Accounts
+import org.hyperstarit.planit.accounts.DeviceInfo
+import org.hyperstarit.planit.auth.DataStoreSecretStore
 import org.hyperstarit.planit.auth.KeystoreSecretBox
-import org.hyperstarit.planit.auth.SessionManager
-import org.hyperstarit.planit.auth.SessionStore
-import org.hyperstarit.planit.data.CalendarRepository
-import org.hyperstarit.planit.data.DeviceRegistrar
+import org.hyperstarit.planit.auth.SecretStore
 import org.hyperstarit.planit.data.db.PlanItDatabase
-import org.hyperstarit.planit.net.ApiClient
+import org.hyperstarit.planit.sync.LocalChanges
+import org.hyperstarit.planit.sync.PlanItSync
+import org.hyperstarit.planit.sync.SyncRunner
+import org.hyperstarit.planit.sync.SyncScheduler
 
-private val Context.sessionDataStore by preferencesDataStore(name = "session")
+// The file keeps phase 1's name ("session"): its device id and old session are read from it.
+private val Context.secretsDataStore by preferencesDataStore(name = "session")
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -64,41 +67,45 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun api(http: OkHttpClient, json: Json): ApiClient = ApiClient(http, json)
-
-    @Provides
-    @Singleton
-    fun sessionStore(@ApplicationContext context: Context, json: Json): SessionStore =
-        DataStoreSessionStore(context.sessionDataStore, KeystoreSecretBox(), json)
+    fun secrets(@ApplicationContext context: Context, json: Json): SecretStore =
+        DataStoreSecretStore(context.secretsDataStore, KeystoreSecretBox(), json)
 
     @Provides
     @Singleton
     fun database(@ApplicationContext context: Context): PlanItDatabase =
-        Room.databaseBuilder(context, PlanItDatabase::class.java, "planit.db").build()
+        Room.databaseBuilder(context, PlanItDatabase::class.java, "planit.db")
+            .addMigrations(PlanItDatabase.MIGRATION_1_2)
+            .build()
 
     @Provides
     @Singleton
-    fun deviceRegistrar(@ApplicationContext context: Context, api: ApiClient, store: SessionStore) =
-        DeviceRegistrar(context, api, store)
+    fun deviceInfo(@ApplicationContext context: Context): DeviceInfo = object : DeviceInfo {
+        override val name: String =
+            Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME)?.takeIf { it.isNotBlank() }
+                ?: "${Build.MANUFACTURER} ${Build.MODEL}"
+        override val appVersion: String = BuildConfig.VERSION_NAME
+    }
 
     @Provides
     @Singleton
-    fun sessionManager(
-        api: ApiClient,
-        store: SessionStore,
-        clock: Clock,
-        scope: CoroutineScope,
-        registrar: DeviceRegistrar,
-        db: PlanItDatabase,
-    ): SessionManager = SessionManager(
-        api, store, clock, scope,
-        onSignedIn = { registrar.register(it) },
-        // Nothing of the account stays on the device after it signs out.
-        onSignedOut = { withContext(Dispatchers.IO) { db.clearAllTables() } },
-    )
+    fun accounts(db: PlanItDatabase, secrets: SecretStore, http: OkHttpClient, json: Json, clock: Clock, device: DeviceInfo) =
+        Accounts(db, secrets, http, json, clock, device)
 
     @Provides
     @Singleton
-    fun calendarRepository(db: PlanItDatabase, api: ApiClient, session: SessionManager) =
-        CalendarRepository(db, api, session)
+    fun scheduler(@ApplicationContext context: Context) = SyncScheduler(context)
+
+    @Provides
+    @Singleton
+    fun localChanges(db: PlanItDatabase, clock: Clock, scheduler: SyncScheduler) =
+        LocalChanges(db, clock, onQueued = scheduler::requestNow)
+
+    @Provides
+    @Singleton
+    fun planItSync(db: PlanItDatabase, accounts: Accounts, clock: Clock, changes: LocalChanges) =
+        PlanItSync(db, accounts, clock, changes)
+
+    @Provides
+    @Singleton
+    fun runner(db: PlanItDatabase, accounts: Accounts, planIt: PlanItSync) = SyncRunner(db, accounts, planIt)
 }

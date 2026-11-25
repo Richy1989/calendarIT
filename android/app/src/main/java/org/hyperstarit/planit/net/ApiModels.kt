@@ -130,7 +130,22 @@ data class SyncOp(
 )
 
 @Serializable
-data class SyncOpResult(val opId: String, val status: String, val error: String? = null)
+data class SyncOpResult(
+    val opId: String,
+    val status: String,
+    val error: String? = null,
+    /** On success: the version each series or task the change touched has now. */
+    val versions: Map<String, String>? = null,
+)
+
+object OpStatus {
+    const val OK = "ok"
+    const val CONFLICT = "conflict"
+    const val NOT_FOUND = "notFound"
+    const val INVALID = "invalid"
+    const val FORBIDDEN = "forbidden"
+    const val ERROR = "error"
+}
 
 @Serializable
 data class SyncPushResponse(val results: List<SyncOpResult>)

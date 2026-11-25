@@ -39,6 +39,11 @@ Android app (run from `android/`; JDK 21, Android SDK with platform 37.2):
 ./gradlew lintFossDebug
 ```
 
+Release signing: keystore + `keystore.properties` in the repo-root `secrets/` folder (everything
+there but its README and `keystore.properties.example` is git- and docker-ignored — never commit
+or `git add -f` anything from it), or `PLANIT_KEYSTORE_*`/`PLANIT_KEY_*` env vars; without them
+release builds are unsigned. See `secrets/README.md`.
+
 Flavors: `foss` (no Google libraries: GitHub/F-Droid) and `play`. Debug builds allow plain http
 (the emulator reaches a dev backend at `http://10.0.2.2:5299`); release builds are https-only.
 
@@ -172,7 +177,9 @@ They aren't synced as VALARMs (a phone would alarm twice).
 categories always whole. Push = ordered ops that each call the same service method as the REST
 endpoint (`SyncOps`), creates take client-chosen ids (`Save*Request.Id`, `ClientIds`), event/task
 changes need `baseVersion` (µs `UpdatedAt`; the series' for any occurrence) → `conflict` when
-stale, the server copy wins. Devices hold content-free push targets (UnifiedPush/FCM), kept apart
+stale, the server copy wins. Within one push, later ops on the same series/task are judged by the
+base its first accepted op had (none after a create there), and each `ok` result returns
+`versions` (the touched things' new versions) for ops still queued on the device. Devices hold content-free push targets (UnifiedPush/FCM), kept apart
 from browser `PushSubscriptions` (the app alarms locally). Any new write path must keep bumping
 `UpdatedAt`, or the app never sees the change.
 
@@ -246,10 +253,33 @@ the built image's log for leaked tokens and raw escapes.
 Native Kotlin in `android/` (`org.hyperstarit.planit`, minSdk 34): Compose + Material 3, Hilt,
 Room (the offline source of truth; schemas exported to `app/schemas`, never a destructive
 migration), DataStore, OkHttp + kotlinx.serialization (`net/ApiClient`, hand-written models of the
-sync protocol). `auth/SessionManager` owns the session: tokens sealed with an Android Keystore
-AES-GCM key (`KeystoreSecretBox`, never backed up), refreshes serialized through one Mutex (rotating
-refresh tokens), a refused refresh ends the session, and it never retries a login (server
-lockout). Signing out clears the database.
+sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app start).
+
+- **Accounts** (`accounts/Accounts`): several at once, kind `planit` (now) or `caldav` (later);
+  every row carries `accountId`. First launch picks the kind. Per-account tokens sealed with an
+  Android Keystore AES-GCM key (`SecretStore`/`KeystoreSecretBox`, never backed up); `AccountAuth`
+  serializes refreshes (rotating tokens) and a refused refresh marks the account `needsSignIn` —
+  nothing is sent for it until the user signs in again (server lockout). Removing an account
+  deletes all of its rows.
+- **Self-signed certificates**: trust on first use, per account. `Certificates.probe` reads the
+  certificate (handshake only, then refused — nothing is ever sent), the user compares the
+  SHA-256 fingerprint, `certificatePin` stores it; `Certificates.clientFor` accepts system-trusted
+  certificates or exactly the pinned one (any host name). Another one → `certificateChanged`,
+  sync stops until reviewed. OkHttp tries IPv4/IPv6 side by side and hides TLS failures as
+  *suppressed* exceptions: test with `isCertificateRefusal()`/`allFailures()`, not the cause chain.
+- **Offline-first store** (`data/db`): server copies (`events`, `overrides`, `tasks`) are written
+  only by sync; the user's pending changes live in same-shaped `*_edits` tables and the queries
+  read both (an edit wins). `sync/LocalChanges` writes the edit and queues an `outbox` op (folding:
+  edit into a pending create/edit, create+delete cancels). `sync/PlanItSync`: push (results:
+  ok → drop op and rebase queued ops on returned `versions`; conflict/notFound/invalid/forbidden →
+  drop that thing's queue + a `notices` row, "apply mine anyway" re-queues on the new version;
+  error → keep with backoff), then pull (paged; calendars/categories whole; a reset or first
+  listing deletes what it didn't name), then drop edits nothing is waiting on. Room schemas are
+  exported (`app/schemas`), `MIGRATION_1_2` is validated in `MigrationTest` — never a destructive
+  migration.
+- Tests: Robolectric + MockWebServer (`SyncEngineTest`, `CertificatesTest` with a real
+  self-signed TLS server, `MigrationTest`); `LiveServerTest` runs against a real backend only with
+  `PLANIT_LIVE_URL`/`_EMAIL`/`_PASSWORD` set (throwaway account).
 
 ### Frontend
 

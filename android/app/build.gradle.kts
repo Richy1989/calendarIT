@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -6,6 +8,21 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.room)
 }
+
+/**
+ * Release signing, from secrets/keystore.properties (local, ignored by git) or PLANIT_* environment
+ * variables (CI). Neither present → release builds come out unsigned. See secrets/README.md.
+ */
+val secretsDir = rootProject.projectDir.parentFile.resolve("secrets")
+val keystoreProperties = Properties().apply {
+    val file = secretsDir.resolve("keystore.properties")
+    if (file.isFile) file.inputStream().use(::load)
+}
+
+fun signingValue(env: String, key: String): String? =
+    System.getenv(env)?.takeIf { it.isNotBlank() } ?: keystoreProperties.getProperty(key)?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = signingValue("PLANIT_KEYSTORE_FILE", "storeFile")?.let { secretsDir.resolve(it) }
 
 android {
     namespace = "org.hyperstarit.planit"
@@ -31,6 +48,17 @@ android {
         create("play") { dimension = "distribution" }
     }
 
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = signingValue("PLANIT_KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = signingValue("PLANIT_KEY_ALIAS", "keyAlias")
+                keyPassword = signingValue("PLANIT_KEY_PASSWORD", "keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -40,6 +68,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
@@ -68,6 +97,9 @@ room {
     schemaDirectory("$projectDir/schemas")
 }
 
+// The migration tests (Robolectric, run on the debug variants) read the exported schemas as assets.
+android.sourceSets.getByName("debug").assets.directories.add("$projectDir/schemas")
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
@@ -90,6 +122,10 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
+    implementation(libs.work.runtime)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
+
     implementation(libs.datastore.preferences)
     implementation(libs.coroutines.android)
     implementation(libs.serialization.json)
@@ -99,4 +135,8 @@ dependencies {
     testImplementation(libs.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.robolectric)
+    testImplementation(libs.okhttp.tls)
+    testImplementation(libs.room.testing)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.work.testing)
 }

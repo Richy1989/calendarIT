@@ -299,12 +299,16 @@ public sealed class SyncService(
     public async Task<SyncPushResponse> PushAsync(Guid userId, SyncPushRequest request, CancellationToken cancellationToken = default)
     {
         var results = new List<SyncOpResult>(request.Ops.Count);
+        var batch = new PushBatch();
         foreach (var op in request.Ops)
         {
             SyncOpResult result;
             try
             {
-                result = new SyncOpResult(op.OpId, await ApplyAsync(userId, op, cancellationToken));
+                batch.Touched.Clear();
+                var status = await ApplyAsync(userId, op, batch, cancellationToken);
+                result = new SyncOpResult(op.OpId, status,
+                    Versions: status == SyncOpStatus.Ok ? await VersionsAsync(batch.Touched, cancellationToken) : null);
             }
             catch (InvalidInputException ex) when (ex.Message == EventService.SubscribedCalendarMessage)
             {
@@ -335,7 +339,49 @@ public sealed class SyncService(
         return new SyncPushResponse(results);
     }
 
-    private async Task<string> ApplyAsync(Guid userId, SyncOp op, CancellationToken ct)
+    /// <summary>
+    /// What one push has done so far. A device that changed one thing twice offline sends both
+    /// changes on the version it last saw; the first one moves the version on, so the second is
+    /// checked against the base the first was accepted on (or none, for something this push
+    /// created) instead of being refused as a conflict with itself.
+    /// </summary>
+    private sealed class PushBatch
+    {
+        /// <summary>Series or task id → the baseVersion its first accepted change was sent with
+        /// (null: created in this push).</summary>
+        public Dictionary<Guid, string?> Accepted { get; } = [];
+
+        /// <summary>Series and tasks the current change touched, for the versions in its result.</summary>
+        public List<Guid> Touched { get; } = [];
+
+        public void Accept(Guid id, string? baseVersion)
+        {
+            Accepted.TryAdd(id, baseVersion?.Trim());
+            Touched.Add(id);
+        }
+    }
+
+    /// <summary>The versions things have after a change (gone ones are left out): the next
+    /// baseVersion for changes still queued on the device.</summary>
+    private async Task<IReadOnlyDictionary<Guid, string>?> VersionsAsync(List<Guid> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0)
+        {
+            return null;
+        }
+        var versions = new Dictionary<Guid, string>();
+        foreach (var e in await db.Events.AsNoTracking().Where(e => ids.Contains(e.Id)).Select(e => new { e.Id, e.UpdatedAt }).ToListAsync(ct))
+        {
+            versions[e.Id] = VersionOf(e.UpdatedAt);
+        }
+        foreach (var t in await db.Tasks.AsNoTracking().Where(t => ids.Contains(t.Id)).Select(t => new { t.Id, t.UpdatedAt }).ToListAsync(ct))
+        {
+            versions[t.Id] = VersionOf(t.UpdatedAt);
+        }
+        return versions.Count == 0 ? null : versions;
+    }
+
+    private async Task<string> ApplyAsync(Guid userId, SyncOp op, PushBatch batch, CancellationToken ct)
     {
         switch (op.Op)
         {
@@ -345,34 +391,45 @@ public sealed class SyncService(
                     return SyncOpStatus.Conflict; // sent again after a lost answer, or a clash
                 }
                 await events.CreateAsync(userId, Read<SaveEventRequest>(op, withId: op.Id), ct);
+                batch.Accept(op.Id, baseVersion: null);
                 return SyncOpStatus.Ok;
 
             case SyncOps.EventUpdate:
-                return await WithEventVersionAsync(userId, op, recurringOnly: false, ct, async () =>
+                return await WithEventVersionAsync(userId, op, batch, recurringOnly: false, ct, async () =>
                     await events.UpdateAsync(userId, op.Id, Read<SaveEventRequest>(op), ct) is not null);
 
             case SyncOps.EventDelete:
-                return await WithEventVersionAsync(userId, op, recurringOnly: false, ct, () =>
+                return await WithEventVersionAsync(userId, op, batch, recurringOnly: false, ct, () =>
                     events.DeleteAsync(userId, op.Id, occurrence: null, ct));
 
             case SyncOps.EventOccurrenceUpsert:
-                return await WithEventVersionAsync(userId, op, recurringOnly: true, ct, async () =>
+                return await WithEventVersionAsync(userId, op, batch, recurringOnly: true, ct, async () =>
                     await events.UpsertOccurrenceAsync(userId, op.Id, Occurrence(op), Read<SaveEventRequest>(op), ct) is not null);
 
             case SyncOps.EventOccurrenceDelete:
-                return await WithEventVersionAsync(userId, op, recurringOnly: true, ct, () =>
+                return await WithEventVersionAsync(userId, op, batch, recurringOnly: true, ct, () =>
                     events.DeleteAsync(userId, op.Id, Occurrence(op), ct));
 
             case SyncOps.EventOccurrenceReset:
-                return await WithEventVersionAsync(userId, op, recurringOnly: true, ct, () =>
+                return await WithEventVersionAsync(userId, op, batch, recurringOnly: true, ct, () =>
                     events.ResetOccurrenceAsync(userId, op.Id, Occurrence(op), ct));
 
             case SyncOps.EventFollowingUpdate:
-                return await WithEventVersionAsync(userId, op, recurringOnly: true, ct, async () =>
-                    await events.SplitSeriesAsync(userId, op.Id, Occurrence(op), Read<SaveEventRequest>(op), ct) is not null);
+            {
+                var request = Read<SaveEventRequest>(op);
+                return await WithEventVersionAsync(userId, op, batch, recurringOnly: true, ct, async () =>
+                {
+                    var now = await events.SplitSeriesAsync(userId, op.Id, Occurrence(op), request, ct);
+                    if (now is not null && now.Id != op.Id)
+                    {
+                        batch.Accept(now.Id, baseVersion: null); // the new series
+                    }
+                    return now is not null;
+                });
+            }
 
             case SyncOps.EventFollowingDelete:
-                return await WithEventVersionAsync(userId, op, recurringOnly: true, ct, () =>
+                return await WithEventVersionAsync(userId, op, batch, recurringOnly: true, ct, () =>
                     events.DeleteFollowingAsync(userId, op.Id, Occurrence(op), ct));
 
             case SyncOps.EventRsvp:
@@ -393,18 +450,19 @@ public sealed class SyncService(
                     return SyncOpStatus.Conflict;
                 }
                 await tasks.CreateAsync(userId, Read<SaveTaskRequest>(op, withId: op.Id), ct);
+                batch.Accept(op.Id, baseVersion: null);
                 return SyncOpStatus.Ok;
 
             case SyncOps.TaskUpdate:
-                return await WithTaskVersionAsync(userId, op, ct, async () =>
+                return await WithTaskVersionAsync(userId, op, batch, ct, async () =>
                     await tasks.UpdateAsync(userId, op.Id, Read<SaveTaskRequest>(op), ct) is not null);
 
             case SyncOps.TaskDone:
-                return await WithTaskVersionAsync(userId, op, ct, async () =>
+                return await WithTaskVersionAsync(userId, op, batch, ct, async () =>
                     await tasks.SetDoneAsync(userId, op.Id, Read<SetTaskDoneRequest>(op).Done, ct) is not null);
 
             case SyncOps.TaskDelete:
-                return await WithTaskVersionAsync(userId, op, ct, () => tasks.DeleteAsync(userId, op.Id, ct));
+                return await WithTaskVersionAsync(userId, op, batch, ct, () => tasks.DeleteAsync(userId, op.Id, ct));
 
             // Calendars and categories are few, small and rarely edited at once on two devices:
             // the last change wins, without versions.
@@ -454,7 +512,7 @@ public sealed class SyncService(
     /// occurrences: an edit to any occurrence moves the series' version, as it moves its ETag.
     /// </summary>
     private async Task<string> WithEventVersionAsync(
-        Guid userId, SyncOp op, bool recurringOnly, CancellationToken ct, Func<Task<bool>> apply)
+        Guid userId, SyncOp op, PushBatch batch, bool recurringOnly, CancellationToken ct, Func<Task<bool>> apply)
     {
         var row = await db.Events.AsNoTracking()
             .Where(e => e.Id == op.Id && e.Calendar!.OwnerUserId == userId)
@@ -468,17 +526,23 @@ public sealed class SyncService(
         {
             throw new InvalidInputException("This change is for a repeating series: its id must be the series'.");
         }
+        var seriesId = row.SeriesMasterId ?? op.Id;
         var version = row.SeriesMasterId is { } masterId
             ? await db.Events.AsNoTracking().Where(e => e.Id == masterId).Select(e => e.UpdatedAt).SingleAsync(ct)
             : row.UpdatedAt;
-        if (Conflicts(op, version))
+        if (Conflicts(op, batch, seriesId, version))
         {
             return SyncOpStatus.Conflict;
         }
-        return await apply() ? SyncOpStatus.Ok : SyncOpStatus.NotFound;
+        if (!await apply())
+        {
+            return SyncOpStatus.NotFound;
+        }
+        batch.Accept(seriesId, op.BaseVersion);
+        return SyncOpStatus.Ok;
     }
 
-    private async Task<string> WithTaskVersionAsync(Guid userId, SyncOp op, CancellationToken ct, Func<Task<bool>> apply)
+    private async Task<string> WithTaskVersionAsync(Guid userId, SyncOp op, PushBatch batch, CancellationToken ct, Func<Task<bool>> apply)
     {
         var version = await db.Tasks.AsNoTracking()
             .Where(t => t.Id == op.Id && t.Calendar!.OwnerUserId == userId)
@@ -488,20 +552,32 @@ public sealed class SyncService(
         {
             return SyncOpStatus.NotFound;
         }
-        if (Conflicts(op, version.Value))
+        if (Conflicts(op, batch, op.Id, version.Value))
         {
             return SyncOpStatus.Conflict;
         }
-        return await apply() ? SyncOpStatus.Ok : SyncOpStatus.NotFound;
+        if (!await apply())
+        {
+            return SyncOpStatus.NotFound;
+        }
+        batch.Accept(op.Id, op.BaseVersion);
+        return SyncOpStatus.Ok;
     }
 
-    private static bool Conflicts(SyncOp op, DateTime current)
+    /// <summary>Whether the change was made on a version that has since moved on. Within one push,
+    /// a thing an earlier change in it already took is judged by that change's base instead.</summary>
+    private static bool Conflicts(SyncOp op, PushBatch batch, Guid id, DateTime current)
     {
-        if (string.IsNullOrWhiteSpace(op.BaseVersion))
+        var sent = string.IsNullOrWhiteSpace(op.BaseVersion) ? null : op.BaseVersion.Trim();
+        if (batch.Accepted.TryGetValue(id, out var acceptedOn))
+        {
+            return sent != acceptedOn;
+        }
+        if (sent is null)
         {
             throw new InvalidInputException("A change to an existing event or task needs its baseVersion.");
         }
-        return op.BaseVersion.Trim() != VersionOf(current);
+        return sent != VersionOf(current);
     }
 
     private async Task<string> UpdateCalendarAsync(Guid userId, SyncOp op, CancellationToken ct)

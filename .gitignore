@@ -85,3 +85,9 @@ logs/
 
 # Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/
+
+# --- Local secrets (release signing keystore and its passwords) ---
+# Everything in secrets/ stays on this machine; only the README and the example file are tracked.
+/secrets/*
+!/secrets/README.md
+!/secrets/keystore.properties.example
