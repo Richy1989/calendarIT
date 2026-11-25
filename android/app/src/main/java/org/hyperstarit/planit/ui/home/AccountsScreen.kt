@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -159,10 +160,11 @@ class HomeViewModel @Inject constructor(
     }
 }
 
-/** Phase 2's home: the accounts, their calendars, and what the user should know about their changes. */
+/** The accounts, their calendars, and what the user should know about their changes. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(onAddAccount: () -> Unit, viewModel: HomeViewModel = hiltViewModel()) {
+fun AccountsScreen(onBack: () -> Unit, onAddAccount: () -> Unit, viewModel: HomeViewModel = hiltViewModel()) {
+    androidx.activity.compose.BackHandler(onBack = onBack)
     val state by viewModel.state.collectAsStateWithLifecycle()
     var signingIn by remember { mutableStateOf<AccountEntity?>(null) }
     var removing by remember { mutableStateOf<AccountEntity?>(null) }
@@ -170,7 +172,12 @@ fun HomeScreen(onAddAccount: () -> Unit, viewModel: HomeViewModel = hiltViewMode
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("PlanIt") },
+                title = { Text("Accounts") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
                 actions = {
                     IconButton(onClick = viewModel::syncNow) { Icon(Icons.Default.Refresh, contentDescription = "Sync now") }
                     IconButton(onClick = onAddAccount) { Icon(Icons.Default.Add, contentDescription = "Add account") }

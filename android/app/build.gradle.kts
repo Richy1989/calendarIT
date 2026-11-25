@@ -130,6 +130,8 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.serialization.json)
     implementation(libs.okhttp)
+    implementation(libs.ical4j)
+    implementation(libs.kizitonwose.calendar)
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)

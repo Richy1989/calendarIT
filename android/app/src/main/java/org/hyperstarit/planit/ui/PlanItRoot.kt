@@ -14,26 +14,33 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import org.hyperstarit.planit.accounts.Accounts
 import org.hyperstarit.planit.ui.accounts.AddAccountScreen
-import org.hyperstarit.planit.ui.home.HomeScreen
+import org.hyperstarit.planit.ui.calendar.CalendarScreen
+import org.hyperstarit.planit.ui.home.AccountsScreen
 
 @HiltViewModel
 class RootViewModel @Inject constructor(accounts: Accounts) : ViewModel() {
     /** Null until the accounts are read (the splash stays up meanwhile). */
     val hasAccounts = accounts.all.map { it.isNotEmpty() }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
-    var addingAccount by mutableStateOf(false)
+    var screen by mutableStateOf(Screen.CALENDAR)
 }
 
-/** No account yet → add one (the first launch); otherwise the app, with "add account" on top when asked. */
+enum class Screen { CALENDAR, ACCOUNTS, ADD_ACCOUNT }
+
+/** No account yet → add one (the first launch); otherwise the calendar, the accounts, or adding one. */
 @Composable
 fun PlanItRoot(viewModel: RootViewModel) {
     val hasAccounts by viewModel.hasAccounts.collectAsStateWithLifecycle()
     when {
         hasAccounts == null -> Unit
         hasAccounts == false -> AddAccountScreen(onAdded = {}, onCancel = null)
-        viewModel.addingAccount -> AddAccountScreen(
-            onAdded = { viewModel.addingAccount = false },
-            onCancel = { viewModel.addingAccount = false },
+        viewModel.screen == Screen.ADD_ACCOUNT -> AddAccountScreen(
+            onAdded = { viewModel.screen = Screen.CALENDAR },
+            onCancel = { viewModel.screen = Screen.ACCOUNTS },
         )
-        else -> HomeScreen(onAddAccount = { viewModel.addingAccount = true })
+        viewModel.screen == Screen.ACCOUNTS -> AccountsScreen(
+            onBack = { viewModel.screen = Screen.CALENDAR },
+            onAddAccount = { viewModel.screen = Screen.ADD_ACCOUNT },
+        )
+        else -> CalendarScreen(onAccounts = { viewModel.screen = Screen.ACCOUNTS })
     }
 }

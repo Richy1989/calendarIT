@@ -32,6 +32,7 @@ import org.hyperstarit.planit.sync.SyncScheduler
 
 // The file keeps phase 1's name ("session"): its device id and old session are read from it.
 private val Context.secretsDataStore by preferencesDataStore(name = "session")
+private val Context.uiDataStore by preferencesDataStore(name = "ui")
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -90,6 +91,10 @@ object AppModule {
     @Singleton
     fun accounts(db: PlanItDatabase, secrets: SecretStore, http: OkHttpClient, json: Json, clock: Clock, device: DeviceInfo) =
         Accounts(db, secrets, http, json, clock, device)
+
+    @Provides
+    @Singleton
+    fun calendarPrefs(@ApplicationContext context: Context) = org.hyperstarit.planit.calendar.CalendarPrefs(context.uiDataStore)
 
     @Provides
     @Singleton

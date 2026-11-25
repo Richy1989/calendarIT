@@ -277,6 +277,18 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   listing deletes what it didn't name), then drop edits nothing is waiting on. Room schemas are
   exported (`app/schemas`), `MIGRATION_1_2` is validated in `MigrationTest` — never a destructive
   migration.
+- **Calendar views** (`ui/calendar`): month (kizitonwose `HorizontalCalendar`), week/day (own
+  hour grid, `calendar/TimelineLayout` puts overlaps side by side), agenda; a read-only detail
+  sheet; calendar visibility and the last view are device prefs (`CalendarPrefs`, DataStore).
+  `calendar/Occurrences` builds what a range shows from stored series + overrides (server rules:
+  timed by the viewer's day instants, all-day by date — never through a zone), `calendar/Recurrence`
+  expands with ical4j like `RecurrenceExpander` (own zone's clock, HOURLY in elapsed time, a start
+  the rule doesn't produce isn't shown, never throws, bounded). Use ical4j's `getDates(…, max)` —
+  iterating its lazy `getDatesAsStream` yielded nothing. **`testdata/recurrence-vectors.json`** is
+  shared: `RecurrenceVectorsTests` (server) and `RecurrenceVectorsTest` (app) must both match it;
+  add a case there for any expansion change (`UPDATE_RECURRENCE_VECTORS=1 dotnet test --filter
+  RecurrenceVectors` regenerates from the server — review the diff). R8 keeps ical4j whole
+  (`proguard-rules.pro`).
 - Tests: Robolectric + MockWebServer (`SyncEngineTest`, `CertificatesTest` with a real
   self-signed TLS server, `MigrationTest`); `LiveServerTest` runs against a real backend only with
   `PLANIT_LIVE_URL`/`_EMAIL`/`_PASSWORD` set (throwaway account).

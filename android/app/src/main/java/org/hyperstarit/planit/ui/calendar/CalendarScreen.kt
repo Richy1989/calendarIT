@@ -1,0 +1,149 @@
+package org.hyperstarit.planit.ui.calendar
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
+import org.hyperstarit.planit.calendar.Occurrence
+
+/** The calendar: month, week, day or agenda; the drawer picks calendars and leads to the accounts. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CalendarScreen(onAccounts: () -> Unit, viewModel: CalendarViewModel = hiltViewModel()) {
+    val formats = rememberFormats()
+    val focus by viewModel.focus.collectAsStateWithLifecycle()
+    val shown by viewModel.shown.collectAsStateWithLifecycle()
+    val accounts by viewModel.accounts.collectAsStateWithLifecycle()
+    val calendars by viewModel.calendars.collectAsStateWithLifecycle()
+    val hidden by viewModel.hidden.collectAsStateWithLifecycle()
+    var open by remember { mutableStateOf<Occurrence?>(null) }
+    var viewMenu by remember { mutableStateOf(false) }
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val problem = accounts.any { it.needsSignIn || it.certificateChanged }
+
+    ModalNavigationDrawer(
+        drawerState = drawer,
+        drawerContent = {
+            ModalDrawerSheet {
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 12.dp)) {
+                    Text("PlanIt", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+                    accounts.forEach { account ->
+                        Text(
+                            account.username, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 24.dp, top = 12.dp, bottom = 4.dp),
+                        )
+                        calendars.filter { it.accountId == account.id }.forEach { calendar ->
+                            ListItem(
+                                leadingContent = {
+                                    Box(Modifier.size(12.dp).clip(CircleShape).background(parseColor(calendar.color) ?: MaterialTheme.colorScheme.primary))
+                                },
+                                trailingContent = {
+                                    Checkbox(checked = calendar.id !in hidden, onCheckedChange = { viewModel.setHidden(calendar.id, !it) })
+                                },
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                            ) { Text(calendar.name + if (calendar.readOnly) " · read-only" else "") }
+                        }
+                    }
+                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.AccountCircle, contentDescription = null) },
+                        label = { Text(if (problem) "Accounts · needs attention" else "Accounts") },
+                        selected = false,
+                        onClick = { scope.launch { drawer.close() }; onAccounts() },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                }
+            }
+        },
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Default.Menu, contentDescription = "Calendars and accounts") }
+                    },
+                    title = {
+                        TextButton(onClick = { viewMenu = true }) {
+                            Text(
+                                if (viewModel.mode == ViewMode.DAY) formats.shortDay(focus) else formats.monthTitle(focus),
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Change view")
+                        }
+                        DropdownMenu(expanded = viewMenu, onDismissRequest = { viewMenu = false }) {
+                            listOf(ViewMode.MONTH to "Month", ViewMode.WEEK to "Week", ViewMode.DAY to "Day", ViewMode.AGENDA to "Agenda").forEach { (mode, label) ->
+                                DropdownMenuItem(text = { Text(label) }, onClick = { viewMenu = false; viewModel.show(mode) })
+                            }
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = viewModel::today) { Icon(Icons.Default.DateRange, contentDescription = "Today") }
+                        IconButton(onClick = viewModel::syncNow) { Icon(Icons.Default.Refresh, contentDescription = "Sync now") }
+                    },
+                )
+            },
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                if (viewModel.syncing) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (problem) {
+                    TextButton(onClick = onAccounts, modifier = Modifier.padding(horizontal = 8.dp)) {
+                        Text("An account needs attention — it isn't syncing.", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                Box(Modifier.fillMaxSize()) {
+                    when (viewModel.mode) {
+                        ViewMode.MONTH -> MonthView(focus, shown, formats, onMonthShown = { viewModel.focus.value = it }, onDay = viewModel::openDay)
+                        ViewMode.WEEK -> TimelineView(7, focus, shown, formats, onFocus = { viewModel.focus.value = it }, onDay = viewModel::openDay, onOpen = { open = it })
+                        ViewMode.DAY -> TimelineView(1, focus, shown, formats, onFocus = { viewModel.focus.value = it }, onDay = viewModel::openDay, onOpen = { open = it })
+                        ViewMode.AGENDA -> AgendaView(focus, shown, formats, onOpen = { open = it })
+                    }
+                }
+            }
+        }
+    }
+    open?.let { EventDetailSheet(it, formats, onDismiss = { open = null }) }
+}

@@ -1,0 +1,354 @@
+[
+  {
+    "name": "weekly Monday 09:00 Berlin across both DST changes",
+    "start": "2026-10-19T07:00:00Z",
+    "end": "2026-10-19T08:00:00Z",
+    "allDay": false,
+    "timeZone": "Europe/Berlin",
+    "rrule": "FREQ=WEEKLY;BYDAY=MO",
+    "exDates": [],
+    "from": "2026-10-01T00:00:00Z",
+    "to": "2027-04-10T00:00:00Z",
+    "expected": [
+      "2026-10-19T07:00:00Z",
+      "2026-10-26T08:00:00Z",
+      "2026-11-02T08:00:00Z",
+      "2026-11-09T08:00:00Z",
+      "2026-11-16T08:00:00Z",
+      "2026-11-23T08:00:00Z",
+      "2026-11-30T08:00:00Z",
+      "2026-12-07T08:00:00Z",
+      "2026-12-14T08:00:00Z",
+      "2026-12-21T08:00:00Z",
+      "2026-12-28T08:00:00Z",
+      "2027-01-04T08:00:00Z",
+      "2027-01-11T08:00:00Z",
+      "2027-01-18T08:00:00Z",
+      "2027-01-25T08:00:00Z",
+      "2027-02-01T08:00:00Z",
+      "2027-02-08T08:00:00Z",
+      "2027-02-15T08:00:00Z",
+      "2027-02-22T08:00:00Z",
+      "2027-03-01T08:00:00Z",
+      "2027-03-08T08:00:00Z",
+      "2027-03-15T08:00:00Z",
+      "2027-03-22T08:00:00Z",
+      "2027-03-29T07:00:00Z",
+      "2027-04-05T07:00:00Z"
+    ]
+  },
+  {
+    "name": "daily 08:00 New York, COUNT=5, across spring forward",
+    "start": "2026-03-06T13:00:00Z",
+    "end": "2026-03-06T13:30:00Z",
+    "allDay": false,
+    "timeZone": "America/New_York",
+    "rrule": "FREQ=DAILY;COUNT=5",
+    "exDates": [],
+    "from": "2026-03-01T00:00:00Z",
+    "to": "2026-04-01T00:00:00Z",
+    "expected": [
+      "2026-03-06T13:00:00Z",
+      "2026-03-07T13:00:00Z",
+      "2026-03-08T12:00:00Z",
+      "2026-03-09T12:00:00Z",
+      "2026-03-10T12:00:00Z"
+    ]
+  },
+  {
+    "name": "monthly on the 31st skips short months",
+    "start": "2026-01-31T10:00:00Z",
+    "end": "2026-01-31T11:00:00Z",
+    "allDay": false,
+    "timeZone": "UTC",
+    "rrule": "FREQ=MONTHLY;BYMONTHDAY=31",
+    "exDates": [],
+    "from": "2026-01-01T00:00:00Z",
+    "to": "2026-09-01T00:00:00Z",
+    "expected": [
+      "2026-01-31T10:00:00Z",
+      "2026-03-31T10:00:00Z",
+      "2026-05-31T10:00:00Z",
+      "2026-07-31T10:00:00Z",
+      "2026-08-31T10:00:00Z"
+    ]
+  },
+  {
+    "name": "last Friday of the month, Vienna",
+    "start": "2026-01-30T17:00:00Z",
+    "end": "2026-01-30T18:00:00Z",
+    "allDay": false,
+    "timeZone": "Europe/Vienna",
+    "rrule": "FREQ=MONTHLY;BYDAY=-1FR",
+    "exDates": [],
+    "from": "2026-01-01T00:00:00Z",
+    "to": "2026-07-01T00:00:00Z",
+    "expected": [
+      "2026-01-30T17:00:00Z",
+      "2026-02-27T17:00:00Z",
+      "2026-03-27T17:00:00Z",
+      "2026-04-24T16:00:00Z",
+      "2026-05-29T16:00:00Z",
+      "2026-06-26T16:00:00Z"
+    ]
+  },
+  {
+    "name": "yearly on 29 February",
+    "start": "2028-02-29T00:00:00Z",
+    "end": "2028-02-29T00:00:00Z",
+    "allDay": true,
+    "timeZone": null,
+    "rrule": "FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29",
+    "exDates": [],
+    "from": "2028-01-01T00:00:00Z",
+    "to": "2037-01-01T00:00:00Z",
+    "expected": [
+      "2028-02-29T00:00:00Z",
+      "2032-02-29T00:00:00Z",
+      "2036-02-29T00:00:00Z"
+    ]
+  },
+  {
+    "name": "every other Tuesday and Thursday until a date",
+    "start": "2026-09-01T06:30:00Z",
+    "end": "2026-09-01T07:00:00Z",
+    "allDay": false,
+    "timeZone": "Europe/Berlin",
+    "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH;UNTIL=20261031T225959Z",
+    "exDates": [],
+    "from": "2026-09-01T00:00:00Z",
+    "to": "2026-12-01T00:00:00Z",
+    "expected": [
+      "2026-09-01T06:30:00Z",
+      "2026-09-03T06:30:00Z",
+      "2026-09-15T06:30:00Z",
+      "2026-09-17T06:30:00Z",
+      "2026-09-29T06:30:00Z",
+      "2026-10-01T06:30:00Z",
+      "2026-10-13T06:30:00Z",
+      "2026-10-15T06:30:00Z",
+      "2026-10-27T07:30:00Z",
+      "2026-10-29T07:30:00Z"
+    ]
+  },
+  {
+    "name": "timed series with deleted and edited occurrences",
+    "start": "2026-11-02T08:00:00Z",
+    "end": "2026-11-02T09:00:00Z",
+    "allDay": false,
+    "timeZone": "Europe/Berlin",
+    "rrule": "FREQ=DAILY",
+    "exDates": [
+      "2026-11-03T08:00:00Z",
+      "2026-11-05T08:00:00Z"
+    ],
+    "from": "2026-11-01T00:00:00Z",
+    "to": "2026-11-08T00:00:00Z",
+    "expected": [
+      "2026-11-02T08:00:00Z",
+      "2026-11-04T08:00:00Z",
+      "2026-11-06T08:00:00Z",
+      "2026-11-07T08:00:00Z"
+    ]
+  },
+  {
+    "name": "all-day daily, one day excluded",
+    "start": "2026-12-24T00:00:00Z",
+    "end": "2026-12-24T00:00:00Z",
+    "allDay": true,
+    "timeZone": null,
+    "rrule": "FREQ=DAILY;COUNT=4",
+    "exDates": [
+      "2026-12-25T00:00:00Z"
+    ],
+    "from": "2026-12-01T00:00:00Z",
+    "to": "2027-01-01T00:00:00Z",
+    "expected": [
+      "2026-12-24T00:00:00Z",
+      "2026-12-26T00:00:00Z",
+      "2026-12-27T00:00:00Z"
+    ]
+  },
+  {
+    "name": "two-day all-day weekly, seen from its second day",
+    "start": "2026-06-06T00:00:00Z",
+    "end": "2026-06-07T00:00:00Z",
+    "allDay": true,
+    "timeZone": null,
+    "rrule": "FREQ=WEEKLY",
+    "exDates": [],
+    "from": "2026-06-14T00:00:00Z",
+    "to": "2026-06-28T00:00:00Z",
+    "expected": [
+      "2026-06-13T00:00:00Z",
+      "2026-06-20T00:00:00Z",
+      "2026-06-27T00:00:00Z"
+    ]
+  },
+  {
+    "name": "no zone: daily 23:30 UTC",
+    "start": "2026-05-01T23:30:00Z",
+    "end": "2026-05-02T00:30:00Z",
+    "allDay": false,
+    "timeZone": null,
+    "rrule": "FREQ=DAILY;COUNT=3",
+    "exDates": [],
+    "from": "2026-05-01T00:00:00Z",
+    "to": "2026-06-01T00:00:00Z",
+    "expected": [
+      "2026-05-01T23:30:00Z",
+      "2026-05-02T23:30:00Z",
+      "2026-05-03T23:30:00Z"
+    ]
+  },
+  {
+    "name": "last weekday of the month",
+    "start": "2026-01-30T15:00:00Z",
+    "end": "2026-01-30T16:00:00Z",
+    "allDay": false,
+    "timeZone": "Europe/London",
+    "rrule": "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1",
+    "exDates": [],
+    "from": "2026-01-01T00:00:00Z",
+    "to": "2026-07-01T00:00:00Z",
+    "expected": [
+      "2026-01-30T15:00:00Z",
+      "2026-02-27T15:00:00Z",
+      "2026-03-31T14:00:00Z",
+      "2026-04-30T14:00:00Z",
+      "2026-05-29T14:00:00Z",
+      "2026-06-30T14:00:00Z"
+    ]
+  },
+  {
+    "name": "every 6 hours across a DST change (elapsed time, not wall clock)",
+    "start": "2026-03-28T22:00:00Z",
+    "end": "2026-03-28T22:30:00Z",
+    "allDay": false,
+    "timeZone": "Europe/Berlin",
+    "rrule": "FREQ=HOURLY;INTERVAL=6;COUNT=8",
+    "exDates": [],
+    "from": "2026-03-28T00:00:00Z",
+    "to": "2026-04-01T00:00:00Z",
+    "expected": [
+      "2026-03-28T22:00:00Z",
+      "2026-03-29T04:00:00Z",
+      "2026-03-29T10:00:00Z",
+      "2026-03-29T16:00:00Z",
+      "2026-03-29T22:00:00Z",
+      "2026-03-30T04:00:00Z",
+      "2026-03-30T10:00:00Z",
+      "2026-03-30T16:00:00Z"
+    ]
+  },
+  {
+    "name": "an unknown zone is read as UTC",
+    "start": "2026-02-02T09:00:00Z",
+    "end": "2026-02-02T10:00:00Z",
+    "allDay": false,
+    "timeZone": "Mars/Olympus_Mons",
+    "rrule": "FREQ=WEEKLY;COUNT=3",
+    "exDates": [],
+    "from": "2026-02-01T00:00:00Z",
+    "to": "2026-03-01T00:00:00Z",
+    "expected": [
+      "2026-02-02T09:00:00Z",
+      "2026-02-09T09:00:00Z",
+      "2026-02-16T09:00:00Z"
+    ]
+  },
+  {
+    "name": "an impossible rule yields nothing",
+    "start": "2026-01-30T09:00:00Z",
+    "end": "2026-01-30T10:00:00Z",
+    "allDay": false,
+    "timeZone": "UTC",
+    "rrule": "FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30",
+    "exDates": [],
+    "from": "2026-01-31T00:00:00Z",
+    "to": "2030-01-01T00:00:00Z",
+    "expected": []
+  },
+  {
+    "name": "a start the rule doesn\u0027t produce still counts",
+    "start": "2026-09-07T08:00:00Z",
+    "end": "2026-09-07T09:00:00Z",
+    "allDay": false,
+    "timeZone": "Europe/Berlin",
+    "rrule": "FREQ=WEEKLY;BYDAY=WE;COUNT=3",
+    "exDates": [],
+    "from": "2026-09-01T00:00:00Z",
+    "to": "2026-10-01T00:00:00Z",
+    "expected": [
+      "2026-09-09T08:00:00Z",
+      "2026-09-16T08:00:00Z",
+      "2026-09-23T08:00:00Z"
+    ]
+  },
+  {
+    "name": "window starts mid-occurrence of a timed series",
+    "start": "2026-07-01T22:00:00Z",
+    "end": "2026-07-02T02:00:00Z",
+    "allDay": false,
+    "timeZone": "Europe/Berlin",
+    "rrule": "FREQ=DAILY;COUNT=5",
+    "exDates": [],
+    "from": "2026-07-03T00:00:00Z",
+    "to": "2026-07-04T00:00:00Z",
+    "expected": [
+      "2026-07-02T22:00:00Z",
+      "2026-07-03T22:00:00Z"
+    ]
+  },
+  {
+    "name": "yearly birthday, all-day",
+    "start": "1990-04-15T00:00:00Z",
+    "end": "1990-04-15T00:00:00Z",
+    "allDay": true,
+    "timeZone": null,
+    "rrule": "FREQ=YEARLY",
+    "exDates": [],
+    "from": "2026-01-01T00:00:00Z",
+    "to": "2028-12-31T00:00:00Z",
+    "expected": [
+      "2026-04-15T00:00:00Z",
+      "2027-04-15T00:00:00Z",
+      "2028-04-15T00:00:00Z"
+    ]
+  },
+  {
+    "name": "monthly second Wednesday, Sydney",
+    "start": "2026-01-13T23:00:00Z",
+    "end": "2026-01-14T00:00:00Z",
+    "allDay": false,
+    "timeZone": "Australia/Sydney",
+    "rrule": "FREQ=MONTHLY;BYDAY=2WE",
+    "exDates": [],
+    "from": "2026-01-01T00:00:00Z",
+    "to": "2026-06-01T00:00:00Z",
+    "expected": [
+      "2026-01-13T23:00:00Z",
+      "2026-02-10T23:00:00Z",
+      "2026-03-10T23:00:00Z",
+      "2026-04-08T00:00:00Z",
+      "2026-05-13T00:00:00Z"
+    ]
+  },
+  {
+    "name": "a daily series from long ago, seen today",
+    "start": "1990-01-01T08:00:00Z",
+    "end": "1990-01-01T09:00:00Z",
+    "allDay": false,
+    "timeZone": "Europe/Berlin",
+    "rrule": "FREQ=DAILY",
+    "exDates": [],
+    "from": "2026-03-27T00:00:00Z",
+    "to": "2026-03-31T00:00:00Z",
+    "expected": [
+      "2026-03-27T08:00:00Z",
+      "2026-03-28T08:00:00Z",
+      "2026-03-29T07:00:00Z",
+      "2026-03-30T07:00:00Z"
+    ]
+  }
+]
