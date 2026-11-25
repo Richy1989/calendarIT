@@ -9,7 +9,7 @@ namespace calendarITCore.Controllers;
 [ApiController]
 [Route("api/calendars")]
 [Authorize]
-public sealed class CalendarsController(ICalendarService calendars) : ControllerBase
+public sealed class CalendarsController(ICalendarService calendars, ICalendarSubscriptionService subscriptions) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<CalendarDto>>(StatusCodes.Status200OK)]
@@ -22,6 +22,41 @@ public sealed class CalendarsController(ICalendarService calendars) : Controller
     {
         var created = await calendars.CreateAsync(User.GetUserId(), request, cancellationToken);
         return CreatedAtAction(nameof(List), created);
+    }
+
+    /// <summary>
+    /// Subscribes to an .ics feed (https, http or webcal, on the public internet): a new
+    /// read-only calendar, refreshed in the background. The feed is fetched first — a 400 says
+    /// why when it can't be.
+    /// </summary>
+    [HttpPost("subscriptions")]
+    [ProducesResponseType<CalendarDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Subscribe(SubscribeCalendarRequest request, CancellationToken cancellationToken)
+    {
+        var created = await subscriptions.SubscribeAsync(User.GetUserId(), request, cancellationToken);
+        return CreatedAtAction(nameof(List), created);
+    }
+
+    /// <summary>Fetches a subscribed calendar now. How it went is in <c>subscription.lastError</c>.</summary>
+    [HttpPost("{id:guid}/refresh")]
+    [ProducesResponseType<CalendarDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Refresh(Guid id, CancellationToken cancellationToken)
+    {
+        var refreshed = await subscriptions.RefreshAsync(User.GetUserId(), id, cancellationToken);
+        return refreshed is null ? NotFound() : Ok(refreshed);
+    }
+
+    /// <summary>How often a subscribed calendar is refreshed: 60, 360, 720 or 1440 minutes.</summary>
+    [HttpPut("{id:guid}/refresh-interval")]
+    [ProducesResponseType<CalendarDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SetRefreshInterval(Guid id, SetRefreshRequest request, CancellationToken cancellationToken)
+    {
+        var updated = await subscriptions.SetRefreshMinutesAsync(User.GetUserId(), id, request.RefreshMinutes, cancellationToken);
+        return updated is null ? NotFound() : Ok(updated);
     }
 
     [HttpPut("{id:guid}")]

@@ -48,7 +48,7 @@ public sealed class IncomingInvitationService(AppDbContext db, TimeProvider time
             .Include(e => e.Overrides).ThenInclude(o => o.Reminders)
             .AsSplitQuery()
             .SingleOrDefaultAsync(
-                e => e.Uid == request.Uid && e.Calendar!.OwnerUserId == recipientUserId && e.SeriesMasterId == null,
+                e => e.Uid == request.Uid && e.Calendar!.OwnerUserId == recipientUserId && e.Calendar.SourceUrl == null && e.SeriesMasterId == null,
                 cancellationToken);
 
         // Only ever a received invitation — never the user's own event under a colliding UID.

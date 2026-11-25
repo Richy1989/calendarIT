@@ -34,6 +34,30 @@ public class Calendar
     /// </summary>
     public string? DefaultReminders { get; set; }
 
+    /// <summary>
+    /// Set for a subscribed calendar: the .ics feed (https/http; webcal is stored as https) its
+    /// events are copied from. Such a calendar is read-only — its events change only at the
+    /// source. Null = an ordinary calendar.
+    /// </summary>
+    public string? SourceUrl { get; set; }
+
+    /// <summary>How often the feed is fetched, in minutes (subscriptions only).</summary>
+    public int? RefreshMinutes { get; set; }
+
+    /// <summary>When the feed was last read successfully (subscriptions only).</summary>
+    public DateTime? LastFetchedUtc { get; set; }
+
+    /// <summary>When the next fetch is due; null = as soon as possible.</summary>
+    public DateTime? NextFetchUtc { get; set; }
+
+    /// <summary>Why the last fetch failed, in words for the user; null after a success.</summary>
+    public string? LastFetchError { get; set; }
+
+    /// <summary>The feed's ETag / Last-Modified from the last fetch, for a conditional request.</summary>
+    public string? SourceETag { get; set; }
+
+    public string? SourceLastModified { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }

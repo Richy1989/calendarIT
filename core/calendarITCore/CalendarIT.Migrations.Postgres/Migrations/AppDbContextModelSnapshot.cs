@@ -72,13 +72,38 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("LastFetchError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("LastFetchedUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<DateTime?>("NextFetchUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("OwnerUserId")
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("RefreshMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourceETag")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SourceLastModified")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("SourceUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<string>("TimeZoneId")
                         .HasMaxLength(64)
@@ -90,6 +115,8 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("DefaultCategoryId");
+
+                    b.HasIndex("NextFetchUtc");
 
                     b.HasIndex("OwnerUserId");
 

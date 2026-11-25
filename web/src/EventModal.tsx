@@ -80,6 +80,7 @@ export default function EventModal({
   onDelete,
   onCopy,
   onRespond,
+  readOnly,
   onScopeChange,
   onClose,
 }: {
@@ -100,6 +101,8 @@ export default function EventModal({
   onCopy?: (id: string) => void
   /** Present only for a received invitation: records the user's RSVP. */
   onRespond?: (status: 'Accepted' | 'Declined' | 'Tentative') => void
+  /** From a subscribed calendar: shown, not editable (its source owns it). */
+  readOnly?: boolean
   onClose: () => void
 }) {
   const [title, setTitle] = useState(draft.title)
@@ -282,7 +285,7 @@ export default function EventModal({
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!title.trim()) return
+    if (readOnly || !title.trim()) return
     onSave({
       ...draft,
       calendarId, title: title.trim(), start, end, allDay, categoryId, location, description,
@@ -296,13 +299,19 @@ export default function EventModal({
       <form ref={formRef} className="modal event-form" onMouseDown={(e) => e.stopPropagation()} onSubmit={submit}>
         <div className="modal-head">
           <span className="eyebrow">
-            {onRespond ? 'Invitation' : occurrenceOnly ? 'Edit occurrence' : isEdit ? 'Edit appointment' : 'New appointment'}
+            {readOnly ? 'Subscribed calendar' : onRespond ? 'Invitation' : occurrenceOnly ? 'Edit occurrence' : isEdit ? 'Edit appointment' : 'New appointment'}
           </span>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>
 
+        {readOnly && (
+          <p className="field-hint readonly-note">
+            This appointment comes from a subscription and changes only at its source.
+          </p>
+        )}
+        <fieldset className="form-fieldset" disabled={readOnly}>
         {onRespond && (
           <div className="invite-banner">
             <div className="invite-banner-text">
@@ -545,8 +554,10 @@ export default function EventModal({
           />
         </div>
 
+        </fieldset>
+
         <div className="modal-actions">
-          {isEdit && onDelete && (
+          {isEdit && onDelete && !readOnly && (
             <button type="button" className="btn-danger" onClick={onDelete}>
               {occurrenceOnly
                 ? 'Delete occurrence'
@@ -563,13 +574,21 @@ export default function EventModal({
             </button>
           )}
           <span className="spacer" />
-          <span className="form-kbd">Ctrl+Enter</span>
-          <button type="button" className="btn-ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="btn-primary" disabled={!title.trim()}>
-            Save
-          </button>
+          {readOnly ? (
+            <button type="button" className="btn-ghost" onClick={onClose}>
+              Close
+            </button>
+          ) : (
+            <>
+              <span className="form-kbd">Ctrl+Enter</span>
+              <button type="button" className="btn-ghost" onClick={onClose}>
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary" disabled={!title.trim()}>
+                Save
+              </button>
+            </>
+          )}
         </div>
       </form>
     </div>

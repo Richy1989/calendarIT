@@ -15,12 +15,17 @@ public sealed class CalendarService(AppDbContext db, TimeProvider timeProvider) 
             .Where(c => c.OwnerUserId == userId)
             .OrderBy(c => c.CreatedAt)
             // Edited occurrences are rows of their own but not appointments of their own.
-            .Select(c => new { c.Id, c.Name, Count = c.Events.Count(e => e.SeriesMasterId == null), c.DefaultCategoryId, c.DefaultReminders })
+            .Select(c => new
+            {
+                c.Id, c.Name, Count = c.Events.Count(e => e.SeriesMasterId == null), c.DefaultCategoryId, c.DefaultReminders,
+                c.SourceUrl, c.RefreshMinutes, c.LastFetchedUtc, c.LastFetchError,
+            })
             .ToListAsync(cancellationToken);
         if (calendars.Count > 0)
         {
             return calendars
-                .Select(c => new CalendarDto(c.Id, c.Name, c.Count, c.DefaultCategoryId, DefaultReminders.Parse(c.DefaultReminders)))
+                .Select(c => new CalendarDto(c.Id, c.Name, c.Count, c.DefaultCategoryId, DefaultReminders.Parse(c.DefaultReminders),
+                    SubscriptionOf(c.SourceUrl, c.RefreshMinutes, c.LastFetchedUtc, c.LastFetchError)))
                 .ToList();
         }
 
@@ -99,9 +104,10 @@ public sealed class CalendarService(AppDbContext db, TimeProvider timeProvider) 
             return DeleteCalendarResult.NotFound;
         }
 
-        // Every account keeps at least one calendar — events need somewhere to live.
-        var total = await db.Calendars.CountAsync(c => c.OwnerUserId == userId, cancellationToken);
-        if (total <= 1)
+        // Every account keeps at least one calendar of its own — events need somewhere to live,
+        // and a subscription isn't such a place. Subscriptions themselves can always go.
+        var writable = await db.Calendars.CountAsync(c => c.OwnerUserId == userId && c.SourceUrl == null, cancellationToken);
+        if (entity.SourceUrl is null && writable <= 1)
         {
             return DeleteCalendarResult.LastCalendar;
         }
@@ -123,10 +129,30 @@ public sealed class CalendarService(AppDbContext db, TimeProvider timeProvider) 
             : throw new InvalidInputException("That category doesn't exist.");
     }
 
-    private async Task<CalendarDto> ToDtoAsync(Calendar entity, CancellationToken cancellationToken)
+    internal async Task<CalendarDto> ToDtoAsync(Calendar entity, CancellationToken cancellationToken)
     {
         var count = await db.Events.CountAsync(e => e.CalendarId == entity.Id && e.SeriesMasterId == null, cancellationToken);
-        return new CalendarDto(entity.Id, entity.Name, count, entity.DefaultCategoryId, DefaultReminders.Parse(entity.DefaultReminders));
+        return new CalendarDto(entity.Id, entity.Name, count, entity.DefaultCategoryId, DefaultReminders.Parse(entity.DefaultReminders),
+            SubscriptionOf(entity.SourceUrl, entity.RefreshMinutes, entity.LastFetchedUtc, entity.LastFetchError));
+    }
+
+    /// <summary>A subscription as the client sees it — with any password in the URL masked.</summary>
+    internal static CalendarSubscriptionDto? SubscriptionOf(string? url, int? refreshMinutes, DateTime? lastFetched, string? lastError)
+    {
+        if (url is null)
+        {
+            return null;
+        }
+        var shown = url;
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.UserInfo))
+        {
+            var user = uri.UserInfo.Split(':')[0];
+            shown = new UriBuilder(uri) { UserName = user, Password = uri.UserInfo.Contains(':') ? "***" : string.Empty }.Uri.AbsoluteUri;
+        }
+        return new CalendarSubscriptionDto(
+            shown, refreshMinutes ?? 360,
+            lastFetched is { } at ? new DateTimeOffset(DateTime.SpecifyKind(at, DateTimeKind.Utc)) : null,
+            lastError);
     }
 
     private async Task<Calendar> CreateEntityAsync(Guid userId, string name, Guid? defaultCategoryId, CancellationToken cancellationToken)

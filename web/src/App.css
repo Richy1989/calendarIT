@@ -2591,8 +2591,8 @@ input[aria-invalid='true']:focus-visible {
   gap: 0.2rem;
 }
 .event-form > .modal-head,
-.event-form > .invite-banner,
-.event-form > .scope-switch {
+.event-form > .form-fieldset > .invite-banner,
+.event-form > .form-fieldset > .scope-switch {
   margin-bottom: 0.5rem;
 }
 .event-form > .modal-actions {
@@ -3262,4 +3262,101 @@ input[aria-invalid='true']:focus-visible {
 .backup-bar button {
   padding: 0.35rem 0.8rem;
   font-size: 0.82rem;
+}
+
+/* The event editor's fields, disabled as a whole for an appointment from a subscription. */
+.form-fieldset {
+  display: contents;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.form-fieldset:disabled {
+  /* display: contents keeps the layout; the fields themselves show as disabled. */
+  opacity: 1;
+}
+.readonly-note {
+  margin: 0 0 0.6rem;
+}
+
+/* Subscribed calendars: the add buttons side by side, the subscribe form, a row's feed status. */
+.cal-add-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.4rem;
+  align-items: flex-start;
+}
+.cal-subscribe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+}
+.cal-subscribe input {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.86rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+.cal-subscribe input[type='url'] {
+  flex-basis: 100%;
+}
+.cal-subscribe .form-select,
+.cal-sub .form-select {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.82rem;
+}
+.cal-subscribe-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+.cal-subscribe .field-hint,
+.cal-subscribe .error {
+  flex-basis: 100%;
+  margin: 0;
+}
+.cal-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  font-size: 0.8rem;
+}
+.cal-sub-url {
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-sub-status {
+  color: var(--text-dim);
+}
+.cal-sub-status.is-error {
+  color: var(--danger-ink);
+}
+.cal-sub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.cal-sub-actions .btn-ghost {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+}
+.form-fieldset:disabled button,
+.form-fieldset:disabled .form-menu-btn {
+  opacity: 0.45;
+  cursor: default;
 }

@@ -91,7 +91,7 @@ public sealed class InternalInvitationDelivery(AppDbContext db, TimeProvider tim
         var existing = await db.Events
             .Include(e => e.Overrides)
             .SingleOrDefaultAsync(
-                e => e.Uid == master.Uid && e.Calendar!.OwnerUserId == inviteeUserId && e.SeriesMasterId == null,
+                e => e.Uid == master.Uid && e.Calendar!.OwnerUserId == inviteeUserId && e.Calendar.SourceUrl == null && e.SeriesMasterId == null,
                 cancellationToken);
 
         // A row that isn't our copy is not ours to write to. The UID came from the organizer, who

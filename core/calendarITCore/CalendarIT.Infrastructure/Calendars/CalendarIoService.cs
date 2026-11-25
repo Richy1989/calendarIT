@@ -201,6 +201,10 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
         {
             var owned = await db.Calendars
                 .SingleOrDefaultAsync(c => c.Id == id && c.OwnerUserId == userId, cancellationToken);
+            if (owned?.SourceUrl is not null)
+            {
+                throw new InvalidInputException(EventService.SubscribedCalendarMessage);
+            }
             if (owned is not null)
             {
                 return owned;

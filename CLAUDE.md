@@ -130,6 +130,14 @@ being written to it, so recoloring the calendar recolors its events. Incoming iC
 naming the default leaves the event inheriting, and a bare `COLOR` isn't snapped to a category in
 such a calendar.
 
+**Calendar subscriptions** (`CalendarSubscriptionService`, `SubscriptionRefreshJob` every 5 min):
+a calendar with `SourceUrl` set mirrors an .ics feed by UID and is **read-only** everywhere —
+`EventService` (`EnsureWritableAsync`), import, CalDAV PUT/DELETE (403, privilege set "read").
+`DefaultCalendar` never picks one, and an account always keeps one calendar of its own. Feeds are
+fetched by `CalendarFeedFetcher`: public addresses only (`OutboundHostPolicy` on each connection),
+redirects by hand (≤5), a login in the URL never sent to another host, 5 MB cap, conditional GET.
+An unchanged event keeps its `UpdatedAt` across refreshes (CalDAV ETags stay put).
+
 ### Auth
 
 ASP.NET Core Identity (Guid keys, `ApplicationUser`) + JWT access tokens with **rotating refresh

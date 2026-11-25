@@ -107,6 +107,7 @@ function dtoToInput(dto: EventDto): EventInput {
     borderColor: color,
     extendedProps: {
       seriesId: occurrence?.seriesId ?? dto.id,
+      calendarId: dto.calendarId,
       recurring: dto.recurring,
       occurrence,
       categoryId: dto.categoryId ?? null,
@@ -167,7 +168,7 @@ function dtoToRequest(dto: EventDto): SaveEventRequest {
 
 type ContextMenu =
   | { kind: 'date'; x: number; y: number; date: Date }
-  | { kind: 'event'; x: number; y: number; seriesId: string; occurrence: OccurrenceRef | null }
+  | { kind: 'event'; x: number; y: number; seriesId: string; occurrence: OccurrenceRef | null; readOnly?: boolean }
 
 /** The API instant (ISO) or day (all-day) → the editor's local field value. */
 function toFieldValue(iso: string, allDay: boolean): string {
@@ -239,6 +240,9 @@ export default function CalendarView({
     enabled: !!range,
   })
   const { data: calendars = [] } = useQuery({ queryKey: ['calendars'], queryFn: listCalendars })
+  // Subscribed calendars are read-only copies of a feed: shown, never written to.
+  const subscribedIds = useMemo(() => new Set(calendars.filter((c) => c.subscription).map((c) => c.id)), [calendars])
+  const writableCalendars = useMemo(() => calendars.filter((c) => !c.subscription), [calendars])
   const { data: categories = [], isSuccess: categoriesLoaded } = useQuery({ queryKey: ['categories'], queryFn: listCategories })
 
   // The persisted category filter may reference categories deleted since (their events
@@ -260,8 +264,13 @@ export default function CalendarView({
         .filter((d) => !visibleCalendarIds || visibleCalendarIds.includes(d.calendarId))
         // By the category an event shows as: its own, else its calendar's default.
         .filter((d) => !effectiveCategoryIds || effectiveCategoryIds.includes(d.effectiveCategoryId ?? d.categoryId ?? UNCATEGORIZED))
-        .map(dtoToInput),
-    [dtos, visibleCalendarIds, effectiveCategoryIds],
+        .map((d) => {
+          const input = dtoToInput(d)
+          return subscribedIds.has(d.calendarId)
+            ? { ...input, editable: false, extendedProps: { ...input.extendedProps, readOnly: true } }
+            : input
+        }),
+    [dtos, visibleCalendarIds, effectiveCategoryIds, subscribedIds],
   )
 
   // Open week/day scrolled to roughly the current time (with ~1.5h of lead-in above it), so the
@@ -277,7 +286,7 @@ export default function CalendarView({
 
   // New events land in the first visible calendar (or the first one overall).
   const defaultCalendarId = () =>
-    calendars.find((c) => !visibleCalendarIds || visibleCalendarIds.includes(c.id))?.id ?? calendars[0]?.id
+    writableCalendars.find((c) => !visibleCalendarIds || visibleCalendarIds.includes(c.id))?.id ?? writableCalendars[0]?.id
 
   // Calendar visibility picker, anchored to its toolbar button.
   const [calPop, setCalPop] = useState<{ x: number; y: number } | null>(null)
@@ -1035,7 +1044,7 @@ export default function CalendarView({
     if (!snap) return
     const draft = pasteOnto(snap, targetDay)
     // The copied calendar may be hidden, deleted, or from another tab — fall back to the default.
-    if (!draft.calendarId || !calendars.some((c) => c.id === draft.calendarId)) draft.calendarId = defaultCalendarId()
+    if (!draft.calendarId || !writableCalendars.some((c) => c.id === draft.calendarId)) draft.calendarId = defaultCalendarId()
     const body = draftToRequest(draft)
     const label = draft.title.trim() || 'event'
     createMut.mutate(body, {
@@ -1223,6 +1232,7 @@ export default function CalendarView({
         y: e.clientY,
         seriesId: arg.event.extendedProps.seriesId,
         occurrence: arg.event.extendedProps.occurrence ?? null,
+        readOnly: !!arg.event.extendedProps.readOnly,
       })
     })
   }
@@ -1328,7 +1338,7 @@ export default function CalendarView({
           onEdit={(dto) => void openForEdit(dto.id, occurrenceOf(dto))}
           onEventContext={(x, y, dto) => {
             const occurrence = occurrenceOf(dto)
-            setMenu({ kind: 'event', x, y, seriesId: occurrence?.seriesId ?? dto.id, occurrence })
+            setMenu({ kind: 'event', x, y, seriesId: occurrence?.seriesId ?? dto.id, occurrence, readOnly: subscribedIds.has(dto.calendarId) })
           }}
         />
       )}
@@ -1362,6 +1372,16 @@ export default function CalendarView({
                 )}
               </>
             ) : (
+              menu.readOnly ? (
+                <>
+                  <button className="ctx-item" onClick={() => { void openForEdit(menu.seriesId, menu.occurrence); setMenu(null) }}>
+                    Open
+                  </button>
+                  <button className="ctx-item" onClick={() => { copyEvent(menu.seriesId); setMenu(null) }}>
+                    Copy
+                  </button>
+                </>
+              ) : (
               <>
                 {menu.occurrence ? (
                   <>
@@ -1403,6 +1423,7 @@ export default function CalendarView({
                   </button>
                 )}
               </>
+              )
             )}
           </div>
         </div>
@@ -1530,7 +1551,7 @@ export default function CalendarView({
         quickDraft ? (
           <QuickCreate
             draft={quickDraft}
-            calendars={calendars}
+            calendars={writableCalendars}
             color={draftColor(quickDraft)}
             inheritedCategory={(() => {
               const id = calendars.find((c) => c.id === quickDraft.calendarId)?.defaultCategoryId
@@ -1550,7 +1571,8 @@ export default function CalendarView({
           // A scope switch loads a different draft; remount so the fields start from it.
           key={`${draft.id ?? 'new'}:${draft.scope ?? ''}`}
           draft={draft}
-          calendars={calendars}
+          calendars={subscribedIds.has(draft.calendarId ?? '') ? calendars : writableCalendars}
+          readOnly={subscribedIds.has(draft.calendarId ?? '')}
           onSave={save}
           onDelete={
             !draft.id

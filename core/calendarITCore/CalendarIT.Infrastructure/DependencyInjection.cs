@@ -85,6 +85,9 @@ public static class DependencyInjection
         services.AddScoped<IEventService, EventService>();
         services.AddScoped<IInternalInvitationDelivery, InternalInvitationDelivery>();
         services.AddScoped<ICalendarService, CalendarService>();
+        services.AddSingleton<CalendarFeedFetcher>();
+        services.AddScoped<CalendarSubscriptionService>();
+        services.AddScoped<ICalendarSubscriptionService>(sp => sp.GetRequiredService<CalendarSubscriptionService>());
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ICalendarIoService, CalendarIoService>();
         services.AddScoped<IProfileService, ProfileService>();
@@ -154,6 +157,13 @@ public static class DependencyInjection
                 .ForJob(MaintenanceJob.Key)
                 .WithIdentity("maintenance-trigger")
                 .WithCronSchedule("0 17 3 * * ?")); // 03:17 daily
+
+            // Subscribed calendars, each at its own interval; the job only picks the due ones.
+            q.AddJob<SubscriptionRefreshJob>(o => o.WithIdentity(SubscriptionRefreshJob.Key));
+            q.AddTrigger(t => t
+                .ForJob(SubscriptionRefreshJob.Key)
+                .WithIdentity("subscription-refresh-trigger")
+                .WithCronSchedule("0 2/5 * * * ?")); // every 5 minutes
 
             var inboxKey = new JobKey("invitation-inbox");
             q.AddJob<InvitationInboxJob>(o => o.WithIdentity(inboxKey));

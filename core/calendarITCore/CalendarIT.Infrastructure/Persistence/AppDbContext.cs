@@ -77,7 +77,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(c => c.Color).HasMaxLength(32);
             entity.Property(c => c.TimeZoneId).HasMaxLength(64);
             entity.Property(c => c.DefaultReminders).HasMaxLength(200);
+            entity.Property(c => c.SourceUrl).HasMaxLength(2000);
+            entity.Property(c => c.LastFetchError).HasMaxLength(500);
+            entity.Property(c => c.SourceETag).HasMaxLength(200);
+            entity.Property(c => c.SourceLastModified).HasMaxLength(100);
             entity.HasIndex(c => c.OwnerUserId);
+            entity.HasIndex(c => c.NextFetchUtc); // the refresh job's "what is due" query
 
             // Deleting the category leaves the calendar without a default (its events uncategorized).
             entity.HasOne(c => c.DefaultCategory)

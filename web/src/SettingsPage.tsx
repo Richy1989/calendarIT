@@ -2,7 +2,20 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteAvatar, getProfile, uploadAvatar } from './api/profile'
 import { exportIcs, importIcs } from './api/events'
-import { createCalendar, deleteCalendar, listCalendars, renameCalendar, setCalendarCategory, setCalendarReminders, type CalendarDto, type ReminderDefault } from './api/calendars'
+import {
+  REFRESH_CHOICES,
+  createCalendar,
+  deleteCalendar,
+  listCalendars,
+  refreshCalendar,
+  renameCalendar,
+  setCalendarCategory,
+  setCalendarReminders,
+  setRefreshInterval,
+  subscribeCalendar,
+  type CalendarDto,
+  type ReminderDefault,
+} from './api/calendars'
 import { REMINDER_OFFSETS } from './lib/eventForm'
 import { createCategory, deleteCategory, listCategories, updateCategory, type CategoryDto } from './api/categories'
 import { deleteMailAccount, getMailAccount, saveMailAccount, testMailAccount } from './api/mailAccount'
@@ -19,6 +32,7 @@ import Logo from './Logo'
 import ConfirmDialog from './components/ConfirmDialog'
 import CategoryPicker from './components/CategoryPicker'
 import { downloadIcs } from './lib/download'
+import { formatRelative } from './lib/dates'
 import { markBackedUp } from './lib/backupReminder'
 import { nextCategoryColor } from './lib/categoryColors'
 import SessionsCard from './SessionsCard'
@@ -641,6 +655,18 @@ function CalendarsSection() {
     onError: (e) => setNotice((e as Error).message),
   })
 
+  const refreshMut = useMutation({
+    mutationFn: (id: string) => refreshCalendar(id),
+    onSuccess: () => { setNotice(null); refresh() },
+    onError: (e) => setNotice((e as Error).message),
+  })
+  const intervalMut = useMutation({
+    mutationFn: (v: { id: string; minutes: number }) => setRefreshInterval(v.id, v.minutes),
+    onSuccess: () => { setNotice(null); queryClient.invalidateQueries({ queryKey: ['calendars'] }) },
+    onError: (e) => setNotice((e as Error).message),
+  })
+  const ownCalendars = calendars.filter((c) => !c.subscription).length
+
   const [confirmDelete, setConfirmDelete] = useState<CalendarDto | null>(null)
   const confirmMessage = (c: CalendarDto) => {
     const events = c.eventCount === 1 ? 'its 1 appointment' : `its ${c.eventCount} appointments`
@@ -654,7 +680,8 @@ function CalendarsSection() {
         Split your schedule into separate calendars — say, Personal and Work — and toggle them from the
         heading above the calendar. Each one syncs as its own calendar over CalDAV. Give a calendar a
         category and every appointment in it without one of its own takes that color; give it default
-        reminders and every new timed appointment in it starts with them.
+        reminders and every new timed appointment in it starts with them. Subscribe to a calendar
+        someone publishes — holidays, a team's schedule — and it stays up to date, read-only.
       </p>
 
       <ul className="cal-list">
@@ -666,7 +693,10 @@ function CalendarsSection() {
             onCategory={(categoryId) => categoryMut.mutate({ id: c.id, categoryId })}
             onReminders={(reminders) => remindersMut.mutate({ id: c.id, reminders })}
             onDelete={() => setConfirmDelete(c)}
-            canDelete={calendars.length > 1}
+            canDelete={!!c.subscription || ownCalendars > 1}
+            onRefresh={() => refreshMut.mutate(c.id)}
+            refreshing={refreshMut.isPending && refreshMut.variables === c.id}
+            onInterval={(minutes) => intervalMut.mutate({ id: c.id, minutes })}
           />
         ))}
       </ul>
@@ -724,13 +754,89 @@ function CalendarsSection() {
           </button>
         </form>
       ) : (
-        <button type="button" className="cal-add" onClick={() => setAdding(true)}>
-          ＋ New calendar
-        </button>
+        <span className="cal-add-buttons">
+          <button type="button" className="cal-add" onClick={() => setAdding(true)}>
+            ＋ New calendar
+          </button>
+          <SubscribeForm onDone={refresh} />
+        </span>
       )}
 
       {notice && <p className="error">{notice}</p>}
     </div>
+  )
+}
+
+/** "Subscribe to a calendar": a feed URL (https or webcal), an optional name, how often to refresh. */
+function SubscribeForm({ onDone }: { onDone: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [url, setUrl] = useState('')
+  const [name, setName] = useState('')
+  const [minutes, setMinutes] = useState(360)
+  const [categoryId, setCategoryId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const mut = useMutation({
+    mutationFn: () => subscribeCalendar({ url: url.trim(), name: name.trim() || null, refreshMinutes: minutes, defaultCategoryId: categoryId }),
+    onSuccess: () => {
+      setOpen(false)
+      setUrl('')
+      setName('')
+      setCategoryId(null)
+      setError(null)
+      onDone()
+    },
+    onError: (e) => setError((e as Error).message),
+  })
+
+  if (!open) {
+    return (
+      <button type="button" className="cal-add" onClick={() => setOpen(true)}>
+        ＋ Subscribe to a calendar
+      </button>
+    )
+  }
+  return (
+    <form
+      className="cal-subscribe"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (url.trim()) mut.mutate()
+      }}
+    >
+      {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+      <input
+        type="url"
+        value={url}
+        autoFocus
+        inputMode="url"
+        placeholder="https://… or webcal://… (.ics)"
+        aria-label="Calendar address"
+        maxLength={2000}
+        onChange={(e) => setUrl(e.target.value)}
+      />
+      <input value={name} placeholder="Name (optional)" aria-label="Name" maxLength={200} onChange={(e) => setName(e.target.value)} />
+      <select className="form-select" aria-label="Refresh" value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
+        {REFRESH_CHOICES.map((r) => (
+          <option key={r.minutes} value={r.minutes}>
+            {r.label}
+          </option>
+        ))}
+      </select>
+      <CategoryPicker value={categoryId} onChange={setCategoryId} suggestedName={name} emptyLabel="No category" ariaLabel="Category" />
+      <span className="cal-subscribe-actions">
+        <button type="submit" className="btn-primary" disabled={!url.trim() || mut.isPending}>
+          {mut.isPending ? 'Subscribing…' : 'Subscribe'}
+        </button>
+        <button type="button" className="btn-ghost" onClick={() => { setOpen(false); setError(null) }}>
+          Cancel
+        </button>
+      </span>
+      {error && <p className="error">{error}</p>}
+      <p className="field-hint">
+        The address of a published calendar (.ics), e.g. a holiday calendar or the “secret address” Google
+        Calendar shows. It stays read-only here and refreshes on its own.
+      </p>
+    </form>
   )
 }
 
@@ -742,6 +848,9 @@ function CalendarRow({
   onReminders,
   onDelete,
   canDelete,
+  onRefresh,
+  refreshing,
+  onInterval,
 }: {
   calendar: CalendarDto
   onRename: (name: string) => void
@@ -751,9 +860,13 @@ function CalendarRow({
   onReminders: (reminders: ReminderDefault[]) => void
   onDelete: () => void
   canDelete: boolean
+  onRefresh: () => void
+  refreshing: boolean
+  onInterval: (minutes: number) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(calendar.name)
+  const sub = calendar.subscription
 
   const commit = () => {
     setEditing(false)
@@ -802,7 +915,39 @@ function CalendarRow({
           emptyLabel="No default category"
           ariaLabel={`Default category for ${calendar.name}`}
         />
-        <DefaultRemindersEditor calendar={calendar} onChange={onReminders} />
+        {sub ? (
+          <span className="cal-sub">
+            <span className="cal-sub-url" title={sub.url}>
+              Subscribed to {sub.url}
+            </span>
+            <span className={'cal-sub-status' + (sub.lastError ? ' is-error' : '')}>
+              {sub.lastError
+                ? sub.lastError
+                : sub.lastFetched
+                  ? `Updated ${formatRelative(new Date(sub.lastFetched))}`
+                  : 'Not fetched yet'}
+            </span>
+            <span className="cal-sub-actions">
+              <select
+                className="form-select"
+                aria-label={`How often ${calendar.name} refreshes`}
+                value={Number(sub.refreshMinutes)}
+                onChange={(e) => onInterval(Number(e.target.value))}
+              >
+                {REFRESH_CHOICES.map((r) => (
+                  <option key={r.minutes} value={r.minutes}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className="btn-ghost" onClick={onRefresh} disabled={refreshing}>
+                {refreshing ? 'Refreshing…' : 'Refresh now'}
+              </button>
+            </span>
+          </span>
+        ) : (
+          <DefaultRemindersEditor calendar={calendar} onChange={onReminders} />
+        )}
       </span>
 
       <span className="cal-item-actions">
@@ -817,7 +962,7 @@ function CalendarRow({
           onClick={onDelete}
           disabled={!canDelete}
           aria-label={`Delete ${calendar.name}`}
-          title={canDelete ? 'Delete' : "You can't delete your last calendar."}
+          title={canDelete ? (sub ? 'Unsubscribe' : 'Delete') : "You can't delete your last calendar."}
         >
           ✕
         </button>

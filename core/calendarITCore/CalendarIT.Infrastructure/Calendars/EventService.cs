@@ -196,6 +196,7 @@ public sealed class EventService(
     public async Task<EventDto> CreateAsync(Guid userId, SaveEventRequest request, CancellationToken cancellationToken = default)
     {
         var calendarId = await ResolveCalendarIdAsync(userId, request.CalendarId, cancellationToken);
+        await EnsureWritableAsync(calendarId, cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
 
         var entity = new CalendarEvent
@@ -239,12 +240,14 @@ public sealed class EventService(
                 request, cancellationToken);
         }
 
+        await EnsureWritableAsync(entity.CalendarId, cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
 
         // A provided CalendarId moves the event; null leaves it where it is. Only calendars
         // the user owns are accepted — anything else keeps the current one.
         if (request.CalendarId is { } target && target != entity.CalendarId)
         {
+            await EnsureWritableAsync(target, cancellationToken);
             var owned = await db.Calendars.AnyAsync(
                 c => c.Id == target && c.OwnerUserId == userId, cancellationToken);
             if (owned)
@@ -320,6 +323,7 @@ public sealed class EventService(
         {
             return null;
         }
+        await EnsureWritableAsync(master.CalendarId, cancellationToken);
 
         var rid = ExDates.TruncateToSeconds(occurrence.UtcDateTime);
         var row = master.Overrides.FirstOrDefault(o => o.RecurrenceIdUtc is { } r && ExDates.TruncateToSeconds(r) == rid);
@@ -376,6 +380,7 @@ public sealed class EventService(
         {
             return false;
         }
+        await EnsureWritableAsync(master.CalendarId, cancellationToken);
 
         var rid = ExDates.TruncateToSeconds(occurrence.UtcDateTime);
         foreach (var o in master.Overrides.Where(o => o.RecurrenceIdUtc is { } r && ExDates.TruncateToSeconds(r) == rid).ToList())
@@ -448,6 +453,7 @@ public sealed class EventService(
         {
             return false;
         }
+        await EnsureWritableAsync(entity.CalendarId, cancellationToken);
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
 
@@ -618,6 +624,19 @@ public sealed class EventService(
         return true;
     }
 
+    public const string SubscribedCalendarMessage =
+        "This calendar is a subscription: its appointments change only at the source.";
+
+    /// <summary>A subscribed calendar is a copy of someone else's feed — the next refresh would
+    /// undo any change made here, so none is accepted.</summary>
+    private async Task EnsureWritableAsync(Guid calendarId, CancellationToken cancellationToken)
+    {
+        if (await db.Calendars.AnyAsync(c => c.Id == calendarId && c.SourceUrl != null, cancellationToken))
+        {
+            throw new InvalidInputException(SubscribedCalendarMessage);
+        }
+    }
+
     /// <summary>A series the user organizes. Received invitations aren't theirs to split: the
     /// organizer's next update would put the old series back.</summary>
     private async Task<CalendarEvent?> OwnSeriesAsync(Guid userId, Guid seriesId, CancellationToken cancellationToken)
@@ -628,6 +647,10 @@ public sealed class EventService(
         if (master?.InvitationStatus is not null)
         {
             throw new InvalidInputException("This is an invitation — only its organizer can split the series.");
+        }
+        if (master is not null)
+        {
+            await EnsureWritableAsync(master.CalendarId, cancellationToken);
         }
         return master;
     }

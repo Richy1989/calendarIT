@@ -67,12 +67,37 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("LastFetchError")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastFetchedUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("NextFetchUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("RefreshMinutes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SourceETag")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceLastModified")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceUrl")
+                        .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("TimeZoneId")
@@ -85,6 +110,8 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("DefaultCategoryId");
+
+                    b.HasIndex("NextFetchUtc");
 
                     b.HasIndex("OwnerUserId");
 

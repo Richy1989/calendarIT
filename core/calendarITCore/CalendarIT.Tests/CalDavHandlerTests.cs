@@ -448,6 +448,25 @@ public sealed class CalDavHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task ASubscribedCalendar_RefusesWrites_FromAPhone()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        var ctx = Context(PutIcs);
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+        _db.Calendars.Single(c => c.Id == calId).SourceUrl = "https://example.com/feed.ics";
+        await _db.SaveChangesAsync();
+
+        ctx = Context(PutIcs.Replace("From the phone", "Changed"));
+        await ExecuteAsync(await _handler.PutEvent(calId, "phone-1@test.ics", ctx), ctx);
+        Assert.Equal(StatusCodes.Status403Forbidden, ctx.Response.StatusCode);
+
+        ctx = Context();
+        await ExecuteAsync(await _handler.DeleteEvent(calId, "phone-1@test.ics", ctx), ctx);
+        Assert.Equal(StatusCodes.Status403Forbidden, ctx.Response.StatusCode);
+        Assert.Equal("From the phone", _db.Events.AsNoTracking().Single().Title);
+    }
+
+    [Fact]
     public async Task Report_CalendarQuery_WithoutAFilter_ReturnsEverything()
     {
         var calId = await DiscoverCalendarIdAsync();

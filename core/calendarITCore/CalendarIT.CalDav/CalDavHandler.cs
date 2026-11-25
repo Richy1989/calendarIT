@@ -294,6 +294,10 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         {
             return Results.NotFound();
         }
+        if (cal.SourceUrl is not null)
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden); // a subscription: read-only
+        }
 
         var ics = await ReadBodyAsync(ctx, MaxResourceBytes);
         if (ics is null)
@@ -386,6 +390,10 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         if (e is null)
         {
             return Results.NotFound();
+        }
+        if (await db.Calendars.AnyAsync(c => c.Id == e.CalendarId && c.SourceUrl != null, ctx.RequestAborted))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden); // a subscription: read-only
         }
 
         var ifMatch = ctx.Request.Headers.IfMatch.ToString();
@@ -507,8 +515,15 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             [D + "owner"] = new XElement(D + "href", PrincipalHref),
             [C + "supported-calendar-component-set"] = new XElement(C + "comp", new XAttribute("name", "VEVENT")),
             [CS + "getctag"] = ctag,
+            // A subscription is read-only; clients that read this (iOS, DAVx5) show it so and
+            // don't offer to edit. Writes are refused regardless.
+            [D + "current-user-privilege-set"] = cal.SourceUrl is null
+                ? new object[] { Privilege("read"), Privilege("write"), Privilege("write-content"), Privilege("bind"), Privilege("unbind") }
+                : new object[] { Privilege("read") },
         };
     }
+
+    private static XElement Privilege(string name) => new(D + "privilege", new XElement(D + name));
 
     private static string CalendarHref(Guid id) => $"{HomeHref}{id:N}/";
 

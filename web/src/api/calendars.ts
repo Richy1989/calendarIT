@@ -52,3 +52,40 @@ export async function setCalendarReminders(id: string, reminders: ReminderDefaul
   if (error || !data) throw new Error(problemMessage(error, 'Failed to save the default reminders'))
   return data
 }
+
+/** Subscribes to an .ics feed (https/http/webcal): a new read-only calendar, kept in step. The
+ *  feed is fetched first; the error says why when it can't be. */
+export async function subscribeCalendar(body: {
+  url: string
+  name?: string | null
+  refreshMinutes: number
+  defaultCategoryId?: string | null
+}): Promise<CalendarDto> {
+  const { data, error } = await api.POST('/api/calendars/subscriptions', { body })
+  if (error || !data) throw new Error(problemMessage(error, 'Couldn’t subscribe to that calendar'))
+  return data
+}
+
+/** Fetches a subscription now; how it went is in `subscription.lastError`. */
+export async function refreshCalendar(id: string): Promise<CalendarDto> {
+  const { data, error } = await api.POST('/api/calendars/{id}/refresh', { params: { path: { id } } })
+  if (error || !data) throw new Error(problemMessage(error, 'Couldn’t refresh that calendar'))
+  return data
+}
+
+export async function setRefreshInterval(id: string, refreshMinutes: number): Promise<CalendarDto> {
+  const { data, error } = await api.PUT('/api/calendars/{id}/refresh-interval', {
+    params: { path: { id } },
+    body: { refreshMinutes },
+  })
+  if (error || !data) throw new Error(problemMessage(error, 'Couldn’t change how often it refreshes'))
+  return data
+}
+
+/** How often a subscription can be refreshed, in minutes, with its label. */
+export const REFRESH_CHOICES: { minutes: number; label: string }[] = [
+  { minutes: 60, label: 'Every hour' },
+  { minutes: 360, label: 'Every 6 hours' },
+  { minutes: 720, label: 'Every 12 hours' },
+  { minutes: 1440, label: 'Once a day' },
+]

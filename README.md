@@ -261,6 +261,8 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
   sync-tokens yet — clients fall back to CTag polling)
 - ✅ Multiple calendars — create/rename/delete in Settings, per-calendar visibility
   toggles, each exposed as its own CalDAV collection
+- ✅ Calendar subscriptions — subscribe to a published .ics / `webcal://` calendar (holidays, a
+  team's schedule); it refreshes on its own schedule and stays read-only
 - ✅ Categories — events take their color from a named category (managed in Settings);
   existing per-event colors were auto-migrated into categories on first startup
 - ✅ Mobile — responsive phone layout, a thumb-reachable bottom toolbar, and swipe left/right

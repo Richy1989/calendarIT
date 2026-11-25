@@ -23,8 +23,9 @@ public static class DefaultCalendar
         AppDbContext db, TimeProvider timeProvider, Guid userId, CancellationToken cancellationToken = default)
     {
         // "First by CreatedAt" is the definition of default — it survives renames and deletes.
+        // A subscription is never it: nothing can be written there.
         var calendar = await db.Calendars
-            .Where(c => c.OwnerUserId == userId)
+            .Where(c => c.OwnerUserId == userId && c.SourceUrl == null)
             .OrderBy(c => c.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
         if (calendar is not null)
