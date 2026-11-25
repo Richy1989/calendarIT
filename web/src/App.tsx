@@ -17,6 +17,7 @@ import { formatTime } from './lib/dates'
 import SearchBar from './SearchBar'
 import ProfileMenu from './ProfileMenu'
 import SettingsPage from './SettingsPage'
+import BackupReminder from './components/BackupReminder'
 import Logo from './Logo'
 import './App.css'
 
@@ -166,6 +167,7 @@ export default function App() {
         </div>
       </header>
       <main className="app-main">
+        {profile?.email && <BackupReminder userKey={profile.email} />}
         <section className="calendar-shell">
           <CalendarView
             focus={focus}

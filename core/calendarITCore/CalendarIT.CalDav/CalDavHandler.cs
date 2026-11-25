@@ -220,10 +220,38 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             }
 
             events = await query.ToListAsync(ctx.RequestAborted);
+            // SQL had to keep every series; drop those with nothing in the window — a weekly
+            // meeting that ended years ago shouldn't be resent on every poll.
+            if (rangeStart is { } from)
+            {
+                events = events.Where(e => e.RRule is null || SeriesTouches(e, from, rangeEnd)).ToList();
+            }
             return MultiStatus([.. events.Select(e => EventDataResponse(cal.Id, e))]);
         }
 
         return Results.StatusCode(StatusCodes.Status403Forbidden); // unsupported report
+    }
+
+    /// <summary>
+    /// Whether a series has an occurrence, or an edited occurrence, in [from, to). All-day series
+    /// get the same day of slack either side as in SQL; a series whose rule no longer expands is
+    /// kept — the client should still see the resource it holds, never have it vanish.
+    /// </summary>
+    private static bool SeriesTouches(DomainEvent series, DateTime from, DateTime? to)
+    {
+        var (lo, hi) = series.IsAllDay ? (from.AddDays(-2), to?.AddDays(1)) : (from, to);
+        var upper = hi ?? lo.AddYears(200); // open-ended: any later occurrence counts
+        if (series.Overrides.Any(o => o.StartUtc < upper && (o.EndUtc ?? o.StartUtc) >= lo))
+        {
+            return true;
+        }
+        if (!RecurrenceRules.TryNormalize(series.RRule, out _, out _))
+        {
+            return true;
+        }
+        return RecurrenceExpander.Expand(
+            series.StartUtc, series.EndUtc ?? series.StartUtc, series.TimeZoneId, series.RRule!,
+            RecurrenceExpander.ParseExDates(series.ExDates), lo, upper, series.IsAllDay).Any();
     }
 
     /// <summary>

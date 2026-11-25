@@ -150,6 +150,11 @@ CalDAV logins.
   run). WebPush reminders are VAPID-signed (`WebPushSender`); keys come from `VAPID_*` env or
   are auto-generated and persisted (`VapidKeyStore`, `vapid.json`). Browsers
   without a push service fall back to polling `GET /api/reminders/due` (`web/src/push/localReminders.ts`).
+  Browser reminders carry a **snooze token** (`ReminderSnoozes`: data-protection sealed, 2 days,
+  one reminder occurrence): the service worker's Snooze button posts it to the anonymous
+  `POST /api/reminders/snooze`, and the job pushes `ReminderSnoozes` rows again when due. A
+  zone-less all-day event (from a phone) reminds at midnight in its calendar's zone, else that
+  of the calendar's latest zoned event (`ReminderOccurrences.FallbackZonesAsync`), else UTC.
 - `OutboxDispatchJob` (every 30s + poked on enqueue) — **all mail is queued** (`IMailOutbox` →
   `OutboxMessages`) and sent per user over one SMTP session, with backoff, expiry per kind, and
   user-facing error text (`MailConnections.Describe`). Never send SMTP inline in a request.

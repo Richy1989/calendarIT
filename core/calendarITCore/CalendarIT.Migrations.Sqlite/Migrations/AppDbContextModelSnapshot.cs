@@ -441,6 +441,34 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.ToTable("Reminders");
                 });
 
+            modelBuilder.Entity("CalendarIT.Domain.ReminderSnooze", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("DueAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("OccurrenceStartUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ReminderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DueAtUtc");
+
+                    b.HasIndex("ReminderId", "OccurrenceStartUtc")
+                        .IsUnique();
+
+                    b.ToTable("ReminderSnoozes");
+                });
+
             modelBuilder.Entity("CalendarIT.Infrastructure.Identity.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -811,6 +839,17 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                         .IsRequired();
 
                     b.Navigation("Event");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.ReminderSnooze", b =>
+                {
+                    b.HasOne("CalendarIT.Domain.Reminder", "Reminder")
+                        .WithMany()
+                        .HasForeignKey("ReminderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Reminder");
                 });
 
             modelBuilder.Entity("CalendarIT.Infrastructure.Identity.RefreshToken", b =>

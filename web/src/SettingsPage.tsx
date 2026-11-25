@@ -18,6 +18,8 @@ import { startLocalReminderPoller, stopLocalReminderPoller } from './push/localR
 import Logo from './Logo'
 import ConfirmDialog from './components/ConfirmDialog'
 import CategoryPicker from './components/CategoryPicker'
+import { downloadIcs } from './lib/download'
+import { markBackedUp } from './lib/backupReminder'
 import { nextCategoryColor } from './lib/categoryColors'
 import SessionsCard from './SessionsCard'
 import OutboxCard from './OutboxCard'
@@ -319,12 +321,8 @@ function GeneralSection() {
   const [importCategoryId, setImportCategoryId] = useState<string | null>(null)
 
   const download = (blob: Blob) => {
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'calendarit.ics'
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadIcs(blob)
+    if (profile?.email) markBackedUp(profile.email)
   }
 
   const handleExport = async () => {

@@ -29,4 +29,13 @@ describe('selectToShow', () => {
     const { nextShown } = selectToShow(old, [], RETENTION_MS + 1)
     expect(nextShown.find((e) => e.key === 'old:x')).toBeUndefined()
   })
+
+  it('shows a snoozed reminder again, once', () => {
+    const first = item('r1', '2026-09-01T08:00:00Z')
+    const back = { ...first, snoozedUntil: '2026-09-01T07:55:00Z' }
+    const { nextShown } = selectToShow([], [first], 1000)
+    const again = selectToShow(nextShown, [first, back], 2000)
+    expect(again.toShow).toEqual([back])
+    expect(selectToShow(again.nextShown, [back], 3000).toShow).toHaveLength(0)
+  })
 })

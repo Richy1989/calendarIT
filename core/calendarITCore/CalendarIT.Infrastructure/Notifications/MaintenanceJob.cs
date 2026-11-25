@@ -64,6 +64,12 @@ public sealed class MaintenanceJob(
                 .Where(n => n.OccurrenceStartUtc < nowUtc - KeepNotificationLogs)
                 .ExecuteDeleteAsync(cancellationToken));
 
+        // A snooze is over once it was due: its token lives two days, so nothing can move it again.
+        await StepAsync("reminder snoozes", () =>
+            db.ReminderSnoozes
+                .Where(s => s.DueAtUtc < nowUtc - TimeSpan.FromDays(2))
+                .ExecuteDeleteAsync(cancellationToken));
+
         await StepAsync("sent mail records", () =>
             db.OutboxMessages
                 .Where(m => m.Status == OutboxStatus.Sent && m.CreatedAtUtc < nowUtc - KeepSentMail)

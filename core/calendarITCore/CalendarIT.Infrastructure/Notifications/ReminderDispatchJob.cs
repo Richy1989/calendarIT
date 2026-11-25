@@ -1,3 +1,4 @@
+using System.Globalization;
 using CalendarIT.Application.Notifications;
 using CalendarIT.Domain;
 using CalendarIT.Infrastructure.Calendars;
@@ -33,6 +34,7 @@ public sealed class ReminderDispatchJob(
             scope.ServiceProvider.GetRequiredService<AppDbContext>(),
             scope.ServiceProvider.GetRequiredService<IMailOutbox>(),
             scope.ServiceProvider.GetRequiredService<IWebPushSender>(),
+            scope.ServiceProvider.GetRequiredService<ReminderSnoozes>(),
             context.CancellationToken);
     }
 
@@ -40,10 +42,25 @@ public sealed class ReminderDispatchJob(
     /// One dispatch pass, against an already-resolved scope. Separate from <see cref="Execute"/>
     /// so the window arithmetic and the dedup can be tested without standing up Quartz.
     /// </summary>
-    public async Task RunAsync(AppDbContext db, IMailOutbox mail, IWebPushSender push, CancellationToken cancellationToken = default)
+    /// <param name="snoozes">Seals the Snooze button's token into browser reminders, and brings
+    /// snoozed ones back; without it (tests) notifications carry no Snooze.</param>
+    public async Task RunAsync(
+        AppDbContext db, IMailOutbox mail, IWebPushSender push, ReminderSnoozes? snoozes = null,
+        CancellationToken cancellationToken = default)
     {
         var now = ReminderOccurrences.Truncate(timeProvider.GetUtcNow().UtcDateTime);
         var windowStart = now - Lookback;
+
+        try
+        {
+            await DeliverSnoozedAsync(db, push, snoozes, now, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Snoozed reminders are a second chance; failing them must not cost the first ones.
+            logger.LogWarning(ex, "Snoozed reminders could not be delivered this run");
+            db.ChangeTracker.Clear();
+        }
 
         // Only reminders that could possibly be due are read. A one-off event fires at
         // Start - offset, so for its trigger to land in (windowStart, now] its start must lie in
@@ -70,6 +87,19 @@ public sealed class ReminderDispatchJob(
             return;
         }
 
+        // The zone a phone's zone-less all-day events are read in. Only a refinement: should it
+        // fail, those events fall back to midnight UTC and everything else still goes out.
+        IReadOnlyDictionary<Guid, string> fallbackZones;
+        try
+        {
+            fallbackZones = await ReminderOccurrences.FallbackZonesAsync(db, reminders.Select(r => r.Event!), cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Could not look up calendar zones for all-day reminders; using UTC");
+            fallbackZones = new Dictionary<Guid, string>();
+        }
+
         // Which (reminder, occurrence) pairs actually come due this tick.
         // This job serves every user at once, so nothing about one user's data may stop it: a row
         // that can't be evaluated is logged and skipped, and the rest still go out.
@@ -80,7 +110,8 @@ public sealed class ReminderDispatchJob(
             try
             {
                 // trigger in (windowStart, now]  ⇔  occurrence start in (windowStart+offset, now+offset]
-                foreach (var occStart in ReminderOccurrences.InWindow(reminder.Event!, windowStart + offset, now + offset))
+                foreach (var occStart in ReminderOccurrences.InWindow(reminder.Event!, windowStart + offset, now + offset,
+                             fallbackZones.GetValueOrDefault(reminder.Event!.CalendarId)))
                 {
                     due.Add((reminder, occStart));
                 }
@@ -107,9 +138,9 @@ public sealed class ReminderDispatchJob(
             .ToHashSet();
 
         var ownerIds = due.Select(d => d.Reminder.Event!.Calendar!.OwnerUserId).Distinct().ToList();
-        var emailByOwner = await db.Users
+        var owners = await db.Users
             .Where(u => ownerIds.Contains(u.Id))
-            .ToDictionaryAsync(u => u.Id, u => u.Email, cancellationToken);
+            .ToDictionaryAsync(u => u.Id, u => new Owner(u.Email, u.Use24HourClock != false), cancellationToken);
 
         // Browser push targets, grouped by owner: one owner may have several (one per browser).
         var subsByOwner = (await db.PushSubscriptions
@@ -131,8 +162,8 @@ public sealed class ReminderDispatchJob(
             try
             {
                 await DispatchAsync(
-                    reminder, ev, occStart, ownerUserId, emailByOwner.GetValueOrDefault(ownerUserId),
-                    subsByOwner.GetValueOrDefault(ownerUserId), mail, push, db, cancellationToken);
+                    reminder, ev, occStart, ownerUserId, owners.GetValueOrDefault(ownerUserId) ?? new Owner(null, true),
+                    subsByOwner.GetValueOrDefault(ownerUserId), mail, push, db, snoozes, cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -164,15 +195,17 @@ public sealed class ReminderDispatchJob(
     }
 
     private async Task DispatchAsync(
-        Reminder reminder, CalendarEvent ev, DateTime occStartUtc, Guid ownerUserId, string? ownerEmail,
+        Reminder reminder, CalendarEvent ev, DateTime occStartUtc, Guid ownerUserId, Owner owner,
         List<PushSubscription>? subscriptions, IMailOutbox mail, IWebPushSender push, AppDbContext db,
-        CancellationToken cancellationToken)
+        ReminderSnoozes? snoozes, CancellationToken cancellationToken)
     {
         if (reminder.Channel == ReminderChannel.WebPush)
         {
-            await DispatchWebPushAsync(reminder, ev, occStartUtc, subscriptions, push, db, cancellationToken);
+            await DispatchWebPushAsync(reminder, ev, occStartUtc, owner, subscriptions, push, db, snoozes, snoozed: false, cancellationToken);
             return;
         }
+
+        var ownerEmail = owner.Email;
 
         if (string.IsNullOrWhiteSpace(ownerEmail))
         {
@@ -181,7 +214,7 @@ public sealed class ReminderDispatchJob(
         }
 
         var subject = $"Reminder: {ev.Title}";
-        var body = $"\"{ev.Title}\" {(ev.IsAllDay ? $"is on {occStartUtc:D} (all day)" : $"starts at {FormatLocal(occStartUtc, ev.TimeZoneId)}")}." +
+        var body = $"\"{ev.Title}\" {(ev.IsAllDay ? $"is on {FormatDate(occStartUtc)} (all day)" : $"starts at {FormatLocal(occStartUtc, ev.TimeZoneId, owner.Use24Hour)}")}." +
                    (string.IsNullOrWhiteSpace(ev.Location) ? "" : $"\nLocation: {ev.Location}");
 
         var message = new MimeMessage();
@@ -208,8 +241,8 @@ public sealed class ReminderDispatchJob(
     }
 
     private async Task DispatchWebPushAsync(
-        Reminder reminder, CalendarEvent ev, DateTime occStartUtc, List<PushSubscription>? subscriptions,
-        IWebPushSender push, AppDbContext db, CancellationToken cancellationToken)
+        Reminder reminder, CalendarEvent ev, DateTime occStartUtc, Owner owner, List<PushSubscription>? subscriptions,
+        IWebPushSender push, AppDbContext db, ReminderSnoozes? snoozes, bool snoozed, CancellationToken cancellationToken)
     {
         if (!push.IsConfigured)
         {
@@ -225,10 +258,12 @@ public sealed class ReminderDispatchJob(
             return;
         }
 
-        var body = (ev.IsAllDay ? $"All day on {occStartUtc:D}." : $"Starts at {FormatLocal(occStartUtc, ev.TimeZoneId)}.") +
+        var body = (ev.IsAllDay ? $"All day on {FormatDate(occStartUtc)}." : $"Starts at {FormatLocal(occStartUtc, ev.TimeZoneId, owner.Use24Hour)}.") +
                    (string.IsNullOrWhiteSpace(ev.Location) ? "" : $"\nLocation: {ev.Location}");
         // Same tag for every browser + this occurrence, so a second device doesn't stack a duplicate.
-        var message = new PushMessage($"Reminder: {ev.Title}", body, Url: "/", Tag: $"{reminder.Id}:{occStartUtc:O}");
+        var message = new PushMessage(
+            $"{(snoozed ? "Snoozed reminder" : "Reminder")}: {ev.Title}", body, Url: "/", Tag: $"{reminder.Id}:{occStartUtc:O}",
+            SnoozeToken: snoozes?.CreateToken(ev.Calendar!.OwnerUserId, reminder.Id, occStartUtc));
 
         foreach (var sub in subscriptions)
         {
@@ -246,15 +281,68 @@ public sealed class ReminderDispatchJob(
         }
     }
 
+    /// <summary>How late a snoozed reminder may still be pushed (the server was down, say): after
+    /// that it is dropped — an hour-old "in 10 minutes" helps nobody.</summary>
+    private static readonly TimeSpan SnoozeGrace = TimeSpan.FromHours(1);
+
+    /// <summary>Pushes the snoozed reminders that have come due again, each once.</summary>
+    private async Task DeliverSnoozedAsync(
+        AppDbContext db, IWebPushSender push, ReminderSnoozes? snoozes, DateTime now, CancellationToken cancellationToken)
+    {
+        var due = await db.ReminderSnoozes
+            .Include(s => s.Reminder!).ThenInclude(r => r.Event!).ThenInclude(e => e.Calendar)
+            .Where(s => s.SentAtUtc == null && s.DueAtUtc <= now)
+            .ToListAsync(cancellationToken);
+        if (due.Count == 0)
+        {
+            return;
+        }
+
+        var ownerIds = due.Select(s => s.Reminder!.Event!.Calendar!.OwnerUserId).Distinct().ToList();
+        var clocks = await db.Users
+            .Where(u => ownerIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.Use24HourClock != false, cancellationToken);
+        var subsByOwner = (await db.PushSubscriptions.Where(s => ownerIds.Contains(s.UserId)).ToListAsync(cancellationToken))
+            .GroupBy(s => s.UserId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        foreach (var snooze in due)
+        {
+            // Marked first: a push that fails is not retried, as with a first reminder whose
+            // subscription is gone — better once too few than every minute.
+            snooze.SentAtUtc = now;
+            if (snooze.DueAtUtc < now - SnoozeGrace)
+            {
+                continue;
+            }
+            var ev = snooze.Reminder!.Event!;
+            var ownerUserId = ev.Calendar!.OwnerUserId;
+            await DispatchWebPushAsync(
+                snooze.Reminder, ev, snooze.OccurrenceStartUtc, new Owner(null, clocks.GetValueOrDefault(ownerUserId, true)),
+                subsByOwner.GetValueOrDefault(ownerUserId), push, db, snoozes, snoozed: true, cancellationToken);
+        }
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>The reminder owner's address and clock (null = not chosen = 24-hour).</summary>
+    private sealed record Owner(string? Email, bool Use24Hour);
+
+    // The reminder's text is English, so its dates are too — never the server's own culture,
+    // which in a container is the invariant one ("Tuesday, 01 September 2026") and elsewhere
+    // whatever the host happens to run. Times follow the user's 12/24-hour choice.
+    internal static string FormatDate(DateTime date) =>
+        date.ToString("dddd, d MMMM yyyy", CultureInfo.InvariantCulture);
+
     /// <summary>A timed start in the event's own zone. Not for all-day events: their stored
     /// start is a date, and reading it through a zone names the wrong hour or even the wrong day.</summary>
-    private static string FormatLocal(DateTime utc, string? timeZoneId)
+    internal static string FormatLocal(DateTime utc, string? timeZoneId, bool use24Hour)
     {
+        var time = use24Hour ? "HH:mm" : "h:mm tt";
         if (TimeZones.Canonical(timeZoneId) is { } zoneId && TimeZones.TryFind(zoneId, out var tz))
         {
             var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), tz);
-            return $"{local:f} ({zoneId})";
+            return $"{FormatDate(local)}, {local.ToString(time, CultureInfo.InvariantCulture)} ({zoneId})";
         }
-        return $"{utc:f} UTC";
+        return $"{FormatDate(utc)}, {utc.ToString(time, CultureInfo.InvariantCulture)} UTC";
     }
 }

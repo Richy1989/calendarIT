@@ -9,7 +9,7 @@ namespace CalendarIT.Infrastructure.Notifications;
 /// Mirrors <see cref="ReminderDispatchJob"/>'s window arithmetic, but read-only and per-user, and
 /// only for <see cref="ReminderChannel.WebPush"/> reminders (Email is delivered by the job, not here).
 /// </summary>
-public sealed class DueReminderQuery(AppDbContext db, TimeProvider clock) : IDueReminderQuery
+public sealed class DueReminderQuery(AppDbContext db, TimeProvider clock, ReminderSnoozes? snoozes = null) : IDueReminderQuery
 {
     private static readonly TimeSpan MaxLookback = TimeSpan.FromHours(1);
 
@@ -37,19 +37,42 @@ public sealed class DueReminderQuery(AppDbContext db, TimeProvider clock) : IDue
                     || (r.Event!.IsAllDay && r.Event!.StartUtc > allDayFrom && r.Event!.StartUtc <= allDayTo)))
             .ToListAsync(cancellationToken);
 
+        var fallbackZones = await ReminderOccurrences.FallbackZonesAsync(db, reminders.Select(r => r.Event!), cancellationToken);
         var items = new List<DueReminderDto>();
         foreach (var reminder in reminders)
         {
             var offset = TimeSpan.FromMinutes(reminder.MinutesBefore);
-            foreach (var occStart in ReminderOccurrences.InWindow(reminder.Event!, windowStart + offset, now + offset))
+            foreach (var occStart in ReminderOccurrences.InWindow(reminder.Event!, windowStart + offset, now + offset,
+                             fallbackZones.GetValueOrDefault(reminder.Event!.CalendarId)))
             {
                 items.Add(new DueReminderDto(
                     reminder.Id,
                     new DateTimeOffset(DateTime.SpecifyKind(occStart, DateTimeKind.Utc)),
                     reminder.Event!.Title,
                     reminder.Event!.Location,
-                    reminder.Event!.IsAllDay));
+                    reminder.Event!.IsAllDay,
+                    snoozes?.CreateToken(userId, reminder.Id, occStart)));
             }
+        }
+
+        // Snoozed reminders coming back in the same window (the job pushes them to subscribed
+        // browsers; this is for the ones that poll). Told apart by when they were due again.
+        var snoozed = await db.ReminderSnoozes.AsNoTracking()
+            .Include(s => s.Reminder!).ThenInclude(r => r.Event)
+            .Where(s => s.DueAtUtc > windowStart && s.DueAtUtc <= now
+                && s.Reminder!.Event!.Calendar!.OwnerUserId == userId)
+            .ToListAsync(cancellationToken);
+        foreach (var s in snoozed)
+        {
+            var ev = s.Reminder!.Event!;
+            items.Add(new DueReminderDto(
+                s.ReminderId,
+                new DateTimeOffset(DateTime.SpecifyKind(s.OccurrenceStartUtc, DateTimeKind.Utc)),
+                ev.Title,
+                ev.Location,
+                ev.IsAllDay,
+                snoozes?.CreateToken(userId, s.ReminderId, s.OccurrenceStartUtc),
+                new DateTimeOffset(DateTime.SpecifyKind(s.DueAtUtc, DateTimeKind.Utc))));
         }
         return items;
     }

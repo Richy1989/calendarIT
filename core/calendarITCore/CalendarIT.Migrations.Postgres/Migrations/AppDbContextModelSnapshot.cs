@@ -446,6 +446,34 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.ToTable("Reminders");
                 });
 
+            modelBuilder.Entity("CalendarIT.Domain.ReminderSnooze", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("DueAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("OccurrenceStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ReminderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DueAtUtc");
+
+                    b.HasIndex("ReminderId", "OccurrenceStartUtc")
+                        .IsUnique();
+
+                    b.ToTable("ReminderSnoozes");
+                });
+
             modelBuilder.Entity("CalendarIT.Infrastructure.Identity.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -820,6 +848,17 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                         .IsRequired();
 
                     b.Navigation("Event");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.ReminderSnooze", b =>
+                {
+                    b.HasOne("CalendarIT.Domain.Reminder", "Reminder")
+                        .WithMany()
+                        .HasForeignKey("ReminderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Reminder");
                 });
 
             modelBuilder.Entity("CalendarIT.Infrastructure.Identity.RefreshToken", b =>

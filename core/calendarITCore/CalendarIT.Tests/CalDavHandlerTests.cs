@@ -413,6 +413,40 @@ public sealed class CalDavHandlerTests : IDisposable
         Assert.Equal(1, await QueryCountAsync(calId, TimeRangeQuery("20261001T000000Z", "20261101T000000Z")));
     }
 
+    [Theory]
+    [InlineData("FREQ=WEEKLY;COUNT=3")]          // over by Sep 15
+    [InlineData("FREQ=WEEKLY;UNTIL=20260920T000000Z")]
+    public async Task Report_CalendarQuery_LeavesOutASeriesThatEndedBeforeTheWindow(string rule)
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        var recurring = PutIcs
+            .Replace("UID:phone-1@test", "UID:series-1@test")
+            .Replace("DTEND:20260901T110000Z", $"DTEND:20260901T110000Z\r\nRRULE:{rule}");
+        var ctx = Context(recurring);
+        await ExecuteAsync(await _handler.PutEvent(calId, "series-1@test.ics", ctx), ctx);
+
+        Assert.Equal(1, await QueryCountAsync(calId, TimeRangeQuery("20260910T000000Z", "20261101T000000Z")));
+        Assert.Equal(0, await QueryCountAsync(calId, TimeRangeQuery("20261001T000000Z", "20261101T000000Z")));
+    }
+
+    [Fact]
+    public async Task Report_CalendarQuery_KeepsASeriesWhoseEditedOccurrenceMovedIntoTheWindow()
+    {
+        var calId = await DiscoverCalendarIdAsync();
+        // Ends Sep 15, but its Sep 8 occurrence was moved to Oct 5.
+        var ics = PutIcs
+            .Replace("UID:phone-1@test", "UID:series-1@test")
+            .Replace("DTEND:20260901T110000Z", "DTEND:20260901T110000Z\r\nRRULE:FREQ=WEEKLY;COUNT=3")
+            .Replace("END:VCALENDAR",
+                "BEGIN:VEVENT\r\nUID:series-1@test\r\nDTSTAMP:20260801T000000Z\r\n" +
+                "RECURRENCE-ID:20260908T100000Z\r\nDTSTART:20261005T100000Z\r\nDTEND:20261005T110000Z\r\n" +
+                "SUMMARY:Moved\r\nEND:VEVENT\r\nEND:VCALENDAR");
+        var ctx = Context(ics);
+        await ExecuteAsync(await _handler.PutEvent(calId, "series-1@test.ics", ctx), ctx);
+
+        Assert.Equal(1, await QueryCountAsync(calId, TimeRangeQuery("20261001T000000Z", "20261101T000000Z")));
+    }
+
     [Fact]
     public async Task Report_CalendarQuery_WithoutAFilter_ReturnsEverything()
     {

@@ -9,6 +9,10 @@ export type DueItem = {
   location?: string | null
   /** An all-day event: `occurrenceStartUtc` is then its date, not an instant. */
   allDay?: boolean
+  /** For the notification's Snooze button. */
+  snoozeToken?: string | null
+  /** A snoozed reminder coming back: when it was due again (so it isn't taken for the first one). */
+  snoozedUntil?: string | null
 }
 
 export type ShownEntry = { key: string; at: number }
@@ -16,7 +20,8 @@ export type ShownEntry = { key: string; at: number }
 /** How long a shown-key is remembered. Comfortably longer than the poll/lookback window. */
 export const RETENTION_MS = 2 * 60 * 60 * 1000
 
-const keyOf = (item: DueItem) => `${item.reminderId}:${item.occurrenceStartUtc}`
+const keyOf = (item: DueItem) =>
+  `${item.reminderId}:${item.occurrenceStartUtc}` + (item.snoozedUntil ? `:snoozed:${item.snoozedUntil}` : '')
 
 export function selectToShow(
   shown: ShownEntry[],

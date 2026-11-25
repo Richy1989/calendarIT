@@ -117,15 +117,18 @@ export default function RecurrenceEditor({
         </div>
       )}
 
-      {spec.freq === 'MONTHLY' && (
-        <div className="repeat-choices" role="radiogroup" aria-label="Day of the month">
+      {(spec.freq === 'MONTHLY' || spec.freq === 'YEARLY') && (
+        <div className="repeat-choices" role="radiogroup" aria-label={spec.freq === 'MONTHLY' ? 'Day of the month' : 'Day of the year'}>
           <label className="repeat-choice">
             <input type="radio" checked={spec.monthly === 'day'} onChange={() => set({ monthly: 'day' })} />
-            On day {start.getDate()}
+            {spec.freq === 'MONTHLY'
+              ? `On day ${start.getDate()}`
+              : `On ${start.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`}
           </label>
           <label className="repeat-choice">
             <input type="radio" checked={spec.monthly === 'weekday'} onChange={() => set({ monthly: 'weekday' })} />
             On the {ORDINAL[nth.n]} {weekdayLabel(nth.day, 'long')}
+            {spec.freq === 'YEARLY' && ` of ${start.toLocaleDateString(undefined, { month: 'long' })}`}
           </label>
         </div>
       )}

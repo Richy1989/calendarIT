@@ -23,9 +23,13 @@ export type RuleSpec = {
   interval: number
   /** Weekly only: the weekdays it falls on. */
   byDay: Weekday[]
-  /** Monthly only: on the start's day of the month, or on its weekday-of-the-month ("2nd Tue"). */
+  /** Monthly and yearly: on the start's day of the month, or on its weekday-of-the-month
+   *  ("2nd Tue"; yearly: of the start's month — "the second Sunday of May"). */
   monthly: 'day' | 'weekday'
   end: RuleEnd
+  /** The week's first day, kept only where it changes the dates (every N weeks on several days)
+   *  and isn't the default Monday. */
+  wkst?: Weekday
 }
 
 export const MAX_INTERVAL = 999
@@ -71,9 +75,49 @@ function untilToDay(value: string): string | null {
   return dayKey(when)
 }
 
+const isWeekday = (d: string): d is Weekday => (WEEKDAYS as readonly string[]).includes(d)
+
+/** "2TU", "+2TU", "-1SU" → its parts, or null. */
+function nthDay(value: string): { n: number; day: Weekday } | null {
+  const m = /^([+-]?\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)$/.exec(value)
+  if (!m) return null
+  return { n: m[1] === undefined ? 0 : Number(m[1]), day: m[2] as Weekday }
+}
+
+/**
+ * Rewrites the spellings other apps use for rules the editor does model into the plain form, so
+ * such a series can be edited instead of left as "Custom rule". Each rewrite gives exactly the
+ * same dates (RFC 5545 §3.3.10):
+ *  - BYSETPOS=n with one bare weekday, monthly or yearly (Outlook: "BYDAY=TU;BYSETPOS=2") is that
+ *    weekday's nth of the month, BYDAY=2TU;
+ *  - daily on some weekdays, every day ("FREQ=DAILY;BYDAY=MO,…,FR") is weekly on those days;
+ *  - a "+" before an ordinal means nothing.
+ */
+function canonicalParts(parts: Map<string, string>): Map<string, string> | null {
+  const out = new Map(parts)
+  const freq = out.get('FREQ')
+  const byDay = out.get('BYDAY')
+  const setPos = out.get('BYSETPOS')
+  if (setPos !== undefined) {
+    const day = byDay !== undefined ? nthDay(byDay) : null
+    if ((freq !== 'MONTHLY' && freq !== 'YEARLY') || !day || day.n !== 0 || !/^[+-]?\d{1,2}$/.test(setPos)) return null
+    out.delete('BYSETPOS')
+    out.set('BYDAY', `${Number(setPos)}${day.day}`)
+  }
+  if (freq === 'DAILY' && byDay !== undefined && (out.get('INTERVAL') ?? '1') === '1') {
+    const days = byDay.split(',')
+    if (!days.every(isWeekday)) return null
+    out.set('FREQ', 'WEEKLY')
+  }
+  const days = out.get('BYDAY')
+  if (days !== undefined) out.set('BYDAY', days.replace(/\+/g, ''))
+  return out
+}
+
 /** Reads a rule into an editable spec, or null when it uses anything the editor doesn't model. */
 export function parseRule(rule: string, start: Date): RuleSpec | null {
-  const parts = parseParts(rule)
+  const raw = parseParts(rule)
+  const parts = raw && canonicalParts(raw)
   if (!parts) return null
   const allowed = new Set(['FREQ', 'INTERVAL', 'BYDAY', 'COUNT', 'UNTIL', 'WKST', 'BYMONTHDAY', 'BYMONTH'])
   if ([...parts.keys()].some((k) => !allowed.has(k))) return null
@@ -98,17 +142,24 @@ export function parseRule(rule: string, start: Date): RuleSpec | null {
   if (byDay !== undefined) {
     if (freq === 'WEEKLY') {
       const days = byDay.split(',')
-      if (!days.every((d): d is Weekday => (WEEKDAYS as readonly string[]).includes(d))) return null
+      if (!days.every(isWeekday)) return null
       spec.byDay = WEEKDAYS.filter((d) => days.includes(d))
-    } else if (freq === 'MONTHLY' && monthDay === undefined) {
-      const m = /^(-1|[1-4])(MO|TU|WE|TH|FR|SA|SU)$/.exec(byDay)
+    } else if ((freq === 'MONTHLY' || (freq === 'YEARLY' && month !== undefined)) && monthDay === undefined) {
+      // Yearly needs its BYMONTH: without one, "2SU" is the second Sunday of the year.
+      const day = nthDay(byDay)
       const nth = nthWeekdayOf(start)
-      if (!m || Number(m[1]) !== nth.n || m[2] !== nth.day) return null
+      if (!day || day.n !== nth.n || day.day !== nth.day) return null
       spec.monthly = 'weekday'
     } else {
       return null
     }
   }
+
+  // The week start only matters every N weeks on several days, where it decides which days
+  // share a week; elsewhere it is noise and dropped.
+  const wkst = parts.get('WKST')
+  if (wkst !== undefined && !isWeekday(wkst)) return null
+  if (wkst && wkst !== 'MO' && freq === 'WEEKLY' && spec.interval > 1 && spec.byDay.length > 1) spec.wkst = wkst
 
   const count = parts.get('COUNT')
   const until = parts.get('UNTIL')
@@ -141,9 +192,13 @@ export function buildRule(spec: RuleSpec, start: Date, allDay: boolean): string 
     const days = WEEKDAYS.filter((d) => spec.byDay.includes(d))
     const own = weekdayOf(start)
     if (days.length > 0 && !(days.length === 1 && days[0] === own)) parts.push(`BYDAY=${days.join(',')}`)
+    if (spec.wkst && spec.wkst !== 'MO' && interval > 1 && days.length > 1) parts.push(`WKST=${spec.wkst}`)
   } else if (spec.freq === 'MONTHLY' && spec.monthly === 'weekday') {
     const { n, day } = nthWeekdayOf(start)
     parts.push(`BYDAY=${n}${day}`)
+  } else if (spec.freq === 'YEARLY' && spec.monthly === 'weekday') {
+    const { n, day } = nthWeekdayOf(start)
+    parts.push(`BYMONTH=${start.getMonth() + 1}`, `BYDAY=${n}${day}`)
   }
 
   if (spec.end.kind === 'count') {
@@ -200,7 +255,12 @@ export function describeSpec(spec: RuleSpec, start: Date): string {
       text += ` on day ${start.getDate()}`
     }
   } else if (spec.freq === 'YEARLY') {
-    text += ` on ${start.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`
+    if (spec.monthly === 'weekday') {
+      const { n, day } = nthWeekdayOf(start)
+      text += ` on the ${ORDINAL[n]} ${weekdayLabel(day, 'long')} of ${start.toLocaleDateString(undefined, { month: 'long' })}`
+    } else {
+      text += ` on ${start.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`
+    }
   }
   if (spec.end.kind === 'count') {
     text += spec.end.count === 1 ? ' · once' : ` · ${spec.end.count} times`

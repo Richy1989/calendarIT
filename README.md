@@ -244,12 +244,15 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Recurring events (RRULE) with timezone/DST-correct expansion; edit, move or delete a single
   occurrence (or put it back), or change the whole series. Edited occurrences round-trip as
   `RECURRENCE-ID` overrides over CalDAV, `.ics` and email invitations
+- ✅ Video calls — a Join button for Zoom, Teams, Meet, Jitsi, Webex and Whereby links in an
+  appointment's location or description
 - ✅ iCal (.ics) import / export — round-trips title, time + zone, all-day, color, RRULE (Outlook
   and Windows time-zone names are mapped to the real zone);
   export a selection of calendars, import into a chosen or new calendar
 - ✅ Reminders — **email** and **browser notifications (Web Push)** via a Quartz.NET job
   (recurrence-aware, timezone-correct, dedup); the channel is chosen per reminder on the event,
-  and each calendar can set the reminders new appointments start with
+  and each calendar can set the reminders new appointments start with; browser reminders can be
+  snoozed from the notification
 - ✅ Mail outbox — all outgoing mail is queued and sent in the background with retries; its
   status is visible (and retryable) in Settings → Email
 - ✅ CalDAV server — two-way sync with standard clients: discovery, ETags/CTag,

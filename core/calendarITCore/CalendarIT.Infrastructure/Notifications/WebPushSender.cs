@@ -54,6 +54,7 @@ public sealed class WebPushSender(VapidKeyStore vapid, ILogger<WebPushSender> lo
             body = message.Body,
             url = message.Url,
             tag = message.Tag,
+            snoozeToken = message.SnoozeToken,
         });
 
         var sub = new WebPush.PushSubscription(subscription.Endpoint, subscription.P256dh, subscription.Auth);

@@ -5,6 +5,8 @@ import { useHour12 } from './clock'
 import { allDayDate, dayKey, formatDateMedium, formatTimeRange, startOfToday, toOffsetIso } from './lib/dates'
 import { UNCATEGORIZED } from './prefs'
 import { describeRule } from './lib/rrule'
+import { findMeetingLink } from './lib/meetingLink'
+import JoinLink from './components/JoinLink'
 
 /**
  * The "list" view: every upcoming appointment from today forward, in one scrollable
@@ -163,30 +165,35 @@ export default function AgendaView({
         {days.map((day) => (
           <section key={day.key}>
             <div className="agenda-day">{day.label}</div>
-            {day.items.map((dto) => (
-              <button
-                type="button"
-                className="agenda-row"
-                key={`${dto.id}__${dto.start}`}
-                onClick={() => onEdit(dto)}
-                onContextMenu={(e) => {
-                  e.preventDefault()
-                  onEventContext(e.clientX, e.clientY, dto)
-                }}
-              >
-                <span className="agenda-time">{timeLabel(dto)}</span>
-                <span className="agenda-dot" style={{ background: dto.color ?? DEFAULT_COLOR }} aria-hidden="true" />
-                <span className="agenda-row-title">
-                  {dto.title}
-                  {dto.recurring && (
-                    <span className="agenda-recurring" title={dto.recurrence ? describeRule(dto.recurrence, new Date(dto.start)) : 'Repeats'}>
-                      {' '}⟳
+            {day.items.map((dto) => {
+              const meeting = findMeetingLink(dto.location, dto.description)
+              return (
+                <div className="agenda-item" key={`${dto.id}__${dto.start}`}>
+                  <button
+                    type="button"
+                    className="agenda-row"
+                    onClick={() => onEdit(dto)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      onEventContext(e.clientX, e.clientY, dto)
+                    }}
+                  >
+                    <span className="agenda-time">{timeLabel(dto)}</span>
+                    <span className="agenda-dot" style={{ background: dto.color ?? DEFAULT_COLOR }} aria-hidden="true" />
+                    <span className="agenda-row-title">
+                      {dto.title}
+                      {dto.recurring && (
+                        <span className="agenda-recurring" title={dto.recurrence ? describeRule(dto.recurrence, new Date(dto.start)) : 'Repeats'}>
+                          {' '}⟳
+                        </span>
+                      )}
                     </span>
-                  )}
-                </span>
-                {dto.location && <span className="agenda-row-loc">{dto.location}</span>}
-              </button>
-            ))}
+                    {dto.location && <span className="agenda-row-loc">{dto.location}</span>}
+                  </button>
+                  {meeting && <JoinLink meeting={meeting} compact />}
+                </div>
+              )
+            })}
           </section>
         ))}
 

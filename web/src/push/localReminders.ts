@@ -47,13 +47,11 @@ async function pollOnce(): Promise<void> {
 
   const reg = await navigator.serviceWorker.ready
   for (const item of toShow) {
-    void reg
-      .showNotification(`Reminder: ${item.title}`, {
-        body: bodyFor(item),
-        tag: `${item.reminderId}:${item.occurrenceStartUtc}`,
-        data: { url: '/' },
-      })
-      .catch(() => {})
+    // Through the worker, so a polled reminder gets the same Snooze / Dismiss buttons as a pushed one.
+    const title = `${item.snoozedUntil ? 'Snoozed reminder' : 'Reminder'}: ${item.title}`
+    const options = { body: bodyFor(item), tag: `${item.reminderId}:${item.occurrenceStartUtc}`, data: { url: '/' } }
+    if (reg.active) reg.active.postMessage({ type: 'show-reminder', title, options, snoozeToken: item.snoozeToken ?? undefined })
+    else void reg.showNotification(title, options).catch(() => {}) // no worker running yet: plain, without buttons
   }
 }
 

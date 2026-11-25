@@ -2492,6 +2492,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reminders/snooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SnoozeReminderRequest"];
+                    "text/json": components["schemas"]["SnoozeReminderRequest"];
+                    "application/*+json": components["schemas"]["SnoozeReminderRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2549,6 +2610,9 @@ export interface components {
             location: null | string;
             /** @default false */
             allDay: boolean;
+            snoozeToken?: null | string;
+            /** Format: date-time */
+            snoozedUntil?: null | string;
         };
         DueRemindersResponse: {
             items: components["schemas"]["DueReminderDto"][];
@@ -2768,6 +2832,11 @@ export interface components {
         };
         SetCalendarRemindersRequest: {
             reminders?: components["schemas"]["ReminderInput"][];
+        };
+        SnoozeReminderRequest: {
+            token: string;
+            /** Format: int32 */
+            minutes: number | string;
         };
         UpdateAppearanceRequest: {
             theme: null | string;

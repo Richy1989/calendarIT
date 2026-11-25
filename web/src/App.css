@@ -3209,3 +3209,57 @@ input[aria-invalid='true']:focus-visible {
 .theme-reset {
   margin-top: 0.2rem;
 }
+
+/* "Join" for an appointment's video call (location row in the editor, agenda rows). */
+.join-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: none;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.join-link:hover {
+  background: color-mix(in srgb, var(--accent) 85%, var(--text));
+  color: var(--on-accent);
+}
+.join-link svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.join-link.is-compact {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+}
+
+/* Every 30 days: a reminder to export a backup, above the calendar. */
+.backup-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 0.8rem;
+  margin-bottom: 0.9rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--hairline));
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  color: var(--text);
+  font-size: 0.86rem;
+}
+.backup-bar > span {
+  flex: 1 1 16rem;
+}
+.backup-bar button {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.82rem;
+}

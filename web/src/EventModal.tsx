@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getMailAccount } from './api/mailAccount'
 import { listCategories } from './api/categories'
+import JoinLink from './components/JoinLink'
+import { findMeetingLink } from './lib/meetingLink'
 import CategoryPicker from './components/CategoryPicker'
 import EventWhen from './components/EventWhen'
 import { ColorDot, FormIcon } from './components/FormIcons'
@@ -190,6 +192,7 @@ export default function EventModal({
     setReminders((rs) => rs.map((r, idx) => (idx === i ? { ...r, channel } : r)))
   }
   const [description, setDescription] = useState(draft.description)
+  const meeting = findMeetingLink(location, description)
   const [attendees, setAttendees] = useState(draft.attendees)
   const [guestInput, setGuestInput] = useState('')
   const isEdit = Boolean(draft.id)
@@ -518,6 +521,7 @@ export default function EventModal({
             placeholder="Add location"
             onChange={(e) => setLocation(e.target.value)}
           />
+          {meeting && <JoinLink meeting={meeting} />}
         </div>
 
         <div className="form-row form-row-top">

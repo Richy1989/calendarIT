@@ -120,6 +120,8 @@ public static class DependencyInjection
 
         // Read-only per-user due-reminder query for the local-notification fallback poller.
         services.AddScoped<IDueReminderQuery, DueReminderQuery>();
+        services.AddScoped<ReminderSnoozes>();
+        services.AddScoped<IReminderSnoozes>(sp => sp.GetRequiredService<ReminderSnoozes>());
 
         AddBackgroundJobs(services);
 

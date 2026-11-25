@@ -3,7 +3,9 @@ using CalendarIT.Domain;
 namespace CalendarIT.Application.Notifications;
 
 /// <summary>The notification a service worker should show, carried in the encrypted push payload.</summary>
-public sealed record PushMessage(string Title, string Body, string? Url = null, string? Tag = null);
+/// <param name="SnoozeToken">Lets the notification's Snooze button postpone it without a sign-in
+/// (a service worker has none); see <c>ReminderSnoozes</c>.</param>
+public sealed record PushMessage(string Title, string Body, string? Url = null, string? Tag = null, string? SnoozeToken = null);
 
 /// <summary>Outcome of a single push send, so the caller can prune dead subscriptions.</summary>
 public enum PushSendResult

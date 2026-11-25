@@ -26,6 +26,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
 
+    public DbSet<ReminderSnooze> ReminderSnoozes => Set<ReminderSnooze>();
+
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
     public DbSet<MailAccount> MailAccounts => Set<MailAccount>();
@@ -165,6 +167,17 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             entity.HasKey(n => n.Id);
             entity.HasIndex(n => new { n.ReminderId, n.OccurrenceStartUtc }).IsUnique();
+        });
+
+        builder.Entity<ReminderSnooze>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+            entity.HasIndex(s => new { s.ReminderId, s.OccurrenceStartUtc }).IsUnique();
+            entity.HasIndex(s => s.DueAtUtc);
+            entity.HasOne(s => s.Reminder)
+                .WithMany()
+                .HasForeignKey(s => s.ReminderId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<PushSubscription>(entity =>

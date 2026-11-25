@@ -94,12 +94,13 @@ public sealed class ReminderDispatchTests : IDisposable
         Assert.Equal("owner@test", message.To.Mailboxes.Single().Address);
     }
 
-    private async Task AddAllDayAsync(DateTime day, string? zone, int minutesBefore, ReminderChannel channel = ReminderChannel.Email)
+    private async Task AddAllDayAsync(
+        DateTime day, string? zone, int minutesBefore, ReminderChannel channel = ReminderChannel.Email, Guid? calendarId = null)
     {
         _db.Events.Add(new CalendarEvent
         {
             Id = Guid.NewGuid(),
-            CalendarId = _calendarId,
+            CalendarId = calendarId ?? _calendarId,
             Uid = $"{Guid.NewGuid():N}@calendarit",
             Title = "Birthday",
             StartUtc = day,
@@ -122,11 +123,49 @@ public sealed class ReminderDispatchTests : IDisposable
         await AddAllDayAsync(new DateTime(2026, 9, 2), "Europe/Vienna", minutesBefore: 14 * 60);
         // Not due: these began at midnight UTC, eight hours ago.
         await AddAllDayAsync(new DateTime(2026, 9, 1), "UTC", minutesBefore: 0);
-        await AddAllDayAsync(new DateTime(2026, 9, 1), null, minutesBefore: 0);
+        // (No zone, in a calendar nothing else gives one either.)
+        await AddAllDayAsync(new DateTime(2026, 9, 1), null, minutesBefore: 0, calendarId: await AddCalendarAsync(null));
 
         await Job().RunAsync(_db, _mail, _push);
 
         Assert.Equal(2, _mail.Sent.Count);
+    }
+
+    private async Task<Guid> AddCalendarAsync(string? zone)
+    {
+        var calendar = new Calendar { Id = Guid.NewGuid(), OwnerUserId = _userId, Name = "Phone", TimeZoneId = zone };
+        _db.Calendars.Add(calendar);
+        await _db.SaveChangesAsync();
+        return calendar.Id;
+    }
+
+    [Fact]
+    public async Task AllDayReminder_WithoutAZone_FollowsItsCalendarsOtherEvents()
+    {
+        // A phone writes all-day events without a zone but its timed ones with one: the 1st, in
+        // a calendar whose last zoned event is in Anchorage, begins at 08:00Z — due now.
+        var calendarId = await AddCalendarAsync(null);
+        _db.Events.Add(new CalendarEvent
+        {
+            Id = Guid.NewGuid(), CalendarId = calendarId, Uid = "timed@phone", Title = "Dentist",
+            StartUtc = new DateTime(2026, 8, 20, 17, 0, 0, DateTimeKind.Utc), TimeZoneId = "America/Anchorage",
+            CreatedAt = new DateTime(2026, 8, 1), UpdatedAt = new DateTime(2026, 8, 1),
+        });
+        await AddAllDayAsync(new DateTime(2026, 9, 1), null, minutesBefore: 0, calendarId: calendarId);
+
+        await Job().RunAsync(_db, _mail, _push);
+
+        Assert.Single(_mail.Sent);
+    }
+
+    [Fact]
+    public async Task AllDayReminder_WithoutAZone_PrefersTheCalendarsOwnZone()
+    {
+        await AddAllDayAsync(new DateTime(2026, 9, 1), null, minutesBefore: 0, calendarId: await AddCalendarAsync("America/Anchorage"));
+
+        await Job().RunAsync(_db, _mail, _push);
+
+        Assert.Single(_mail.Sent);
     }
 
     [Fact]
@@ -146,10 +185,33 @@ public sealed class ReminderDispatchTests : IDisposable
         var pushed = Assert.Single(_push.Sent).Message.Body;
         foreach (var text in new[] { mail, pushed })
         {
-            Assert.Contains(new DateTime(2026, 9, 1).ToString("D"), text);
+            Assert.Contains("Tuesday, 1 September 2026", text);
             Assert.DoesNotContain("16:00", text);
             Assert.DoesNotContain("Anchorage", text);
         }
+    }
+
+    [Theory]
+    [InlineData(null, "Tuesday, 1 September 2026, 12:00 (Europe/Vienna)")]
+    [InlineData(true, "Tuesday, 1 September 2026, 12:00 (Europe/Vienna)")]
+    [InlineData(false, "Tuesday, 1 September 2026, 12:00 PM (Europe/Vienna)")]
+    public async Task TimedReminder_NamesTheTime_InEnglish_OnTheUsersClock(bool? use24Hour, string expected)
+    {
+        var user = await _db.Users.SingleAsync(u => u.Id == _userId);
+        user.Use24HourClock = use24Hour;
+        // 10:00Z is noon in Vienna; reminded two hours early, i.e. now.
+        _db.Events.Add(new CalendarEvent
+        {
+            Id = Guid.NewGuid(), CalendarId = _calendarId, Uid = "lunch@calendarit", Title = "Lunch",
+            StartUtc = new DateTime(2026, 9, 1, 10, 0, 0, DateTimeKind.Utc), EndUtc = new DateTime(2026, 9, 1, 11, 0, 0, DateTimeKind.Utc),
+            TimeZoneId = "Europe/Vienna", CreatedAt = new DateTime(2026, 8, 1),
+            Reminders = [new Reminder { Id = Guid.NewGuid(), MinutesBefore = 120, Channel = ReminderChannel.Email }],
+        });
+        await _db.SaveChangesAsync();
+
+        await Job().RunAsync(_db, _mail, _push);
+
+        Assert.Contains($"starts at {expected}", Assert.Single(_mail.Sent).Message.TextBody!);
     }
 
     [Fact]

@@ -520,16 +520,29 @@ button {
   color: var(--text-dim);
 }
 
+.calendar-shell .agenda-item {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--hairline);
+  transition: background 0.12s;
+}
+.calendar-shell .agenda-item:hover {
+  background: var(--surface-2);
+}
+.calendar-shell .agenda-item .join-link {
+  margin-right: 0.9rem;
+}
+
 .calendar-shell .agenda-row {
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   text-align: left;
   padding: 0.55rem 0.9rem;
   background: transparent;
   border: none;
-  border-top: 1px solid var(--hairline);
   color: var(--text);
   font-family: var(--font-body);
   font-size: 0.88rem;
@@ -537,9 +550,6 @@ button {
   transition: background 0.12s;
 }
 
-.calendar-shell .agenda-row:hover {
-  background: var(--surface-2);
-}
 
 /* Wide enough for the longest range the formatter can produce ("11:00 – 11:30 PM"), and
    never allowed to wrap — at 7.5rem the meridiem was breaking onto a second line and
