@@ -19,15 +19,18 @@ import EventModal, { type EditScope, type EventDraft } from './EventModal'
 import QuickCreate from './QuickCreate'
 import { defaultRemindersFor } from './lib/eventForm'
 import AgendaView from './AgendaView'
+import ConfirmDialog from './components/ConfirmDialog'
 import {
   createEvent,
   deleteEvent,
+  deleteFollowing,
   exportEventIcs,
   getEvent,
   listEvents,
   resetOccurrence,
   respondToInvitation,
   updateEvent,
+  updateFollowing,
   updateOccurrence,
   type EventDto,
   type RsvpStatus,
@@ -609,6 +612,17 @@ export default function CalendarView({
     onSuccess: invalidate,
     onError: failed,
   })
+  const followingMut = useMutation({
+    mutationFn: (v: { seriesId: string; occurrence: string; body: SaveEventRequest }) =>
+      updateFollowing(v.seriesId, v.occurrence, v.body),
+    onSuccess: invalidate,
+    onError: failed,
+  })
+  const deleteFollowingMut = useMutation({
+    mutationFn: (v: { seriesId: string; occurrence: string }) => deleteFollowing(v.seriesId, v.occurrence),
+    onSuccess: invalidate,
+    onError: failed,
+  })
   const resetMut = useMutation({
     mutationFn: (v: { seriesId: string; occurrence: string }) => resetOccurrence(v.seriesId, v.occurrence),
     onSuccess: invalidate,
@@ -807,6 +821,20 @@ export default function CalendarView({
         loaded = dtoToDraft(await getEvent(id))
       } else if (scope === 'series') {
         loaded = { ...dtoToDraft(await getEvent(occurrence.seriesId)), seriesId: occurrence.seriesId, occurrence: occurrence.occurrence, scope }
+      } else if (scope === 'following') {
+        // The series as it stands, at this occurrence's slot in the rule (not where an edit of
+        // it may have moved it): the new series starts there unless the times are changed.
+        const series = await getEvent(occurrence.seriesId)
+        const span = series.end ? new Date(series.end).getTime() - new Date(series.start).getTime() : 0
+        const end = new Date(new Date(occurrence.occurrence).getTime() + span).toISOString()
+        loaded = {
+          ...dtoToDraft(series),
+          seriesId: occurrence.seriesId,
+          occurrence: occurrence.occurrence,
+          scope,
+          start: toFieldValue(occurrence.occurrence, series.allDay),
+          end: toFieldValue(end, series.allDay),
+        }
       } else if (occurrence.overrideId) {
         loaded = { ...dtoToDraft(await getEvent(occurrence.overrideId)), seriesId: occurrence.seriesId, occurrence: occurrence.occurrence, scope, isOverride: true }
       } else {
@@ -837,7 +865,14 @@ export default function CalendarView({
   const save = (d: EventDraft) => {
     const body = draftToRequest(d)
     const label = d.title.trim() || 'event'
-    if (d.seriesId && d.scope === 'occurrence' && d.occurrence) {
+    if (d.seriesId && d.scope === 'following' && d.occurrence) {
+      // A split can't be taken back with Ctrl+Z: it gives the later part a new identity (for
+      // phones and guests), and putting the halves together again isn't something to guess at.
+      followingMut.mutate(
+        { seriesId: d.seriesId, occurrence: d.occurrence, body },
+        { onSuccess: () => showToast(`Changed “${label}” from this occurrence on`) },
+      )
+    } else if (d.seriesId && d.scope === 'occurrence' && d.occurrence) {
       const seriesId = d.seriesId
       const occurrence = d.occurrence
       const prev = originalEdit.current
@@ -932,6 +967,18 @@ export default function CalendarView({
             redo: () => deleteMut.mutateAsync({ id: seriesId, occurrence }),
           }),
       },
+    )
+    closeDraft()
+  }
+
+  // Deletes an occurrence and every later one. Like a split, not undoable — so it asks first.
+  const [confirmFollowing, setConfirmFollowing] = useState<OccurrenceRef | null>(null)
+  const removeFollowing = (ref: OccurrenceRef) => setConfirmFollowing(ref)
+  const doRemoveFollowing = (ref: OccurrenceRef) => {
+    setConfirmFollowing(null)
+    deleteFollowingMut.mutate(
+      { seriesId: ref.seriesId, occurrence: ref.occurrence },
+      { onSuccess: () => showToast('Deleted this and the following occurrences') },
     )
     closeDraft()
   }
@@ -1343,6 +1390,9 @@ export default function CalendarView({
                     <button className="ctx-item" onClick={() => { void removeOccurrence(menu.occurrence!); setMenu(null) }}>
                       Delete this occurrence
                     </button>
+                    <button className="ctx-item danger" onClick={() => { removeFollowing(menu.occurrence!); setMenu(null) }}>
+                      Delete this and following
+                    </button>
                     <button className="ctx-item danger" onClick={() => { void remove(menu.seriesId); setMenu(null) }}>
                       Delete series
                     </button>
@@ -1507,7 +1557,9 @@ export default function CalendarView({
               ? undefined
               : draft.scope === 'occurrence' && draftOccurrence
                 ? () => void removeOccurrence(draftOccurrence)
-                : () => void remove(draft.seriesId ?? draft.id!)
+                : draft.scope === 'following' && draftOccurrence
+                  ? () => removeFollowing(draftOccurrence)
+                  : () => void remove(draft.seriesId ?? draft.id!)
           }
           onCopy={draft.id ? () => copyEvent(draft.seriesId ?? draft.id!) : undefined}
           onRespond={draft.id && draft.invitationStatus ? (status) => respond(draft.seriesId ?? draft.id!, status) : undefined}
@@ -1515,6 +1567,16 @@ export default function CalendarView({
           onClose={closeDraft}
         />
         )
+      )}
+
+      {/* After the editor, so it opens over it. */}
+      {confirmFollowing && (
+        <ConfirmDialog
+          title="Delete this and following"
+          message="Delete this occurrence and every later one? Earlier occurrences stay. This can't be undone."
+          onConfirm={() => doRemoveFollowing(confirmFollowing)}
+          onClose={() => setConfirmFollowing(null)}
+        />
       )}
 
       {toast && (

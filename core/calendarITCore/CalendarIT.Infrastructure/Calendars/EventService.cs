@@ -490,6 +490,182 @@ public sealed class EventService(
         return true;
     }
 
+    public async Task<EventDto?> SplitSeriesAsync(
+        Guid userId, Guid seriesId, DateTimeOffset occurrence, SaveEventRequest request, CancellationToken cancellationToken = default)
+    {
+        var master = await OwnSeriesAsync(userId, seriesId, cancellationToken);
+        if (master is null)
+        {
+            return null;
+        }
+        var rid = ExDates.TruncateToSeconds(occurrence.UtcDateTime);
+        if (!master.Overrides.Any(o => o.RecurrenceIdUtc is { } r && ExDates.TruncateToSeconds(r) == rid) && !IsLiveOccurrence(master, rid))
+        {
+            return null;
+        }
+        // Nothing before it: "this and following" is the whole series.
+        if (!HasOccurrenceBefore(master, rid))
+        {
+            return await UpdateAsync(userId, seriesId, request, cancellationToken);
+        }
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var masterRule = master.RRule!;
+
+        var next = new CalendarEvent
+        {
+            Id = Guid.NewGuid(),
+            CalendarId = master.CalendarId,
+            Uid = $"{Guid.NewGuid():N}@calendarit",
+            Color = master.Color,
+            TimeZoneId = master.TimeZoneId, // a request naming no zone keeps the series' own
+            CreatedAt = now,
+        };
+        // Compared before Apply rewrites anything: whether the new series is the old one's tail
+        // unchanged — same rule, same slot — so its exclusions and edited occurrences still fit.
+        var zone = request.TimeZone is null ? master.TimeZoneId : TimeZones.Normalize(request.TimeZone);
+        Apply(next, request, now);
+        var sameRule = next.RRule == masterRule;
+        var unmoved = sameRule
+            && ExDates.TruncateToSeconds(next.StartUtc) == rid
+            && next.IsAllDay == master.IsAllDay
+            && (next.IsAllDay || TimeZones.Normalize(zone) == TimeZones.Normalize(master.TimeZoneId));
+        // The same rule with a COUNT: the new series gets what the old one hadn't used up.
+        if (sameRule && RecurrenceRules.CountOf(masterRule) is { } count)
+        {
+            next.RRule = RecurrenceRules.WithEnd(masterRule, count: Math.Max(1, count - GeneratedBefore(master, rid)));
+        }
+
+        if (request.CalendarId is { } target && target != master.CalendarId
+            && await db.Calendars.AnyAsync(c => c.Id == target && c.OwnerUserId == userId, cancellationToken))
+        {
+            next.CalendarId = target;
+        }
+        next.CategoryId = await ResolveCategoryIdAsync(userId, request.CategoryId, fallback: master.CategoryId, cancellationToken);
+        next.Reminders = request.Reminders is null
+            ? [.. master.Reminders.Select(r => new Reminder { Id = Guid.NewGuid(), MinutesBefore = r.MinutesBefore, Channel = r.Channel })]
+            : MapReminders(request.Reminders);
+        // A new series is a new invitation: everyone answers it afresh.
+        next.Attendees = request.Attendees is null
+            ? [.. master.Attendees.Select(a => new Attendee { Id = Guid.NewGuid(), Email = a.Email, Name = a.Name, Status = AttendeeStatus.NeedsAction })]
+            : MapAttendees(request.Attendees, existing: null);
+        db.Events.Add(next);
+
+        // The old series stops the moment before; what lies from there on goes with the new one,
+        // or goes away when the new one no longer produces those instants.
+        master.RRule = RecurrenceRules.WithEnd(masterRule, until: UntilBefore(rid, master.IsAllDay));
+        var exDates = ExDates.Parse(master.ExDates);
+        master.ExDates = ExDates.Format(exDates.Where(d => d < rid).Order());
+        if (unmoved && next.RRule is not null)
+        {
+            next.ExDates = ExDates.Format(exDates.Where(d => d >= rid).Order());
+        }
+        foreach (var o in master.Overrides.Where(o => o.RecurrenceIdUtc >= rid).ToList())
+        {
+            master.Overrides.Remove(o);
+            if (unmoved && next.RRule is not null)
+            {
+                o.SeriesMasterId = next.Id;
+                SeriesWriter.InheritFromMaster(o, next);
+                o.UpdatedAt = now;
+                next.Overrides.Add(o);
+            }
+            else
+            {
+                db.Events.Remove(o);
+            }
+        }
+        master.UpdatedAt = now;
+        if (master.Attendees.Count > 0)
+        {
+            master.Sequence++;
+        }
+
+        await db.SaveChangesAsync(cancellationToken); // one transaction: both halves, or neither
+        await LoadDisplayAsync(next, cancellationToken);
+
+        // Guests get the shortened series as an update, and the new one as an invitation.
+        await mailer.SendRequestAsync(userId, master, [.. master.Attendees], cancellationToken);
+        await delivery.SyncAsync(master, userId, [], cancellationToken);
+        await mailer.SendRequestAsync(userId, next, [.. next.Attendees], cancellationToken);
+        await delivery.SyncAsync(next, userId, [], cancellationToken);
+        return ToDto(next);
+    }
+
+    public async Task<bool> DeleteFollowingAsync(
+        Guid userId, Guid seriesId, DateTimeOffset occurrence, CancellationToken cancellationToken = default)
+    {
+        var master = await OwnSeriesAsync(userId, seriesId, cancellationToken);
+        if (master is null)
+        {
+            return false;
+        }
+        var rid = ExDates.TruncateToSeconds(occurrence.UtcDateTime);
+        if (!HasOccurrenceBefore(master, rid))
+        {
+            return await DeleteAsync(userId, seriesId, occurrence: null, cancellationToken);
+        }
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        master.RRule = RecurrenceRules.WithEnd(master.RRule!, until: UntilBefore(rid, master.IsAllDay));
+        master.ExDates = ExDates.Format(ExDates.Parse(master.ExDates).Where(d => d < rid).Order());
+        foreach (var o in master.Overrides.Where(o => o.RecurrenceIdUtc >= rid).ToList())
+        {
+            master.Overrides.Remove(o);
+            db.Events.Remove(o);
+        }
+        await TouchSeriesAsync(userId, master, now, cancellationToken);
+        return true;
+    }
+
+    /// <summary>A series the user organizes. Received invitations aren't theirs to split: the
+    /// organizer's next update would put the old series back.</summary>
+    private async Task<CalendarEvent?> OwnSeriesAsync(Guid userId, Guid seriesId, CancellationToken cancellationToken)
+    {
+        var master = await SeriesQuery()
+            .Where(e => e.Id == seriesId && e.Calendar!.OwnerUserId == userId && e.SeriesMasterId == null && e.RRule != null)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (master?.InvitationStatus is not null)
+        {
+            throw new InvalidInputException("This is an invitation — only its organizer can split the series.");
+        }
+        return master;
+    }
+
+    /// <summary>Whether the series shows anything before <paramref name="rid"/>: an occurrence
+    /// the rule still produces, or an edited one whose original instant lies earlier.</summary>
+    private static bool HasOccurrenceBefore(CalendarEvent master, DateTime rid)
+    {
+        if (master.Overrides.Any(o => o.RecurrenceIdUtc < rid))
+        {
+            return true;
+        }
+        var end = master.EndUtc ?? master.StartUtc.AddHours(1);
+        return RecurrenceExpander
+            .Expand(master.StartUtc, end, master.TimeZoneId, master.RRule!, ExDates.Parse(master.ExDates),
+                master.StartUtc, rid, master.IsAllDay)
+            .Any(o => o.StartUtc < rid);
+    }
+
+    /// <summary>How many instances the rule generated before <paramref name="rid"/> — exclusions
+    /// included, since COUNT counts them too (RFC 5545 §3.8.5.3).</summary>
+    private static int GeneratedBefore(CalendarEvent master, DateTime rid)
+    {
+        var end = master.EndUtc ?? master.StartUtc.AddHours(1);
+        return RecurrenceExpander
+            .Expand(master.StartUtc, end, master.TimeZoneId, master.RRule!, new HashSet<DateTime>(),
+                master.StartUtc, rid, master.IsAllDay)
+            .Count(o => o.StartUtc < rid);
+    }
+
+    /// <summary>An UNTIL that keeps everything before <paramref name="rid"/> and nothing after:
+    /// the day before for an all-day series (a DATE, next to its DATE start), else the second
+    /// before, in UTC (RFC 5545 requires UTC next to a zoned start).</summary>
+    private static string UntilBefore(DateTime rid, bool allDay) =>
+        allDay
+            ? rid.Date.AddDays(-1).ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture)
+            : rid.AddSeconds(-1).ToString("yyyyMMdd'T'HHmmss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+
     /// <summary>An event with everything a series write touches: reminders, guests, and its
     /// edited occurrences with their reminders.</summary>
     private IQueryable<CalendarEvent> SeriesQuery() =>

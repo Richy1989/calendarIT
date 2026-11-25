@@ -58,4 +58,21 @@ public interface IEventService
     /// </summary>
     Task<bool> ResetOccurrenceAsync(
         Guid userId, Guid seriesId, DateTimeOffset occurrence, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// "This and following": the series ends just before <paramref name="occurrence"/> (its
+    /// original start), and a new series — its own UID — starts there with the request's details.
+    /// A COUNT is shared out; exclusions and edited occurrences from that point on move to the new
+    /// series unless its time or rule changed. On the first occurrence this is a whole-series edit.
+    /// Returns the series now holding the occurrence, or null when it doesn't exist for this user.
+    /// </summary>
+    Task<EventDto?> SplitSeriesAsync(
+        Guid userId, Guid seriesId, DateTimeOffset occurrence, SaveEventRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes <paramref name="occurrence"/> and everything after it: the series ends just before
+    /// it (the whole series goes when nothing comes earlier). False when nothing matched.
+    /// </summary>
+    Task<bool> DeleteFollowingAsync(
+        Guid userId, Guid seriesId, DateTimeOffset occurrence, CancellationToken cancellationToken = default);
 }

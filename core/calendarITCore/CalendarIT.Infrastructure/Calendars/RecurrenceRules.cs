@@ -92,4 +92,39 @@ public static class RecurrenceRules
 
     private static bool IsSupported(RecurrenceRule rule) =>
         rule.Frequency is not (FrequencyType.Secondly or FrequencyType.Minutely);
+
+    /// <summary>
+    /// <paramref name="rule"/> with its end replaced: COUNT and UNTIL dropped, then the given one
+    /// (if any) appended. Every other part is kept as written.
+    /// </summary>
+    public static string WithEnd(string rule, string? until = null, int? count = null)
+    {
+        var parts = rule.Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .Where(p => !p.StartsWith("COUNT=", StringComparison.OrdinalIgnoreCase)
+                     && !p.StartsWith("UNTIL=", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (until is not null)
+        {
+            parts.Add($"UNTIL={until}");
+        }
+        else if (count is not null)
+        {
+            parts.Add($"COUNT={count.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        }
+        return string.Join(';', parts);
+    }
+
+    /// <summary>The rule's COUNT, or null when it has none (or an unreadable one).</summary>
+    public static int? CountOf(string rule)
+    {
+        foreach (var part in rule.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (part.StartsWith("COUNT=", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(part.AsSpan(6), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var count))
+            {
+                return count;
+            }
+        }
+        return null;
+    }
 }

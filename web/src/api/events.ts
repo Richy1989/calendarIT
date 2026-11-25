@@ -100,6 +100,25 @@ export async function updateOccurrence(seriesId: string, occurrence: string, bod
   return data
 }
 
+/** "This and following": ends the series before `occurrence` and starts a new one there with
+ *  `body`. Returns the series that now holds the occurrence. */
+export async function updateFollowing(seriesId: string, occurrence: string, body: SaveEventRequest): Promise<EventDto> {
+  const { data, error } = await api.PUT('/api/events/{id}/following', {
+    params: { path: { id: seriesId }, query: { occurrence } },
+    body,
+  })
+  if (error || !data) throw new Error(problemMessage(error, 'Failed to update this and the following occurrences'))
+  return data
+}
+
+/** Deletes `occurrence` and every later one of the series. */
+export async function deleteFollowing(seriesId: string, occurrence: string): Promise<void> {
+  const { error } = await api.DELETE('/api/events/{id}/following', {
+    params: { path: { id: seriesId }, query: { occurrence } },
+  })
+  if (error) throw new Error(problemMessage(error, 'Failed to delete these occurrences'))
+}
+
 /** Puts one occurrence back to what the series says (undoes an edit or a delete of it). */
 export async function resetOccurrence(seriesId: string, occurrence: string): Promise<void> {
   const { error } = await api.POST('/api/events/{id}/occurrence/reset', {

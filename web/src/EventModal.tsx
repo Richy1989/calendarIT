@@ -55,7 +55,7 @@ export type EventDraft = {
 }
 
 /** Which part of a repeating series an edit applies to. */
-export type EditScope = 'occurrence' | 'series'
+export type EditScope = 'occurrence' | 'following' | 'series'
 
 /** The Repeats select's "Custom…" entry (opens the repeat editor). Not a valid RRULE on purpose. */
 const CUSTOM = '__custom__'
@@ -332,7 +332,7 @@ export default function EventModal({
 
         {onScopeChange && draft.scope && (
           <div className="scope-switch" role="radiogroup" aria-label="What to change">
-            {(['occurrence', 'series'] as const).map((s) => (
+            {(onRespond ? (['occurrence', 'series'] as const) : (['occurrence', 'following', 'series'] as const)).map((s) => (
               <button
                 key={s}
                 type="button"
@@ -341,7 +341,7 @@ export default function EventModal({
                 className={'scope-option' + (draft.scope === s ? ' active' : '')}
                 onClick={() => draft.scope !== s && onScopeChange(s)}
               >
-                {s === 'occurrence' ? 'This occurrence' : 'All occurrences'}
+                {s === 'occurrence' ? 'This occurrence' : s === 'following' ? 'This and following' : 'All occurrences'}
               </button>
             ))}
           </div>
@@ -404,11 +404,19 @@ export default function EventModal({
                   it is — pick another option to replace it.
                 </p>
               )}
-              {isEdit && recurrence !== '' && (
+              {draft.scope === 'following' ? (
                 <p className="field-hint">
-                  Saving updates the whole series. Occurrences edited on their own keep their changes,
-                  unless the repeat rule or the start changes.
+                  Saving changes this occurrence and every later one — they become a series of their
+                  own. Earlier occurrences stay as they are.
                 </p>
+              ) : (
+                isEdit &&
+                recurrence !== '' && (
+                  <p className="field-hint">
+                    Saving updates the whole series. Occurrences edited on their own keep their changes,
+                    unless the repeat rule or the start changes.
+                  </p>
+                )
               )}
             </div>
           </div>
@@ -540,7 +548,13 @@ export default function EventModal({
         <div className="modal-actions">
           {isEdit && onDelete && (
             <button type="button" className="btn-danger" onClick={onDelete}>
-              {occurrenceOnly ? 'Delete occurrence' : draft.scope === 'series' ? 'Delete series' : 'Delete'}
+              {occurrenceOnly
+                ? 'Delete occurrence'
+                : draft.scope === 'following'
+                  ? 'Delete from here'
+                  : draft.scope === 'series'
+                    ? 'Delete series'
+                    : 'Delete'}
             </button>
           )}
           {isEdit && onCopy && (

@@ -138,6 +138,31 @@ public sealed class EventsController(IEventService events, ICalendarIoService ca
         return updated is null ? NotFound() : Ok(updated);
     }
 
+    /// <summary>
+    /// "This and following": the series ends before <paramref name="occurrence"/> (its original
+    /// start) and a new series with the request's details starts there. Returns the new series
+    /// (or the whole series, edited, when the occurrence was its first).
+    /// </summary>
+    [HttpPut("{id:guid}/following")]
+    [ProducesResponseType<EventDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateFollowing(
+        Guid id, [FromQuery, Required] DateTimeOffset occurrence, SaveEventRequest request, CancellationToken cancellationToken)
+    {
+        var updated = await events.SplitSeriesAsync(User.GetUserId(), id, occurrence, request, cancellationToken);
+        return updated is null ? NotFound() : Ok(updated);
+    }
+
+    /// <summary>Deletes <paramref name="occurrence"/> and every later occurrence of the series.</summary>
+    [HttpDelete("{id:guid}/following")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteFollowing(
+        Guid id, [FromQuery, Required] DateTimeOffset occurrence, CancellationToken cancellationToken)
+        => await events.DeleteFollowingAsync(User.GetUserId(), id, occurrence, cancellationToken) ? NoContent() : NotFound();
+
     /// <summary>Puts one occurrence back to what the series says — undoing an edit or a delete.</summary>
     [HttpPost("{id:guid}/occurrence/reset")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

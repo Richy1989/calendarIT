@@ -110,6 +110,12 @@ real zone with the same clocks (`ZoneDefinition`); unresolvable ids are "floatin
   `ExDates` holds deletions **and** overridden instants, so every expansion skips them for free;
   `ICalEventMapper.ToICalEvents` subtracts the override instants again when writing EXDATE.
   Anything looking events up by UID must filter `SeriesMasterId == null`.
+- **"This and following" splits the series** (`EventService.SplitSeriesAsync`, `PUT
+  /api/events/{id}/following`): the old master gets an UNTIL just before the occurrence, a new
+  master with a **new UID** starts there (COUNT shared out); exclusions/overrides from there on
+  move to it unless its rule or slot changed. Guests get the shortened series as an update and
+  the new one as an invitation (statuses reset). On the first occurrence it is a whole-series
+  edit. `DELETE …/following` only shortens. Neither is on the undo stack.
 - `SeriesWriter` writes a whole iCalendar resource (master + overrides) for CalDAV PUT, import and
   iMIP. A CalDAV resource = one master with its overrides; overrides never appear as their own
   resource, and any change to an override bumps the master's `UpdatedAt` (the ETag).

@@ -242,7 +242,8 @@ Under active development — built in phases (see `ARCHITECTURE.md` §10).
 - ✅ Events persist to the database — create / edit / delete / drag, scoped per user, with
   undo/redo
 - ✅ Recurring events (RRULE) with timezone/DST-correct expansion; edit, move or delete a single
-  occurrence (or put it back), or change the whole series. Edited occurrences round-trip as
+  occurrence (or put it back), change or delete it and all following ones, or change the whole
+  series. Edited occurrences round-trip as
   `RECURRENCE-ID` overrides over CalDAV, `.ics` and email invitations
 - ✅ Video calls — a Join button for Zoom, Teams, Meet, Jitsi, Webex and Whereby links in an
   appointment's location or description
