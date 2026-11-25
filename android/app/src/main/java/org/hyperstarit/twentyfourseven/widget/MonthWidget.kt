@@ -101,13 +101,25 @@ class MonthWidget : GlanceAppWidget() {
             val weeks = range.let { java.time.temporal.ChronoUnit.DAYS.between(it.from, it.to).toInt() / 7 }
             val cell = (size.height - HEADER - WEEKDAYS) / weeks
             val perDay = (((cell - DAY_NUMBER) / LINE).toInt()).coerceIn(0, 6)
-            GlanceTheme(colors = themeColors(context)) { Month(MonthModel.build(month, firstDay, today, byDate, perDay), locale) }
+            GlanceTheme(colors = themeColors(context)) { Month(MonthModel.build(month, firstDay, today, byDate, perDay), locale, glass(context)) }
         }
     }
 
     @Composable
-    private fun Month(grid: MonthGrid, locale: Locale) {
-        Column(GlanceModifier.fillMaxSize().background(GlanceTheme.colors.background).cornerRadius(20.dp).padding(4.dp)) {
+    private fun Month(grid: MonthGrid, locale: Locale, glass: Glass?) {
+        val surface = if (glass == null) GlanceModifier.fillMaxSize().background(GlanceTheme.colors.background).cornerRadius(20.dp)
+        else GlanceModifier.fillMaxSize().background(glass.fill).cornerRadius(19.dp)
+        // Glass: a faint light rim around a see-through fill (Glance has no blur or borders).
+        if (glass != null) {
+            Box(GlanceModifier.fillMaxSize().background(glass.rim).cornerRadius(20.dp).padding(1.dp)) { MonthBody(grid, locale, surface) }
+        } else {
+            MonthBody(grid, locale, surface)
+        }
+    }
+
+    @Composable
+    private fun MonthBody(grid: MonthGrid, locale: Locale, surface: GlanceModifier) {
+        Column(surface.padding(4.dp)) {
             Row(GlanceModifier.fillMaxWidth().height(HEADER), verticalAlignment = Alignment.CenterVertically) {
                 Text("‹", modifier = GlanceModifier.width(40.dp).clickable(actionRunCallback<PreviousMonth>()),
                     style = TextStyle(fontSize = 22.sp, color = GlanceTheme.colors.onSurface, textAlign = TextAlign.Center))
@@ -196,12 +208,36 @@ class MonthWidget : GlanceAppWidget() {
             }
         }
 
+        /** The see-through background and its rim, or null when the widget is opaque (Settings → Month widget). */
+        private fun glass(context: Context): Glass? {
+            val opacity = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
+                .getInt(org.hyperstarit.twentyfourseven.ui.theme.AppearancePrefs.WIDGET_OPACITY, 100) / 100f
+            if (opacity >= 1f) return null
+            val saved = context.getSharedPreferences("appearance", Context.MODE_PRIVATE).getString("theme", null)
+            val choice = org.hyperstarit.twentyfourseven.ui.theme.ThemeChoice.entries.firstOrNull { it.name == saved } ?: org.hyperstarit.twentyfourseven.ui.theme.AppearancePrefs.DEFAULT
+            fun fill(p: org.hyperstarit.twentyfourseven.ui.theme.Palette) = p.colorScheme().background.copy(alpha = opacity)
+            fun rim(p: org.hyperstarit.twentyfourseven.ui.theme.Palette) = p.colorScheme().onSurface.copy(alpha = 0.18f)
+            return if (choice == org.hyperstarit.twentyfourseven.ui.theme.ThemeChoice.AUTO) {
+                val day = org.hyperstarit.twentyfourseven.ui.theme.Palette.Daylight
+                val night = org.hyperstarit.twentyfourseven.ui.theme.Palette.Midnight
+                Glass(
+                    androidx.glance.color.ColorProvider(day = fill(day), night = fill(night)),
+                    androidx.glance.color.ColorProvider(day = rim(day), night = rim(night)),
+                )
+            } else {
+                val p = choice.palette(true)
+                Glass(ColorProvider(fill(p)), ColorProvider(rim(p)))
+            }
+        }
+
         private fun onColor(c: Color) = if (0.299 * c.red + 0.587 * c.green + 0.114 * c.blue > 0.6) Color(0xFF1A1A1A) else Color.White
 
         /** Redraws every month widget (after a sync or a change). */
         suspend fun refresh(context: Context) = runCatching { MonthWidget().updateAll(context) }
     }
 }
+
+private class Glass(val fill: ColorProvider, val rim: ColorProvider)
 
 private suspend fun shift(context: Context, id: GlanceId, by: Int?) {
     updateAppWidgetState(context, id) { prefs -> prefs[MonthWidget.OFFSET] = if (by == null) 0 else (prefs[MonthWidget.OFFSET] ?: 0) + by }

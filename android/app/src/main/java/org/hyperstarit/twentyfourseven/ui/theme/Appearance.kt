@@ -41,6 +41,11 @@ class AppearancePrefs @Inject constructor(@ApplicationContext context: Context) 
         _theme.value = choice
     }
 
+    /** How opaque the month widget's background is, 0–100 %; below 100 it gets a glass edge. */
+    var widgetOpacity: Int
+        get() = prefs.getInt(WIDGET_OPACITY, 100)
+        set(value) = prefs.edit { putInt(WIDGET_OPACITY, value.coerceIn(0, 100)) }
+
     private fun read(): ThemeChoice =
         prefs.getString(THEME, null)?.let { saved -> ThemeChoice.entries.firstOrNull { it.name == saved } } ?: DEFAULT
 
@@ -48,5 +53,6 @@ class AppearancePrefs @Inject constructor(@ApplicationContext context: Context) 
         /** The look of a fresh install, as on the web. */
         val DEFAULT = ThemeChoice.CORNER_STORE
         private const val THEME = "theme"
+        const val WIDGET_OPACITY = "widget_opacity"
     }
 }

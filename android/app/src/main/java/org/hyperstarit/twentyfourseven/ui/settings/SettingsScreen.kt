@@ -45,6 +45,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.hyperstarit.twentyfourseven.BuildConfig
@@ -77,6 +78,19 @@ class SettingsViewModel @Inject constructor(
     val theme = appearance.theme
 
     fun setTheme(choice: ThemeChoice) = appearance.setTheme(choice)
+
+    var widgetOpacity by androidx.compose.runtime.mutableIntStateOf(appearance.widgetOpacity)
+        private set
+
+    fun changeWidgetOpacity(percent: Int) {
+        widgetOpacity = percent
+        appearance.widgetOpacity = percent
+    }
+
+    /** Redraws placed widgets once the slider is let go (not on every step). */
+    fun applyWidgetOpacity(context: android.content.Context) {
+        appScope.launch { org.hyperstarit.twentyfourseven.widget.MonthWidget.refresh(context) }
+    }
 
     /** The UnifiedPush distributor in use (package name), or null: then the app syncs on a schedule. */
     var pushDistributor by mutableStateOf(push.current())
@@ -225,6 +239,22 @@ fun SettingsScreen(
                     onClick = { scope.launch { org.hyperstarit.twentyfourseven.widget.MonthWidgetPin.request(context) } },
                     trailing = { Icon(Glyphs.plus, "Add widget", tint = c.textFaint, modifier = Modifier.size(20.dp)) },
                 )
+                Column(Modifier.padding(start = 66.dp, end = 16.dp, bottom = 12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Widget background", style = MaterialTheme.typography.bodySmall, color = c.textDim, modifier = Modifier.weight(1f))
+                        Text(
+                            if (viewModel.widgetOpacity >= 100) "Solid" else "${viewModel.widgetOpacity} %",
+                            style = Brand.data, color = c.textFaint,
+                        )
+                    }
+                    androidx.compose.material3.Slider(
+                        value = viewModel.widgetOpacity.toFloat(),
+                        onValueChange = { viewModel.changeWidgetOpacity((it / 10).roundToInt() * 10) },
+                        onValueChangeFinished = { viewModel.applyWidgetOpacity(context.applicationContext) },
+                        valueRange = 0f..100f,
+                        steps = 9,
+                    )
+                }
             }
 
             Column(Modifier.fillMaxWidth().padding(top = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
