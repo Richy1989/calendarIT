@@ -8,7 +8,7 @@ _The first published release of the 24seven Android app._
 
 ✨ New Features
 
-- Your calendar on the phone — Month, week, day and agenda views of every CalendarIT account you add, working offline and syncing in the background.
+- Your calendar on the phone — Month, week, day and agenda views of every 24seven account you add, working offline and syncing in the background.
 - Edit anywhere — Create and change appointments (including "only this", "this and following" and "all" for repeating ones), answer invitations, and undo a delete.
 - Tasks — Open tasks grouped into Overdue, Today, Coming up and Someday, with subtasks, priorities and due dates.
 - Reminders on the phone — Notification reminders ring as exact alarms, with Snooze and, for tasks, Done.
