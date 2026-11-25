@@ -323,6 +323,17 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   rings them. Runs after every sync and local change, and when Android runs `CalendarSyncService`
   (another app changed something — Android schedules it, usually within a minute or two). Turning
   it off removes the Android accounts and with them their calendars. Tasks aren't there.
+- **Instant updates (UnifiedPush, no Google)** (`push/`): one UnifiedPush registration per
+  account (each server signs with its own VAPID key, fetched from `/api/push/public-key`); the
+  distributor (e.g. ntfy) gives an endpoint + keys, stored in `PushPrefs` and sent with every
+  device registration (`Accounts.registerDevice` must always include it, or a re-register wipes
+  it). `PlanItPushService.onMessage` → sync now. No distributor → the 15-min schedule, as before.
+  Server: `SyncChangeInterceptor` (an EF SaveChanges interceptor, so every write path counts) →
+  `DeviceNotifier` → `DeviceNotifierService` bundles per user for 3 s and sends a content-free
+  `{"type":"sync"}` Web Push to the user's unifiedpush devices; 404/410 clears the device's
+  endpoint. Endpoints are capability URLs: only their host is ever logged. Push targets go through
+  the same public-only `OutboundHostPolicy` as browser pushes (a home-network ntfy is refused).
+  ntfy.sh answers 507 until the ntfy app has connected to the new topic.
 - Tests: Robolectric + MockWebServer (`SyncEngineTest`, `CertificatesTest` with a real
   self-signed TLS server, `MigrationTest`); `LiveServerTest` runs against a real backend only with
   `PLANIT_LIVE_URL`/`_EMAIL`/`_PASSWORD` set (throwaway account).

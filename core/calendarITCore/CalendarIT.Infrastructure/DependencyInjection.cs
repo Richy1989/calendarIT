@@ -45,7 +45,15 @@ public static class DependencyInjection
         }));
         services.AddSingleton(TimeProvider.System);
 
-        services.AddDbContext<AppDbContext>(builder => ConfigureProvider(builder, dbOptions));
+        // Every save that changes a user's calendar data nudges their app devices (see DeviceNotifier).
+        services.AddSingleton<DeviceNotifier>();
+        services.AddSingleton<SyncChangeInterceptor>();
+        services.AddHostedService<DeviceNotifierService>();
+        services.AddDbContext<AppDbContext>((sp, builder) =>
+        {
+            ConfigureProvider(builder, dbOptions);
+            builder.AddInterceptors(sp.GetRequiredService<SyncChangeInterceptor>());
+        });
 
         // Data Protection encrypts per-user mailbox passwords at rest. Keys persist under
         // APPDATA_PATH (next to the SQLite db) so ciphertexts survive container restarts.

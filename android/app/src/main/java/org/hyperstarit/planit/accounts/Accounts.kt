@@ -47,6 +47,8 @@ class Accounts(
     private val json: Json,
     private val clock: Clock,
     private val device: DeviceInfo,
+    /** The account's UnifiedPush endpoint, if it has one (sent with every device registration). */
+    private val pushFor: (String) -> org.hyperstarit.planit.net.DevicePushInput? = { null },
 ) {
     val all: Flow<List<AccountEntity>> = db.accounts().observeAll()
 
@@ -152,7 +154,7 @@ class Accounts(
     }
 
     suspend fun registerDevice(account: AccountEntity) {
-        val request = RegisterDeviceRequest(name = device.name, platform = "android", appVersion = device.appVersion)
+        val request = RegisterDeviceRequest(name = device.name, platform = "android", appVersion = device.appVersion, push = pushFor(account.id))
         val id = secrets.deviceId()
         auth(account).authorized { server, token -> api(account.certificatePin).registerDevice(server, token, id, request) }
     }

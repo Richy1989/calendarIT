@@ -60,6 +60,7 @@ enum class AddStep { CHOOSE, PLANIT }
 class AddAccountViewModel @Inject constructor(
     private val accounts: Accounts,
     private val scheduler: SyncScheduler,
+    private val push: org.hyperstarit.planit.push.PushRegistrar,
 ) : ViewModel() {
     var step by mutableStateOf(AddStep.CHOOSE)
     var server by mutableStateOf("")
@@ -107,6 +108,7 @@ class AddAccountViewModel @Inject constructor(
                 accounts.addPlanIt(url, email, password.text.toString(), pin)
                 password.clearText()
                 scheduler.requestNow()
+                if (push.current() != null) push.registerAll()
                 onAdded()
             } catch (e: UntrustedCertificateException) {
                 pendingUrl = url

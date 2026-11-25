@@ -44,7 +44,21 @@ class CalendarViewModel @Inject constructor(
     private val reminderPrefs: org.hyperstarit.planit.reminders.ReminderPrefs,
     private val reminders: org.hyperstarit.planit.reminders.ReminderScheduler,
     private val system: org.hyperstarit.planit.system.SystemCalendar,
+    private val push: org.hyperstarit.planit.push.PushRegistrar,
 ) : ViewModel() {
+    /** The UnifiedPush distributor in use (package name), or null: then the app syncs on a schedule. */
+    var pushDistributor by mutableStateOf(push.current())
+        private set
+    val pushInstalled: Boolean get() = push.distributors().isNotEmpty()
+
+    /** Picks (or confirms) the distributor — asking the user when there are several — and registers. */
+    fun setUpInstantUpdates(activity: android.app.Activity) {
+        org.unifiedpush.android.connector.UnifiedPush.tryPickDistributor(activity) { ok ->
+            pushDistributor = push.current()
+            if (ok) appScope.launch { push.registerAll() }
+        }
+    }
+
     var remindersOn by mutableStateOf(reminderPrefs.enabled)
         private set
     var inSystemCalendar by mutableStateOf(system.enabled && system.permitted())

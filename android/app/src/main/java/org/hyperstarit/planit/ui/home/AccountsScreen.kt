@@ -80,6 +80,7 @@ class HomeViewModel @Inject constructor(
     private val accounts: Accounts,
     private val runner: SyncRunner,
     private val changes: LocalChanges,
+    private val push: org.hyperstarit.planit.push.PushRegistrar,
 ) : ViewModel() {
     val state = combine(
         accounts.all, db.calendars().observeAll(), db.events().observeCounts(), db.notices().observeAll(), db.outbox().observePending(),
@@ -148,7 +149,10 @@ class HomeViewModel @Inject constructor(
     }
 
     fun remove(account: AccountEntity) {
-        viewModelScope.launch { accounts.remove(account.id) }
+        viewModelScope.launch {
+            push.forget(account.id)
+            accounts.remove(account.id)
+        }
     }
 
     fun reapply(notice: NoticeEntity) {

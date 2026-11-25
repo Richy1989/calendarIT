@@ -1,6 +1,8 @@
 package org.hyperstarit.planit.ui.calendar
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.core.net.toUri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -143,6 +145,24 @@ fun CalendarScreen(onAccounts: () -> Unit, onTasks: () -> Unit, viewModel: Calen
                         },
                         modifier = Modifier.padding(horizontal = 8.dp),
                     ) { Text("Show in phone's calendar") }
+                    ListItem(
+                        supportingContent = {
+                            Text(
+                                when {
+                                    viewModel.pushDistributor != null -> "On, through ${appLabel(context, viewModel.pushDistributor!!)}."
+                                    viewModel.pushInstalled -> "Tap to use your UnifiedPush app."
+                                    else -> "Changes from elsewhere arrive within 15 minutes. Install a UnifiedPush app such as ntfy to get them at once."
+                                },
+                            )
+                        },
+                        modifier = Modifier.padding(horizontal = 8.dp).clickable {
+                            if (viewModel.pushInstalled) {
+                                (context as? android.app.Activity)?.let(viewModel::setUpInstantUpdates)
+                            } else {
+                                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, "https://unifiedpush.org/users/distributors/".toUri()))
+                            }
+                        },
+                    ) { Text("Instant updates") }
                     if (viewModel.remindersOn && !notificationsAllowed) {
                         TextButton(onClick = {
                             context.startActivity(
@@ -262,6 +282,12 @@ private fun ScopeDialog(edit: Boolean, onDismiss: () -> Unit, onPick: (Scope) ->
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
+
+/** An installed app's name, for "through ntfy". */
+private fun appLabel(context: android.content.Context, packageName: String): String = runCatching {
+    val pm = context.packageManager
+    pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
+}.getOrDefault(packageName)
 
 /** A new appointment on [date] starts at the next full hour today, else at 09:00. */
 private fun nextHour(date: java.time.LocalDate, formats: Formats): java.time.LocalTime {

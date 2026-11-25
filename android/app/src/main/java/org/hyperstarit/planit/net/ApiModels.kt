@@ -162,6 +162,9 @@ data class RegisterDeviceRequest(
 data class DevicePushInput(val kind: String, val endpoint: String, val p256dh: String? = null, val auth: String? = null)
 
 @Serializable
+data class VapidPublicKeyDto(val publicKey: String)
+
+@Serializable
 data class DeviceDto(
     val id: String,
     val name: String,

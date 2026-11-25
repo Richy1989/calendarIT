@@ -36,8 +36,8 @@ android {
         applicationId = "org.hyperstarit.planit"
         minSdk = 34
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         // Android account type for the system calendar: the app id, so debug and release builds
         // installed side by side keep their accounts apart.
         resValue("string", "account_type", "org.hyperstarit.planit")
@@ -136,6 +136,7 @@ dependencies {
     implementation(libs.serialization.json)
     implementation(libs.okhttp)
     implementation(libs.ical4j)
+    implementation(libs.unifiedpush.connector)
     implementation(libs.kizitonwose.calendar)
 
     testImplementation(libs.junit)

@@ -24,4 +24,17 @@ public sealed class FakeWebPushSender : IWebPushSender
         Sent.Add((subscription, message));
         return Task.FromResult(PushSendResult.Sent);
     }
+
+    /// <summary>Raw sends (device "sync" nudges).</summary>
+    public List<(PushTarget Target, string Payload)> RawSent { get; } = [];
+
+    public Task<PushSendResult> SendAsync(PushTarget target, string payload, CancellationToken cancellationToken = default)
+    {
+        if (ExpiredEndpoints.Contains(target.Endpoint))
+        {
+            return Task.FromResult(PushSendResult.Expired);
+        }
+        RawSent.Add((target, payload));
+        return Task.FromResult(PushSendResult.Sent);
+    }
 }

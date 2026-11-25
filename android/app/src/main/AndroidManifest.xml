@@ -70,6 +70,15 @@
                 android:resource="@xml/sync_calendar" />
         </service>
 
+        <!-- UnifiedPush: the distributor app (e.g. ntfy) hands over "sync now" nudges. -->
+        <service
+            android:name=".push.PlanItPushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- WorkManager is set up by PlanItApp (Hilt workers), not by its own startup initializer. -->
         <provider
             android:name="androidx.startup.InitializationProvider"

@@ -20,6 +20,9 @@ public enum PushSendResult
     Failed
 }
 
+/// <summary>Where an encrypted Web Push message goes: a push service URL and the receiver's keys (RFC 8291).</summary>
+public sealed record PushTarget(string Endpoint, string P256dh, string Auth);
+
 /// <summary>Sends one encrypted Web Push message to one browser subscription (VAPID-signed).</summary>
 public interface IWebPushSender
 {
@@ -30,4 +33,7 @@ public interface IWebPushSender
     bool IsConfigured { get; }
 
     Task<PushSendResult> SendAsync(PushSubscription subscription, PushMessage message, CancellationToken cancellationToken = default);
+
+    /// <summary>Any payload to any Web Push target — the app's devices (UnifiedPush) take a "sync" nudge.</summary>
+    Task<PushSendResult> SendAsync(PushTarget target, string payload, CancellationToken cancellationToken = default);
 }

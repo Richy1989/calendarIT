@@ -50,6 +50,10 @@ class ApiClient(private val http: OkHttpClient, private val json: Json) {
     suspend fun push(server: HttpUrl, token: String, ops: List<SyncOp>): SyncPushResponse =
         post(server, "api/sync", token, SyncPushRequest(ops))
 
+    /** The key the server signs its pushes with (VAPID); UnifiedPush distributors check it. */
+    suspend fun vapidPublicKey(server: HttpUrl, token: String): String =
+        send<VapidPublicKeyDto>(request(server, "api/push/public-key", token).get(), serializer()).publicKey
+
     suspend fun registerDevice(server: HttpUrl, token: String, deviceId: String, request: RegisterDeviceRequest): DeviceDto =
         send(request(server, "api/devices/$deviceId", token).put(body(request)), serializer())
 

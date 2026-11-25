@@ -90,8 +90,17 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun accounts(db: PlanItDatabase, secrets: SecretStore, http: OkHttpClient, json: Json, clock: Clock, device: DeviceInfo) =
-        Accounts(db, secrets, http, json, clock, device)
+    fun accounts(db: PlanItDatabase, secrets: SecretStore, http: OkHttpClient, json: Json, clock: Clock, device: DeviceInfo, push: org.hyperstarit.planit.push.PushPrefs) =
+        Accounts(db, secrets, http, json, clock, device, pushFor = push::endpoint)
+
+    @Provides
+    @Singleton
+    fun pushPrefs(@ApplicationContext context: Context) = org.hyperstarit.planit.push.PushPrefs(context)
+
+    @Provides
+    @Singleton
+    fun pushRegistrar(@ApplicationContext context: Context, db: PlanItDatabase, accounts: Accounts, prefs: org.hyperstarit.planit.push.PushPrefs) =
+        org.hyperstarit.planit.push.PushRegistrar(context, db, accounts, prefs)
 
     @Provides
     @Singleton

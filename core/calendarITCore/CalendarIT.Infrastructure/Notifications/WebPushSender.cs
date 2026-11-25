@@ -40,14 +40,9 @@ public sealed class WebPushSender(VapidKeyStore vapid, ILogger<WebPushSender> lo
 
     public bool IsConfigured => vapid.IsConfigured;
 
-    public async Task<PushSendResult> SendAsync(
+    public Task<PushSendResult> SendAsync(
         DomainPushSubscription subscription, PushMessage message, CancellationToken cancellationToken = default)
     {
-        if (!vapid.IsConfigured)
-        {
-            return PushSendResult.Failed;
-        }
-
         var payload = JsonSerializer.Serialize(new
         {
             title = message.Title,
@@ -56,8 +51,17 @@ public sealed class WebPushSender(VapidKeyStore vapid, ILogger<WebPushSender> lo
             tag = message.Tag,
             snoozeToken = message.SnoozeToken,
         });
+        return SendAsync(new PushTarget(subscription.Endpoint, subscription.P256dh, subscription.Auth), payload, cancellationToken);
+    }
 
-        var sub = new WebPush.PushSubscription(subscription.Endpoint, subscription.P256dh, subscription.Auth);
+    public async Task<PushSendResult> SendAsync(PushTarget target, string payload, CancellationToken cancellationToken = default)
+    {
+        if (!vapid.IsConfigured)
+        {
+            return PushSendResult.Failed;
+        }
+
+        var sub = new WebPush.PushSubscription(target.Endpoint, target.P256dh, target.Auth);
         var details = new VapidDetails(vapid.Subject, vapid.PublicKey, vapid.PrivateKey);
 
         try
@@ -65,15 +69,20 @@ public sealed class WebPushSender(VapidKeyStore vapid, ILogger<WebPushSender> lo
             await _client.SendNotificationAsync(sub, payload, details, cancellationToken);
             return PushSendResult.Sent;
         }
+        // An endpoint is a capability URL (a UnifiedPush/ntfy topic is the secret itself): only its
+        // host is ever logged.
         catch (WebPushException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone)
         {
-            logger.LogInformation("Push subscription is gone ({Status}); pruning {Endpoint}", ex.StatusCode, subscription.Endpoint);
+            logger.LogInformation("Push endpoint at {Host} is gone ({Status}); pruning it", HostOf(target.Endpoint), ex.StatusCode);
             return PushSendResult.Expired;
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Web Push send failed for {Endpoint}", subscription.Endpoint);
+            logger.LogWarning("Web Push to {Host} failed: {Error}", HostOf(target.Endpoint), ex.Message);
             return PushSendResult.Failed;
         }
     }
+
+    private static string HostOf(string endpoint) =>
+        Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ? uri.Host : "(invalid endpoint)";
 }

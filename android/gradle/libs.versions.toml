@@ -18,6 +18,7 @@ okhttp = "5.5.1"
 junit = "4.13.2"
 robolectric = "4.18.1"
 ical4j = "4.4.0"
+unifiedpush = "3.3.6"
 kizitonwose-calendar = "2.10.1"
 androidx-test-core = "1.7.0"
 
@@ -52,6 +53,7 @@ androidx-test-core = { module = "androidx.test:core-ktx", version.ref = "android
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 work-testing = { module = "androidx.work:work-testing", version.ref = "work" }
 okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver3", version.ref = "okhttp" }
+unifiedpush-connector = { module = "org.unifiedpush.android:connector", version.ref = "unifiedpush" }
 ical4j = { module = "org.mnode.ical4j:ical4j", version.ref = "ical4j" }
 kizitonwose-calendar = { module = "com.kizitonwose.calendar:compose", version.ref = "kizitonwose-calendar" }
 junit = { module = "junit:junit", version.ref = "junit" }
