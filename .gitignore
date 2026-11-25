@@ -91,3 +91,7 @@ logs/
 /secrets/*
 !/secrets/README.md
 !/secrets/keystore.properties.example
+
+# --- Android build outputs copied out of android/ (e.g. a release APK in the repo root) ---
+*.apk
+*.aab

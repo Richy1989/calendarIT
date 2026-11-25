@@ -3,6 +3,7 @@ package org.hyperstarit.planit.sync
 import androidx.room.withTransaction
 import java.time.Clock
 import java.util.UUID
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonObject
 import org.hyperstarit.planit.data.db.EventData
 import org.hyperstarit.planit.data.db.EventEdit
@@ -22,6 +23,11 @@ object Ops {
     const val EVENT_CREATE = "event.create"
     const val EVENT_UPDATE = "event.update"
     const val EVENT_DELETE = "event.delete"
+    const val OCCURRENCE_UPSERT = "event.occurrence.upsert"
+    const val OCCURRENCE_DELETE = "event.occurrence.delete"
+    const val FOLLOWING_UPDATE = "event.following.update"
+    const val FOLLOWING_DELETE = "event.following.delete"
+    const val EVENT_RSVP = "event.rsvp"
     const val TASK_CREATE = "task.create"
     const val TASK_UPDATE = "task.update"
     const val TASK_DONE = "task.done"
@@ -92,6 +98,104 @@ class LocalChanges(
         onQueued()
     }
 
+    // ---------------------------------------------------------------- one occurrence, and the ones after
+
+    /** The series as the user sees it now: its pending edit (with its predicted overrides) or the server's copy. */
+    private suspend fun series(seriesId: String): SeriesEdits.Series? {
+        val event = db.events().live(seriesId)?.data ?: return null
+        val overrides = if (db.events().edit(seriesId) != null) {
+            db.events().overrideEdits(seriesId).filter { !it.localDeleted }.map { it.data }
+        } else {
+            db.events().serverOverrides(seriesId).map { it.data }
+        }
+        return SeriesEdits.Series(event, overrides)
+    }
+
+    private suspend fun putSeries(s: SeriesEdits.Series) {
+        db.events().putEdit(EventEdit(s.event))
+        db.events().deleteOverrideEdits(s.event.id)
+        db.events().putOverrideEdits(s.overrides.map { OverrideEdit(it) })
+    }
+
+    /** "Only this event": [edited] holds the occurrence's new details (rule, calendar and guests stay the series'). */
+    suspend fun editOccurrence(seriesId: String, recurrenceId: Long, edited: EventData) {
+        db.withTransaction {
+            val s = series(seriesId) ?: return@withTransaction
+            val existing = s.overrides.firstOrNull { SeriesEdits.truncate(it.recurrenceId) == SeriesEdits.truncate(recurrenceId) }
+            val row = org.hyperstarit.planit.data.db.OverrideData(
+                id = existing?.id ?: "local:$seriesId@$recurrenceId", seriesId = seriesId, recurrenceId = recurrenceId,
+                title = edited.title, description = edited.description, location = edited.location, categoryId = edited.categoryId,
+                start = edited.start, end = edited.end, allDay = edited.allDay, timeZone = edited.timeZone ?: s.event.timeZone,
+                reminders = edited.reminders,
+            )
+            putSeries(SeriesEdits.upsertOccurrence(s, recurrenceId, row))
+            enqueue(s.event.accountId, Ops.OCCURRENCE_UPSERT, EntityKind.EVENT, seriesId, edited.saveRequest(includeAttendees = false), iso(recurrenceId))
+        }
+        onQueued()
+    }
+
+    suspend fun deleteOccurrence(seriesId: String, recurrenceId: Long) {
+        db.withTransaction {
+            val s = series(seriesId) ?: return@withTransaction
+            putSeries(SeriesEdits.deleteOccurrence(s, recurrenceId))
+            enqueue(s.event.accountId, Ops.OCCURRENCE_DELETE, EntityKind.EVENT, seriesId, null, iso(recurrenceId))
+        }
+        onQueued()
+    }
+
+    /**
+     * "This and following": the series ends before the occurrence and [next] starts a new one there
+     * (under a new id). On the first occurrence that is a change of the whole series.
+     */
+    suspend fun editFollowing(seriesId: String, recurrenceId: Long, next: EventData): String {
+        var newId = seriesId
+        db.withTransaction {
+            val s = series(seriesId) ?: return@withTransaction
+            val id = UUID.randomUUID().toString()
+            val split = SeriesEdits.split(s, recurrenceId, next.copy(id = id, accountId = s.event.accountId))
+            if (split == null) {
+                newId = seriesId
+                return@withTransaction
+            }
+            val (kept, started) = split
+            putSeries(kept)
+            putSeries(started)
+            val data = kotlinx.serialization.json.JsonObject(next.saveRequest(includeAttendees = false) + ("id" to kotlinx.serialization.json.JsonPrimitive(id)))
+            enqueue(s.event.accountId, Ops.FOLLOWING_UPDATE, EntityKind.EVENT, seriesId, data, iso(recurrenceId))
+            newId = id
+        }
+        if (newId == seriesId) updateEvent(next.copy(id = seriesId)) else onQueued()
+        return newId
+    }
+
+    suspend fun deleteFollowing(seriesId: String, recurrenceId: Long) {
+        var whole = false
+        db.withTransaction {
+            val s = series(seriesId) ?: return@withTransaction
+            val kept = SeriesEdits.deleteFollowing(s, recurrenceId)
+            if (kept == null) {
+                whole = true
+                return@withTransaction
+            }
+            putSeries(kept)
+            enqueue(s.event.accountId, Ops.FOLLOWING_DELETE, EntityKind.EVENT, seriesId, null, iso(recurrenceId))
+        }
+        if (whole) deleteEvent(seriesId) else onQueued()
+    }
+
+    /** Answers an invitation: "Accepted", "Tentative" or "Declined". */
+    suspend fun respond(eventId: String, status: String) {
+        db.withTransaction {
+            val s = series(eventId) ?: return@withTransaction
+            putSeries(s.copy(event = s.event.copy(invitationStatus = status)))
+            enqueue(
+                s.event.accountId, Ops.EVENT_RSVP, EntityKind.EVENT, eventId,
+                kotlinx.serialization.json.buildJsonObject { put("status", kotlinx.serialization.json.JsonPrimitive(status)) },
+            )
+        }
+        onQueued()
+    }
+
     // ---------------------------------------------------------------- tasks
 
     suspend fun createTask(task: TaskData): String {
@@ -118,7 +222,15 @@ class LocalChanges(
         db.withTransaction {
             val current = db.tasks().live(id) ?: return@withTransaction
             val status = if (done) "Completed" else "NeedsAction"
-            db.tasks().putEdit(TaskEdit(current.data.copy(status = status, completedAt = if (done) clock.millis() else null)))
+            val now = clock.millis()
+            db.tasks().putEdit(TaskEdit(current.data.copy(status = status, completedAt = if (done) now else null)))
+            // As on the server: ticking a task off ticks off what is left of its checklist. (These
+            // predictions have no change of their own queued: the next pull brings the server's.)
+            if (done) {
+                db.tasks().observeLive().first().map { it.data }
+                    .filter { it.parentId == id && it.status in setOf("NeedsAction", "InProcess") }
+                    .forEach { db.tasks().putEdit(TaskEdit(it.copy(status = "Completed", completedAt = now))) }
+            }
             enqueue(current.data.accountId, Ops.TASK_DONE, EntityKind.TASK, id, doneRequest(done))
         }
         onQueued()
@@ -156,7 +268,7 @@ class LocalChanges(
     // ---------------------------------------------------------------- the queue
 
     /** Must run inside a transaction. */
-    private suspend fun enqueue(accountId: String, op: String, kind: String, entityId: String, data: JsonObject?) {
+    private suspend fun enqueue(accountId: String, op: String, kind: String, entityId: String, data: JsonObject?, occurrence: String? = null) {
         val queued = db.outbox().forEntity(entityId)
         val waiting = queued.filter { !it.sending }
         val last = waiting.lastOrNull()
@@ -195,7 +307,7 @@ class LocalChanges(
         db.outbox().insert(
             OutboxEntity(
                 accountId = accountId, opId = UUID.randomUUID().toString(), op = op, entityKind = kind,
-                entityId = entityId, baseVersion = base, occurrence = null, data = data?.toString(),
+                entityId = entityId, baseVersion = base, occurrence = occurrence, data = data?.toString(),
             ),
         )
     }

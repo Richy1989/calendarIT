@@ -29,6 +29,7 @@ class Formats(context: Context, val zone: ZoneId = ZoneId.systemDefault(), val l
     private val shortDay = DateTimeFormatter.ofPattern("EEE d MMM", locale)
 
     fun time(millis: Long): String = time.format(Instant.ofEpochMilli(millis).atZone(zone))
+    fun timeOf(t: java.time.LocalTime): String = time.format(t)
     fun hour(h: Int): String = if (is24h) "%02d".format(h) else (if (h % 12 == 0) "12" else "${h % 12}") + (if (h < 12) " am" else " pm")
     fun longDate(date: LocalDate): String = longDate.format(date)
     fun monthTitle(date: LocalDate): String = month.format(date).replaceFirstChar { it.titlecase(locale) }

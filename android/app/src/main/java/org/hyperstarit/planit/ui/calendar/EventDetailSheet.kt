@@ -23,10 +23,17 @@ import androidx.compose.ui.unit.dp
 import org.hyperstarit.planit.calendar.Occurrence
 import org.hyperstarit.planit.calendar.Recurrence
 
-/** An appointment's details. Read-only for now: editing comes with the editor. */
+/** An appointment's details, with edit and delete — or, for an invitation, the answer to it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EventDetailSheet(o: Occurrence, formats: Formats, onDismiss: () -> Unit) {
+fun EventDetailSheet(
+    o: Occurrence,
+    formats: Formats,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onRespond: (String) -> Unit,
+) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
@@ -48,6 +55,25 @@ fun EventDetailSheet(o: Occurrence, formats: Formats, onDismiss: () -> Unit) {
             o.organizerEmail?.let { Detail("Invited by", it + (o.invitationStatus?.let { s -> " · you: $s" } ?: "")) }
             if (o.attendees.isNotEmpty()) Detail("Guests", o.attendees.joinToString("\n") { "${it.name ?: it.email} · ${it.status}" })
             o.description?.takeIf { it.isNotBlank() }?.let { Detail("Notes", it) }
+            if (!o.readOnly && o.invitationStatus != null) {
+                Text("Going?", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Accepted" to "Yes", "Tentative" to "Maybe", "Declined" to "No").forEach { (status, label) ->
+                        androidx.compose.material3.FilterChip(
+                            selected = o.invitationStatus == status, onClick = { onRespond(status) }, label = { Text(label) },
+                        )
+                    }
+                }
+            }
+            if (!o.readOnly) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // A received invitation is the organizer's to change: only answering and removing it.
+                    if (o.invitationStatus == null) androidx.compose.material3.Button(onClick = onEdit) { Text("Edit") }
+                    androidx.compose.material3.OutlinedButton(onClick = onDelete) { Text("Delete") }
+                }
+            } else {
+                Text("This calendar is read-only.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

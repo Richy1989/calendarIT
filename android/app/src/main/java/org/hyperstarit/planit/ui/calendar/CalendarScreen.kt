@@ -11,12 +11,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -36,6 +43,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,11 +56,14 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import org.hyperstarit.planit.calendar.Occurrence
+import org.hyperstarit.planit.ui.editor.EditTarget
+import org.hyperstarit.planit.ui.editor.EventEditor
+import org.hyperstarit.planit.ui.editor.Scope
 
 /** The calendar: month, week, day or agenda; the drawer picks calendars and leads to the accounts. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CalendarScreen(onAccounts: () -> Unit, viewModel: CalendarViewModel = hiltViewModel()) {
+fun CalendarScreen(onAccounts: () -> Unit, onTasks: () -> Unit, viewModel: CalendarViewModel = hiltViewModel()) {
     val formats = rememberFormats()
     val focus by viewModel.focus.collectAsStateWithLifecycle()
     val shown by viewModel.shown.collectAsStateWithLifecycle()
@@ -60,6 +71,12 @@ fun CalendarScreen(onAccounts: () -> Unit, viewModel: CalendarViewModel = hiltVi
     val calendars by viewModel.calendars.collectAsStateWithLifecycle()
     val hidden by viewModel.hidden.collectAsStateWithLifecycle()
     var open by remember { mutableStateOf<Occurrence?>(null) }
+    var editing by remember { mutableStateOf<EditTarget?>(null) }
+    /** A series' occurrence waiting for "which ones?": true = to edit, false = to delete. */
+    var askScope by remember { mutableStateOf<Pair<Occurrence, Boolean>?>(null) }
+    val pending by viewModel.pendingDelete.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    val canCreate = calendars.any { !it.readOnly }
     var viewMenu by remember { mutableStateOf(false) }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -101,6 +118,14 @@ fun CalendarScreen(onAccounts: () -> Unit, viewModel: CalendarViewModel = hiltVi
         },
     ) {
         Scaffold(
+            snackbarHost = { SnackbarHost(snackbar) },
+            floatingActionButton = {
+                if (canCreate) {
+                    FloatingActionButton(onClick = { editing = EditTarget.New(focus, nextHour(focus, formats)) }) {
+                        Icon(Icons.Default.Add, contentDescription = "New appointment")
+                    }
+                }
+            },
             topBar = {
                 TopAppBar(
                     navigationIcon = {
@@ -121,6 +146,7 @@ fun CalendarScreen(onAccounts: () -> Unit, viewModel: CalendarViewModel = hiltVi
                         }
                     },
                     actions = {
+                        IconButton(onClick = onTasks) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Tasks") }
                         IconButton(onClick = viewModel::today) { Icon(Icons.Default.DateRange, contentDescription = "Today") }
                         IconButton(onClick = viewModel::syncNow) { Icon(Icons.Default.Refresh, contentDescription = "Sync now") }
                     },
@@ -137,13 +163,63 @@ fun CalendarScreen(onAccounts: () -> Unit, viewModel: CalendarViewModel = hiltVi
                 Box(Modifier.fillMaxSize()) {
                     when (viewModel.mode) {
                         ViewMode.MONTH -> MonthView(focus, shown, formats, onMonthShown = { viewModel.focus.value = it }, onDay = viewModel::openDay)
-                        ViewMode.WEEK -> TimelineView(7, focus, shown, formats, onFocus = { viewModel.focus.value = it }, onDay = viewModel::openDay, onOpen = { open = it })
-                        ViewMode.DAY -> TimelineView(1, focus, shown, formats, onFocus = { viewModel.focus.value = it }, onDay = viewModel::openDay, onOpen = { open = it })
+                        ViewMode.WEEK -> TimelineView(
+                            7, focus, shown, formats, onFocus = { viewModel.focus.value = it }, onDay = viewModel::openDay, onOpen = { open = it },
+                            onCreateAt = if (canCreate) ({ date, time -> editing = EditTarget.New(date, time) }) else null,
+                        )
+                        ViewMode.DAY -> TimelineView(
+                            1, focus, shown, formats, onFocus = { viewModel.focus.value = it }, onDay = viewModel::openDay, onOpen = { open = it },
+                            onCreateAt = if (canCreate) ({ date, time -> editing = EditTarget.New(date, time) }) else null,
+                        )
                         ViewMode.AGENDA -> AgendaView(focus, shown, formats, onOpen = { open = it })
                     }
                 }
             }
         }
     }
-    open?.let { EventDetailSheet(it, formats, onDismiss = { open = null }) }
+    open?.let { o ->
+        EventDetailSheet(
+            o, formats, onDismiss = { open = null },
+            onEdit = { open = null; if (o.seriesId != null) askScope = o to true else editing = EditTarget.Existing(o, null) },
+            onDelete = { open = null; if (o.seriesId != null) askScope = o to false else viewModel.delete(o, null) },
+            onRespond = { viewModel.respond(o, it); open = null },
+        )
+    }
+    askScope?.let { (o, edit) ->
+        ScopeDialog(edit, onDismiss = { askScope = null }) { scope ->
+            askScope = null
+            if (edit) editing = EditTarget.Existing(o, scope) else viewModel.delete(o, scope)
+        }
+    }
+    editing?.let { EventEditor(it, formats, onClose = { editing = null }) }
+    // The undo offer for a delete; when it runs out, the delete goes through.
+    LaunchedEffect(pending) {
+        val p = pending ?: return@LaunchedEffect
+        val result = snackbar.showSnackbar("“${p.occurrence.title}” deleted", actionLabel = "Undo", duration = SnackbarDuration.Long)
+        if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete() else viewModel.commitPendingDelete()
+    }
+}
+
+/** Which occurrences of a series a change or delete is for. */
+@Composable
+private fun ScopeDialog(edit: Boolean, onDismiss: () -> Unit, onPick: (Scope) -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (edit) "Edit a repeating appointment" else "Delete a repeating appointment") },
+        text = {
+            Column {
+                listOf(Scope.ONE to "Only this one", Scope.FOLLOWING to "This and the following ones", Scope.ALL to "All of them").forEach { (scope, label) ->
+                    TextButton(onClick = { onPick(scope) }, modifier = Modifier.fillMaxWidth()) { Text(label, modifier = Modifier.fillMaxWidth()) }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** A new appointment on [date] starts at the next full hour today, else at 09:00. */
+private fun nextHour(date: java.time.LocalDate, formats: Formats): java.time.LocalTime {
+    val now = java.time.LocalDateTime.now(formats.zone)
+    return if (date == now.toLocalDate() && now.hour < 23) java.time.LocalTime.of(now.hour + 1, 0) else java.time.LocalTime.of(9, 0)
 }

@@ -31,6 +31,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +64,7 @@ fun TimelineView(
     onFocus: (LocalDate) -> Unit,
     onDay: (LocalDate) -> Unit,
     onOpen: (Occurrence) -> Unit,
+    onCreateAt: ((LocalDate, java.time.LocalTime) -> Unit)? = null,
 ) {
     // Page 0 of the pager is anchored so that the middle page holds today's day (or week).
     val anchor = remember(days, formats.firstDayOfWeek) {
@@ -94,7 +97,7 @@ fun TimelineView(
             Row(Modifier.fillMaxSize().verticalScroll(scroll)) {
                 HourGutter(formats)
                 dates.forEach { date ->
-                    DayColumn(date, shown?.on(date).orEmpty().filter { !it.allDay }, formats, onOpen, Modifier.weight(1f))
+                    DayColumn(date, shown?.on(date).orEmpty().filter { !it.allDay }, formats, onOpen, onCreateAt, Modifier.weight(1f))
                 }
             }
         }
@@ -164,7 +167,14 @@ private fun HourGutter(formats: Formats) {
 }
 
 @Composable
-private fun DayColumn(date: LocalDate, items: List<Occurrence>, formats: Formats, onOpen: (Occurrence) -> Unit, modifier: Modifier) {
+private fun DayColumn(
+    date: LocalDate,
+    items: List<Occurrence>,
+    formats: Formats,
+    onOpen: (Occurrence) -> Unit,
+    onCreateAt: ((LocalDate, java.time.LocalTime) -> Unit)?,
+    modifier: Modifier,
+) {
     val dayStart = date.atStartOfDay(formats.zone).toInstant().toEpochMilli()
     val dayEnd = date.plusDays(1).atStartOfDay(formats.zone).toInstant().toEpochMilli()
     val dayLength = (dayEnd - dayStart).toFloat() // 23 or 25 hours on DST days
@@ -177,7 +187,15 @@ private fun DayColumn(date: LocalDate, items: List<Occurrence>, formats: Formats
     val now by produceState(System.currentTimeMillis()) {
         while (true) { delay(60_000); value = System.currentTimeMillis() }
     }
-    BoxWithConstraints(modifier.height(HOUR_HEIGHT * 24)) {
+    val hourPx = with(androidx.compose.ui.platform.LocalDensity.current) { HOUR_HEIGHT.toPx() }
+    // A long press on the grid starts a new appointment at that half hour.
+    val press = if (onCreateAt == null) Modifier else Modifier.pointerInput(date) {
+        detectTapGestures(onLongPress = { at ->
+            val halfHours = (at.y / (hourPx / 2)).toInt().coerceIn(0, 47)
+            onCreateAt(date, java.time.LocalTime.of(halfHours / 2, (halfHours % 2) * 30))
+        })
+    }
+    BoxWithConstraints(modifier.height(HOUR_HEIGHT * 24).then(press)) {
         val total = HOUR_HEIGHT * 24
         Column {
             (0 until 24).forEach { _ ->
@@ -192,8 +210,9 @@ private fun DayColumn(date: LocalDate, items: List<Occurrence>, formats: Formats
             EventBlock(p.value, formats, onOpen, Modifier.offset(x = width * p.column, y = top).width(width).height(height))
         }
         if (now in dayStart until dayEnd) {
+            val nowY = with(androidx.compose.ui.platform.LocalDensity.current) { (total * ((now - dayStart) / dayLength)).roundToPx() }
             Box(
-                Modifier.offset(y = total * ((now - dayStart) / dayLength)).fillMaxWidth().height(2.dp)
+                Modifier.offset { androidx.compose.ui.unit.IntOffset(0, nowY) }.fillMaxWidth().height(2.dp)
                     .background(MaterialTheme.colorScheme.error),
             )
         }

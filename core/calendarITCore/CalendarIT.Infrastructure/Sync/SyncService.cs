@@ -439,9 +439,11 @@ public sealed class SyncService(
                     return SyncOpStatus.NotFound;
                 }
                 var rsvp = Read<RsvpRequest>(op);
-                return await events.RespondToInvitationAsync(userId, op.Id, rsvp.Status, ct) is not null
-                    ? SyncOpStatus.Ok
-                    : throw new InvalidInputException("Only a received invitation can be answered, with Accepted, Declined or Tentative.");
+                var answered = await events.RespondToInvitationAsync(userId, op.Id, rsvp.Status, ct)
+                    ?? throw new InvalidInputException("Only a received invitation can be answered, with Accepted, Declined or Tentative.");
+                // An answer moves the series' version: changes queued after it are made on the same base.
+                batch.Accept(answered.SeriesMasterId ?? answered.Id, op.BaseVersion);
+                return SyncOpStatus.Ok;
             }
 
             case SyncOps.TaskCreate:

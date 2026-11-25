@@ -289,6 +289,15 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   add a case there for any expansion change (`UPDATE_RECURRENCE_VECTORS=1 dotnet test --filter
   RecurrenceVectors` regenerates from the server — review the diff). R8 keeps ical4j whole
   (`proguard-rules.pro`).
+- **Editing** (`ui/editor`, `ui/tasks`): full-screen editors (`EventEditor` for new/one-off/
+  "only this"/"this and following"/"all", `TasksScreen` with one level of subtasks); a repeating
+  appointment asks for the scope first (`Scope`). `calendar/RepeatRule` is the editor's rule
+  model — it never rewrites a rule it can't parse (`keptRule`). `sync/SeriesEdits` predicts what the
+  server's `EventService` does to a series (occurrence edit/delete, split with UNTIL/COUNT
+  sharing, delete following) so the change shows at once; `LocalChanges` queues the matching op
+  (`event.occurrence.*`, `event.following.*`, `event.rsvp`). Deletes are held behind an Undo
+  snackbar (`CalendarViewModel.pendingDelete`) and only then queued. The editor's view model
+  outlives the dialog: each opening passes a fresh session token.
 - Tests: Robolectric + MockWebServer (`SyncEngineTest`, `CertificatesTest` with a real
   self-signed TLS server, `MigrationTest`); `LiveServerTest` runs against a real backend only with
   `PLANIT_LIVE_URL`/`_EMAIL`/`_PASSWORD` set (throwaway account).

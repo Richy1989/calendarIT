@@ -16,6 +16,7 @@ import org.hyperstarit.planit.accounts.Accounts
 import org.hyperstarit.planit.ui.accounts.AddAccountScreen
 import org.hyperstarit.planit.ui.calendar.CalendarScreen
 import org.hyperstarit.planit.ui.home.AccountsScreen
+import org.hyperstarit.planit.ui.tasks.TasksScreen
 
 @HiltViewModel
 class RootViewModel @Inject constructor(accounts: Accounts) : ViewModel() {
@@ -24,7 +25,7 @@ class RootViewModel @Inject constructor(accounts: Accounts) : ViewModel() {
     var screen by mutableStateOf(Screen.CALENDAR)
 }
 
-enum class Screen { CALENDAR, ACCOUNTS, ADD_ACCOUNT }
+enum class Screen { CALENDAR, ACCOUNTS, ADD_ACCOUNT, TASKS }
 
 /** No account yet → add one (the first launch); otherwise the calendar, the accounts, or adding one. */
 @Composable
@@ -41,6 +42,7 @@ fun PlanItRoot(viewModel: RootViewModel) {
             onBack = { viewModel.screen = Screen.CALENDAR },
             onAddAccount = { viewModel.screen = Screen.ADD_ACCOUNT },
         )
-        else -> CalendarScreen(onAccounts = { viewModel.screen = Screen.ACCOUNTS })
+        viewModel.screen == Screen.TASKS -> TasksScreen(onBack = { viewModel.screen = Screen.CALENDAR })
+        else -> CalendarScreen(onAccounts = { viewModel.screen = Screen.ACCOUNTS }, onTasks = { viewModel.screen = Screen.TASKS })
     }
 }

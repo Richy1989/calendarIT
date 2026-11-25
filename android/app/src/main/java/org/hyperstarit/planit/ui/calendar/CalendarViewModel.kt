@@ -39,6 +39,8 @@ class CalendarViewModel @Inject constructor(
     db: PlanItDatabase,
     private val prefs: CalendarPrefs,
     private val runner: SyncRunner,
+    private val changes: org.hyperstarit.planit.sync.LocalChanges,
+    private val appScope: kotlinx.coroutines.CoroutineScope,
 ) : ViewModel() {
     val zone: ZoneId = ZoneId.systemDefault()
 
@@ -76,11 +78,26 @@ class CalendarViewModel @Inject constructor(
         val hidden: Set<String>,
     )
 
-    val shown = combine(stored, window) { s, range ->
+    /** A delete the user can still undo: hidden at once, done when the undo offer runs out. */
+    data class PendingDelete(val occurrence: Occurrence, val scope: org.hyperstarit.planit.ui.editor.Scope?) {
+        fun hides(o: Occurrence): Boolean {
+            val series = occurrence.seriesId
+            return when {
+                series == null -> o.eventId == occurrence.eventId
+                scope == org.hyperstarit.planit.ui.editor.Scope.ONE -> o.key == occurrence.key
+                scope == org.hyperstarit.planit.ui.editor.Scope.FOLLOWING -> o.seriesId == series && (o.recurrenceId ?: 0) >= occurrence.recurrenceId!!
+                else -> o.seriesId == series
+            }
+        }
+    }
+
+    val pendingDelete = MutableStateFlow<PendingDelete?>(null)
+
+    val shown = combine(stored, window, pendingDelete) { s, range, pending ->
         val list = Occurrences.build(
             s.events.map { it.data }, s.overrides.map { it.data }, s.calendars.associateBy { it.id },
             s.categories.associateBy { it.id }, s.hidden, range, zone,
-        )
+        ).filterNot { pending?.hides(it) == true }
         Shown(range, Occurrences.byDate(list, range, zone))
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -107,6 +124,42 @@ class CalendarViewModel @Inject constructor(
 
     fun setHidden(calendarId: String, hidden: Boolean) {
         viewModelScope.launch { prefs.setHidden(calendarId, hidden) }
+    }
+
+    fun delete(o: Occurrence, scope: org.hyperstarit.planit.ui.editor.Scope?) {
+        commitPendingDelete()
+        pendingDelete.value = PendingDelete(o, scope)
+    }
+
+    fun undoDelete() {
+        pendingDelete.value = null
+    }
+
+    /** The undo offer ran out (or another delete came): now it really goes. */
+    fun commitPendingDelete() {
+        val p = pendingDelete.value ?: return
+        pendingDelete.value = null
+        viewModelScope.launch { perform(p) }
+    }
+
+    fun respond(o: Occurrence, status: String) {
+        viewModelScope.launch { changes.respond(o.seriesId ?: o.eventId, status) }
+    }
+
+    private suspend fun perform(p: PendingDelete) {
+        val o = p.occurrence
+        val series = o.seriesId
+        when {
+            series == null -> changes.deleteEvent(o.eventId)
+            p.scope == org.hyperstarit.planit.ui.editor.Scope.ONE -> changes.deleteOccurrence(series, o.recurrenceId!!)
+            p.scope == org.hyperstarit.planit.ui.editor.Scope.FOLLOWING -> changes.deleteFollowing(series, o.recurrenceId!!)
+            else -> changes.deleteEvent(series)
+        }
+    }
+
+    override fun onCleared() {
+        // Leaving with an undo still on offer: the delete stands (the app scope outlives this screen).
+        pendingDelete.value?.let { p -> appScope.launch { perform(p) } }
     }
 
     fun syncNow() {
