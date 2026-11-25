@@ -3664,10 +3664,6 @@ input[aria-invalid='true']:focus-visible {
   gap: 0.4rem;
   min-width: 0;
 }
-.cal-topbar-title {
-  flex: 1;
-  justify-content: center;
-}
 .calendar-shell .cal-topbar .fc-toolbar-title,
 .calendar-shell .cal-topbar .agenda-title {
   margin: 0;
@@ -3686,11 +3682,6 @@ input[aria-invalid='true']:focus-visible {
   gap: 0.6rem;
   margin-left: 0.4rem;
 }
-.cal-topbar-app .header-search {
-  flex: none;
-  width: clamp(9rem, 14vw, 16rem);
-  padding: 0;
-}
 .cal-topbar-app .eyebrow {
   white-space: nowrap;
 }
@@ -3705,39 +3696,290 @@ input[aria-invalid='true']:focus-visible {
     display: none;
   }
 }
-/* Middle widths: the search folds to its icon (it opens when clicked), the title gets smaller. */
-@media (max-width: 1280px) {
-  .cal-topbar-app .header-search {
-    width: 2.5rem;
-    transition: width 0.15s ease;
-  }
-  .cal-topbar-app .header-search:focus-within {
-    width: 15rem;
-  }
-  .cal-topbar-app .header-search:not(:focus-within) input::placeholder {
-    color: transparent;
-  }
-  .calendar-shell .cal-topbar .fc-toolbar-title,
-  .calendar-shell .cal-topbar .agenda-title {
-    font-size: 1.05rem;
+
+/* ---------------------------------------------------------------------------------------------
+   Desktop layout: a collapsible sidebar on the left; the top bar and grid beside it. */
+.cal-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.cal-layout.is-merged {
+  gap: 0.9rem;
+}
+.cal-layout-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cal-sidebar {
+  flex: none;
+  width: 15.5rem;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding-right: 0.9rem;
+  border-right: 1px solid var(--hairline);
+}
+.cal-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.4rem;
+}
+.cal-sidebar .brand-word {
+  font-size: 1rem;
+}
+.side-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.side-icon-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--hairline);
+  color: var(--text);
+}
+.side-icon-btn.is-on {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.side-icon-btn svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.side-new {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  background: var(--grad);
+  border: 0;
+  border-radius: var(--r-md);
+  color: var(--on-accent);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: var(--shadow-glow);
+}
+.side-new:hover {
+  filter: brightness(1.06);
+}
+.side-month .mcal {
+  width: 100%;
+}
+.side-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.side-group h3 {
+  margin: 0.7rem 0 0.25rem 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.side-row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--r-sm);
+}
+.side-row:hover {
+  background: var(--surface-2);
+}
+.side-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.34rem 0.45rem;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.86rem;
+  text-align: left;
+  cursor: pointer;
+}
+.side-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.side-row-warn {
+  color: var(--danger-ink);
+  font-weight: 700;
+}
+.side-check {
+  flex: none;
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 4px;
+  border: 1.5px solid var(--side-color);
+}
+.side-check.on {
+  background: var(--side-color)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 85% no-repeat;
+}
+.side-row-only {
+  flex: none;
+  margin-right: 0.3rem;
+  padding: 0.15rem 0.4rem;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  cursor: pointer;
+  opacity: 0;
+}
+.side-row:hover .side-row-only,
+.side-row-only:focus-visible {
+  opacity: 1;
+}
+.side-row-only:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+.side-link {
+  align-self: flex-start;
+  margin: 0.3rem 0 0 0.4rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.side-link:hover {
+  color: var(--link-hover);
+}
+/* The top bar: navigation and title on the left; view menu and icons on the right. */
+.cal-topbar-start {
+  flex: 1;
+}
+.cal-topbar-end {
+  flex: none;
+}
+.calendar-shell .cal-topbar .fc-toolbar-title,
+.calendar-shell .cal-topbar .agenda-title {
+  margin-left: 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-view-btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 6.5rem;
+  justify-content: space-between;
+}
+.cal-view-menu {
+  min-width: 160px;
+}
+.cal-view-menu .is-current {
+  background: var(--surface-3);
+  color: var(--text);
+}
+/* Search: an icon; the box opens below it when the icon is clicked or typing starts. */
+.topbar-search {
+  position: relative;
+}
+.topbar-search-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: 24rem;
+  padding: 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 0.12s, transform 0.12s;
+}
+.topbar-search:focus-within .topbar-search-panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+.topbar-search-panel .search {
+  max-width: none;
+}
+@media (max-width: 1100px) {
+  .cal-sidebar {
+    width: 13.5rem;
   }
 }
-/* Tablets: two rows rather than squeezed — the title takes the second. */
-@media (max-width: 1080px) {
-  .calendar-shell .cal-topbar .fc-toolbar.fc-header-toolbar {
-    flex-wrap: wrap;
-    row-gap: 0.45rem;
-  }
-  /* Row one: the buttons and the title; row two: navigation, views, search and profile. */
-  .cal-topbar-title {
-    order: 2;
-    justify-content: flex-end;
-  }
-  .cal-topbar-end {
-    order: 3;
-    flex-basis: 100%;
-  }
-  .cal-topbar-end .cal-topbar-app {
-    margin-left: auto;
-  }
+/* Appointment dots under a day in the sidebar's month. */
+.mcal-day {
+  position: relative;
+}
+.mcal-dots {
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  display: flex;
+  gap: 2px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.mcal-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+}
+/* New appointment and Tasks: one pair, the same look. */
+.side-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.side-new.side-tasks {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+.side-new.side-tasks svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Open panel: the button reads as pressed. */
+.side-new.side-tasks.is-on {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--on-accent) 45%, transparent), var(--shadow-glow);
+  filter: saturate(1.15);
 }

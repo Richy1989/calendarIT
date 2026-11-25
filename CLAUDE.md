@@ -230,10 +230,12 @@ history before regenerating if something looks hand-tweaked. Auth token refresh 
 refreshes; refresh tokens rotate, so the new one must be saved). Shared primitives live in
 `src/lib/` (`dates.ts` date helpers, `useUndoStack.ts`) and `src/components/` (`Popover.tsx` portals
 to `document.body` to escape the modal's `overflow-hidden`; `DateTimeField`, `MonthCalendar`,
-`TimePicker`). On a desktop there is **one top bar**: `CalendarView` draws its own toolbar (FullCalendar's
-`headerToolbar` is off, navigation goes through the calendar API) with the app's brand, search,
-clock and profile passed in as `toolbarStart`/`toolbarEnd`; phones (`NARROW_QUERY`) keep the app
-header and FullCalendar's top/bottom bars. Creating an event in the grid opens `QuickCreate.tsx` (a popover beside the slot, a bottom sheet
+`TimePicker`). On a desktop the calendar has a **collapsible left sidebar** (`components/Sidebar.tsx`: brand,
+New, a month to jump in, calendar/subscription/category visibility) and **one top bar** that
+`CalendarView` draws itself (FullCalendar's `headerToolbar` is off; navigation goes through the
+calendar API): Today ‹ › title … view dropdown, search icon (`searchSlot`, opens on click or
+typing), tasks, then the app's clock/profile (`toolbarEnd`). Phones (`NARROW_QUERY`) keep the app
+header and FullCalendar's top/bottom bars with the calendar/category pickers. Creating an event in the grid opens `QuickCreate.tsx` (a popover beside the slot, a bottom sheet
 on phones) on a draft `CalendarView` owns and draws live as a `.fc-draft-ghost` event; "More
 options", editing, and the list view use `EventModal`. Both share `lib/eventForm.ts` (repeat
 presets, reminder wording) and take a new timed event's reminders from its calendar

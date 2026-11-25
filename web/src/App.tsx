@@ -183,10 +183,10 @@ export default function App() {
           <CalendarView
             focus={focus}
             toolbarStart={isNarrow ? undefined : brand}
+            searchSlot={isNarrow ? undefined : search}
             toolbarEnd={
               isNarrow ? undefined : (
                 <span className="cal-topbar-app">
-                  <span className="header-search">{search}</span>
                   <LiveDateTime />
                   {profileMenu}
                 </span>

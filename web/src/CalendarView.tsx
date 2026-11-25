@@ -47,6 +47,8 @@ import { occurrenceOf, type OccurrenceRef } from './lib/occurrences'
 import { useUndoStack } from './lib/useUndoStack'
 import { NARROW_QUERY, useMediaQuery } from './lib/useMediaQuery'
 import TaskPanel from './components/TaskPanel'
+import Sidebar from './components/Sidebar'
+import { FormIcon } from './components/FormIcons'
 import TaskEditor from './components/TaskEditor'
 import { createTask, deleteTask, listTasks, setTaskDone, taskToRequest, updateTask, type SaveTaskRequest, type TaskDto } from './api/tasks'
 import { dueToApi, isDone } from './lib/tasks'
@@ -82,6 +84,13 @@ const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone
 // API DTO → FullCalendar input. Occurrences of a series get a render id unique per occurrence
 // (series + its instant in the rule, stable even after the occurrence is moved) and carry what
 // the occurrence endpoints need; dragging one moves just that occurrence.
+const VIEW_LABELS: Record<string, string> = {
+  dayGridMonth: 'Month',
+  timeGridWeek: 'Week',
+  timeGridDay: 'Day',
+  agendaList: 'List',
+}
+
 function dtoToInput(dto: EventDto): EventInput {
   const color = dto.color ?? DEFAULT_COLOR
   const occurrence = occurrenceOf(dto)
@@ -193,6 +202,7 @@ export default function CalendarView({
   focus,
   toolbarStart,
   toolbarEnd,
+  searchSlot,
   serverView,
   visibleCalendarIds,
   onChangeVisible,
@@ -206,6 +216,8 @@ export default function CalendarView({
    *  search, clock and profile at the end) so the page has one bar instead of two. */
   toolbarStart?: React.ReactNode
   toolbarEnd?: React.ReactNode
+  /** The search box: in the top bar it opens from an icon (typing anywhere still finds it). */
+  searchSlot?: React.ReactNode
   serverView?: string | null
   /** Calendars to show; null/undefined = all of them. */
   visibleCalendarIds?: string[] | null
@@ -229,8 +241,15 @@ export default function CalendarView({
   // across a header (New · title · prev/next/today) and a footer (pickers + view switch).
   const isNarrow = useMediaQuery(NARROW_QUERY)
   // On a desktop the app's own header joins the calendar's toolbar: one bar, more grid.
-  const merged = !isNarrow && !!(toolbarStart || toolbarEnd)
+  const merged = !isNarrow && !!(toolbarStart || toolbarEnd || searchSlot)
   const [viewTitle, setViewTitle] = useState('')
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('calendarit.sidebar') !== '0')
+  const toggleSidebar = () =>
+    setSidebarOpen((open) => {
+      localStorage.setItem('calendarit.sidebar', open ? '0' : '1')
+      return !open
+    })
+  const [viewPop, setViewPop] = useState<{ x: number; y: number } | null>(null)
   const [viewType, setViewType] = useState<string>('')
   const initialFcView = savedView === 'agendaList' ? 'dayGridMonth' : savedView
   const [range, setRange] = useState<{ from: string; to: string } | null>(null)
@@ -257,6 +276,15 @@ export default function CalendarView({
     if (pruned.length === 0 && visibleCategoryIds.length > 0) return null
     return pruned
   }, [visibleCategoryIds, categories, categoriesLoaded])
+
+  // What the grid shows — the sidebar's month marks the same appointments.
+  const isEventShown = useCallback(
+    (d: EventDto) =>
+      d.invitationStatus !== 'Declined' &&
+      (!visibleCalendarIds || visibleCalendarIds.includes(d.calendarId)) &&
+      (!effectiveCategoryIds || effectiveCategoryIds.includes(d.effectiveCategoryId ?? d.categoryId ?? UNCATEGORIZED)),
+    [visibleCalendarIds, effectiveCategoryIds],
+  )
 
   const events = useMemo(
     () =>
@@ -1326,35 +1354,59 @@ export default function CalendarView({
 
   return (
     <>
+      <div className={'cal-layout' + (merged ? ' is-merged' : '')}>
+      {merged && sidebarOpen && (
+        <Sidebar
+          brand={toolbarStart}
+          onCollapse={toggleSidebar}
+          onNew={openNew}
+          tasksOpen={tasksOpen}
+          onToggleTasks={toggleTasks}
+          selectedDate={new Date(`${selectedDate}T00:00:00`)}
+          onPickDate={(day) => {
+            if (agendaMode) exitAgenda('timeGridDay')
+            calendarRef.current?.getApi().gotoDate(day)
+            setSelectedDate(dayKey(day))
+          }}
+          calendars={calendars}
+          categories={categories}
+          calendarColor={(c) => categories.find((x) => x.id === c.defaultCategoryId)?.color ?? 'var(--accent)'}
+          isCalVisible={isCalVisible}
+          onToggleCal={toggleCal}
+          onOnlyCal={(id) => onChangeVisible?.(calendars.length === 1 ? null : [id])}
+          isCatVisible={isCatVisible}
+          onToggleCat={toggleCat}
+          onOnlyCat={(id) => onChangeVisibleCategories?.([id])}
+          onManageCalendars={onManage}
+          onManageCategories={onManageCategories}
+          isShown={isEventShown}
+        />
+      )}
+      <div className="cal-layout-main">
       {merged && (
         <div className="fc cal-topbar">
           <div className="fc-header-toolbar fc-toolbar">
             <div className="fc-toolbar-chunk cal-topbar-start">
-              {toolbarStart}
-              <button type="button" className="fc-button fc-button-primary fc-addEvent-button" onClick={openNew}>
-                +  New
-              </button>
-              <button type="button" className="fc-button fc-button-primary" onClick={(e) => openCalPop(e.currentTarget.getBoundingClientRect())}>
-                {calPickerLabel}
-              </button>
-              <button type="button" className="fc-button fc-button-primary" onClick={(e) => openCatPop(e.currentTarget.getBoundingClientRect())}>
-                {catPickerLabel}
-              </button>
-              <button
-                type="button"
-                className={'fc-button fc-button-primary' + (tasksOpen ? ' fc-button-active' : '')}
-                aria-pressed={tasksOpen}
-                onClick={toggleTasks}
-              >
-                Tasks
-              </button>
-            </div>
-            <div className="fc-toolbar-chunk cal-topbar-title">
-              {agendaMode ? <h2 className="agenda-title">Upcoming</h2> : <h2 className="fc-toolbar-title">{viewTitle}</h2>}
-            </div>
-            <div className="fc-toolbar-chunk cal-topbar-end">
+              {!sidebarOpen && (
+                <>
+                  <button type="button" className="side-icon-btn" onClick={toggleSidebar} aria-label="Show sidebar" title="Show sidebar">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+                      <path d="M9 4v16" />
+                      <path d="M13.5 10l2 2-2 2" />
+                    </svg>
+                  </button>
+                  {toolbarStart}
+                  <button type="button" className="fc-button fc-button-primary fc-addEvent-button" onClick={openNew}>
+                    +  New
+                  </button>
+                </>
+              )}
               {!agendaMode && (
                 <>
+                  <button type="button" className="fc-todaySelect-button fc-button fc-button-primary" onClick={goToday}>
+                    today
+                  </button>
                   <div className="fc-button-group">
                     <button type="button" className="fc-prev-button fc-button fc-button-primary" aria-label="Previous" onClick={() => calendarRef.current?.getApi().prev()}>
                       <span className="fc-icon fc-icon-chevron-left" />
@@ -1363,36 +1415,57 @@ export default function CalendarView({
                       <span className="fc-icon fc-icon-chevron-right" />
                     </button>
                   </div>
-                  <button type="button" className="fc-todaySelect-button fc-button fc-button-primary" onClick={goToday}>
-                    today
-                  </button>
                 </>
               )}
-              <div className="fc-button-group">
-                {(
-                  [
-                    ['dayGridMonth', 'month'],
-                    ['timeGridWeek', 'week'],
-                    ['timeGridDay', 'day'],
-                  ] as const
-                ).map(([view, label]) => (
+              {agendaMode ? <h2 className="agenda-title">Upcoming</h2> : <h2 className="fc-toolbar-title">{viewTitle}</h2>}
+            </div>
+            <div className="fc-toolbar-chunk cal-topbar-end">
+              <button
+                type="button"
+                className="fc-button fc-button-primary cal-view-btn"
+                aria-haspopup="menu"
+                aria-expanded={!!viewPop}
+                onClick={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect()
+                  setViewPop((p) => (p ? null : { x: r.right - 160, y: r.bottom + 6 }))
+                }}
+              >
+                {VIEW_LABELS[agendaMode ? 'agendaList' : viewType] ?? 'View'}
+                <FormIcon name="chevron" className="form-icon-sm" />
+              </button>
+              {searchSlot && (
+                <div className="topbar-search">
                   <button
-                    key={view}
                     type="button"
-                    className={`fc-${view}-button fc-button fc-button-primary` + (!agendaMode && viewType === view ? ' fc-button-active' : '')}
-                    onClick={() => (agendaMode ? exitAgenda(view) : calendarRef.current?.getApi().changeView(view))}
+                    className="side-icon-btn"
+                    aria-label="Search appointments"
+                    title="Search (or just start typing)"
+                    onClick={(e) => e.currentTarget.parentElement?.querySelector<HTMLInputElement>('input')?.focus()}
                   >
-                    {label}
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <circle cx="11" cy="11" r="6.5" />
+                      <path d="M16 16l4.5 4.5" />
+                    </svg>
                   </button>
-                ))}
-                <button
-                  type="button"
-                  className={'fc-listBtn-button fc-button fc-button-primary' + (agendaMode ? ' fc-button-active' : '')}
-                  onClick={() => !agendaMode && enterAgenda()}
-                >
-                  list
-                </button>
-              </div>
+                  <div className="topbar-search-panel">{searchSlot}</div>
+                </div>
+              )}
+              {/* With the sidebar open its Tasks button does this; collapsed, this icon stands in. */}
+              {!sidebarOpen && (
+              <button
+                type="button"
+                className={'side-icon-btn' + (tasksOpen ? ' is-on' : '')}
+                aria-pressed={tasksOpen}
+                aria-label="Tasks"
+                title="Tasks"
+                onClick={toggleTasks}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="4" y="4" width="16" height="16" rx="3" />
+                  <path d="M8.5 12l2.5 2.5 4.5-5" />
+                </svg>
+              </button>
+              )}
               {toolbarEnd}
             </div>
           </div>
@@ -1522,6 +1595,8 @@ export default function CalendarView({
           onClose={toggleTasks}
         />
       )}
+      </div>
+      </div>
       </div>
 
       {taskEdit !== undefined && (
@@ -1792,6 +1867,33 @@ export default function CalendarView({
           onClose={closeDraft}
         />
         )
+      )}
+
+      {viewPop && (
+        <Popover anchor={viewPop} onClose={() => setViewPop(null)} className="cal-switcher-menu cal-view-menu">
+          {(['dayGridMonth', 'timeGridWeek', 'timeGridDay', 'agendaList'] as const).map((v) => {
+            const current = agendaMode ? v === 'agendaList' : v === viewType
+            return (
+              <button
+                key={v}
+                type="button"
+                className={'cal-switcher-item' + (current ? ' is-current' : '')}
+                onClick={() => {
+                  setViewPop(null)
+                  if (v === 'agendaList') {
+                    if (!agendaMode) enterAgenda()
+                  } else if (agendaMode) {
+                    exitAgenda(v)
+                  } else {
+                    calendarRef.current?.getApi().changeView(v)
+                  }
+                }}
+              >
+                <span className="cal-switcher-name">{VIEW_LABELS[v]}</span>
+              </button>
+            )
+          })}
+        </Popover>
       )}
 
       {/* After the editor, so it opens over it. */}

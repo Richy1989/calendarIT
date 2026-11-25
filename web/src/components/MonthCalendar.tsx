@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { dayKey, sameDay, startOfToday } from '../lib/dates'
 import { useFirstDay, type FirstDay } from '../weekStart'
 
@@ -25,9 +25,15 @@ function gridStart(month: Date, firstDay: FirstDay): Date {
 export default function MonthCalendar({
   selected,
   onSelect,
+  dayDots,
+  onRangeChange,
 }: {
   selected: Date
   onSelect: (day: Date) => void
+  /** Up to three colors to mark a day with — the appointments on it. */
+  dayDots?: (day: Date) => string[]
+  /** Told the days the grid shows ([from, to)), whenever it pages to another month. */
+  onRangeChange?: (from: Date, to: Date) => void
 }) {
   const [month, setMonth] = useState(() => new Date(selected.getFullYear(), selected.getMonth(), 1))
   const today = startOfToday()
@@ -38,6 +44,15 @@ export default function MonthCalendar({
     d.setDate(start.getDate() + i)
     return d
   })
+  const startKey = dayKey(start)
+  useEffect(() => {
+    if (!onRangeChange) return
+    const from = new Date(`${startKey}T00:00:00`)
+    const to = new Date(from)
+    to.setDate(from.getDate() + 42)
+    onRangeChange(from, to)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startKey])
 
   const monthLabel = month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
   const step = (delta: number) => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + delta, 1))
@@ -73,6 +88,13 @@ export default function MonthCalendar({
           return (
             <button key={dayKey(d)} type="button" className={cls} onClick={() => onSelect(d)}>
               {d.getDate()}
+              {dayDots && (
+                <span className="mcal-dots" aria-hidden="true">
+                  {dayDots(d).map((color) => (
+                    <i key={color} style={{ background: color }} />
+                  ))}
+                </span>
+              )}
             </button>
           )
         })}
