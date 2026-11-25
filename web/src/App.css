@@ -3636,3 +3636,108 @@ input[aria-invalid='true']:focus-visible {
   color: var(--text);
   padding-right: 0.15rem;
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Desktop: the app header lives in the calendar's toolbar — one bar, and the grid gets the rest.
+   (Phones keep their own header and FullCalendar's top/bottom bars.) */
+.app.is-merged .app-main {
+  padding: 0.6rem 0.75rem 0.75rem;
+}
+.app.is-merged .calendar-shell {
+  padding: 0.55rem 0.75rem 0.75rem;
+}
+.cal-topbar {
+  position: relative;
+  z-index: 25; /* its search results and menus open over the grid */
+  flex: none;
+}
+.calendar-shell .cal-topbar .fc-toolbar.fc-header-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+.cal-topbar .fc-toolbar-chunk {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.cal-topbar-title {
+  flex: 1;
+  justify-content: center;
+}
+.calendar-shell .cal-topbar .fc-toolbar-title,
+.calendar-shell .cal-topbar .agenda-title {
+  margin: 0;
+  font-size: 1.2rem;
+  white-space: nowrap;
+}
+.cal-topbar .brand {
+  margin-right: 0.5rem;
+}
+.cal-topbar .brand-word {
+  font-size: 1rem;
+}
+.cal-topbar-app {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: 0.4rem;
+}
+.cal-topbar-app .header-search {
+  flex: none;
+  width: clamp(9rem, 14vw, 16rem);
+  padding: 0;
+}
+.cal-topbar-app .eyebrow {
+  white-space: nowrap;
+}
+/* Room first goes to the calendar: the clock, then the brand name, give way on smaller screens. */
+@media (max-width: 1500px) {
+  .cal-topbar-app .eyebrow {
+    display: none;
+  }
+}
+@media (max-width: 1180px) {
+  .cal-topbar .brand-word {
+    display: none;
+  }
+}
+/* Middle widths: the search folds to its icon (it opens when clicked), the title gets smaller. */
+@media (max-width: 1280px) {
+  .cal-topbar-app .header-search {
+    width: 2.5rem;
+    transition: width 0.15s ease;
+  }
+  .cal-topbar-app .header-search:focus-within {
+    width: 15rem;
+  }
+  .cal-topbar-app .header-search:not(:focus-within) input::placeholder {
+    color: transparent;
+  }
+  .calendar-shell .cal-topbar .fc-toolbar-title,
+  .calendar-shell .cal-topbar .agenda-title {
+    font-size: 1.05rem;
+  }
+}
+/* Tablets: two rows rather than squeezed — the title takes the second. */
+@media (max-width: 1080px) {
+  .calendar-shell .cal-topbar .fc-toolbar.fc-header-toolbar {
+    flex-wrap: wrap;
+    row-gap: 0.45rem;
+  }
+  /* Row one: the buttons and the title; row two: navigation, views, search and profile. */
+  .cal-topbar-title {
+    order: 2;
+    justify-content: flex-end;
+  }
+  .cal-topbar-end {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .cal-topbar-end .cal-topbar-app {
+    margin-left: auto;
+  }
+}

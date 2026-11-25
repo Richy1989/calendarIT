@@ -26,6 +26,7 @@ function windowStart(index: number): Date {
 }
 
 export default function AgendaView({
+  hideToolbar,
   visibleCalendarIds,
   visibleCategoryIds,
   calPickerLabel,
@@ -37,6 +38,8 @@ export default function AgendaView({
   onEdit,
   onEventContext,
 }: {
+  /** The calendar draws one bar for every view (desktop): this list then shows none of its own. */
+  hideToolbar?: boolean
   visibleCalendarIds?: string[] | null
   visibleCategoryIds?: string[] | null
   calPickerLabel: string
@@ -120,6 +123,7 @@ export default function AgendaView({
   return (
     <div className="fc agenda">
       {/* Same toolbar anatomy (and CSS) as the FullCalendar views, so nothing jumps. */}
+      {!hideToolbar && (
       <div className="fc-header-toolbar fc-toolbar">
         <div className="fc-toolbar-chunk">
           <button type="button" className="fc-button fc-button-primary fc-addEvent-button" onClick={onNew}>
@@ -160,6 +164,7 @@ export default function AgendaView({
           </div>
         </div>
       </div>
+      )}
 
       <div className="agenda-body">
         {days.map((day) => (

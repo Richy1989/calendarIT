@@ -45,6 +45,7 @@ import { Popover } from './components/Popover'
 import { addDays, allDayDate, dayKey, formatTime, parseLocalValue, toLocalInput, toOffsetIso } from './lib/dates'
 import { occurrenceOf, type OccurrenceRef } from './lib/occurrences'
 import { useUndoStack } from './lib/useUndoStack'
+import { NARROW_QUERY, useMediaQuery } from './lib/useMediaQuery'
 import TaskPanel from './components/TaskPanel'
 import TaskEditor from './components/TaskEditor'
 import { createTask, deleteTask, listTasks, setTaskDone, taskToRequest, updateTask, type SaveTaskRequest, type TaskDto } from './api/tasks'
@@ -77,21 +78,6 @@ function hexToRgba(hex: string, alpha: number): string {
 
 const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
-/** Tracks a CSS media query and re-renders when it flips. Used to swap the calendar's
- *  toolbar between the roomy desktop layout and a compact two-row phone layout. */
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia(query)
-    const onChange = () => setMatches(mq.matches)
-    onChange()
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [query])
-  return matches
-}
 
 // API DTO → FullCalendar input. Occurrences of a series get a render id unique per occurrence
 // (series + its instant in the rule, stable even after the occurrence is moved) and carry what
@@ -205,6 +191,8 @@ const DOUBLE_CLICK_MS = 350
 
 export default function CalendarView({
   focus,
+  toolbarStart,
+  toolbarEnd,
   serverView,
   visibleCalendarIds,
   onChangeVisible,
@@ -214,6 +202,10 @@ export default function CalendarView({
   onManageCategories,
 }: {
   focus?: { date: string; n: number } | null
+  /** On a desktop: the app's own header items, put in the calendar's toolbar (logo at the start;
+   *  search, clock and profile at the end) so the page has one bar instead of two. */
+  toolbarStart?: React.ReactNode
+  toolbarEnd?: React.ReactNode
   serverView?: string | null
   /** Calendars to show; null/undefined = all of them. */
   visibleCalendarIds?: string[] | null
@@ -235,7 +227,11 @@ export default function CalendarView({
   const [agendaMode, setAgendaMode] = useState(savedView === 'agendaList')
   // Below this width the toolbar can't hold every control on one row, so we split it
   // across a header (New · title · prev/next/today) and a footer (pickers + view switch).
-  const isNarrow = useMediaQuery('(max-width: 640px)')
+  const isNarrow = useMediaQuery(NARROW_QUERY)
+  // On a desktop the app's own header joins the calendar's toolbar: one bar, more grid.
+  const merged = !isNarrow && !!(toolbarStart || toolbarEnd)
+  const [viewTitle, setViewTitle] = useState('')
+  const [viewType, setViewType] = useState<string>('')
   const initialFcView = savedView === 'agendaList' ? 'dayGridMonth' : savedView
   const [range, setRange] = useState<{ from: string; to: string } | null>(null)
   const { data: dtos = [] } = useQuery({
@@ -474,6 +470,8 @@ export default function CalendarView({
   // rather than just paging — reveal the week/day that holds the currently selected cell.
   const handleDatesSet = (arg: DatesSetArg) => {
     setRange({ from: toOffsetIso(arg.start), to: toOffsetIso(arg.end) })
+    setViewTitle(arg.view.title)
+    setViewType(arg.view.type)
 
     const viewChanged = lastView.current !== null && lastView.current !== arg.view.type
     lastView.current = arg.view.type
@@ -1328,6 +1326,78 @@ export default function CalendarView({
 
   return (
     <>
+      {merged && (
+        <div className="fc cal-topbar">
+          <div className="fc-header-toolbar fc-toolbar">
+            <div className="fc-toolbar-chunk cal-topbar-start">
+              {toolbarStart}
+              <button type="button" className="fc-button fc-button-primary fc-addEvent-button" onClick={openNew}>
+                +  New
+              </button>
+              <button type="button" className="fc-button fc-button-primary" onClick={(e) => openCalPop(e.currentTarget.getBoundingClientRect())}>
+                {calPickerLabel}
+              </button>
+              <button type="button" className="fc-button fc-button-primary" onClick={(e) => openCatPop(e.currentTarget.getBoundingClientRect())}>
+                {catPickerLabel}
+              </button>
+              <button
+                type="button"
+                className={'fc-button fc-button-primary' + (tasksOpen ? ' fc-button-active' : '')}
+                aria-pressed={tasksOpen}
+                onClick={toggleTasks}
+              >
+                Tasks
+              </button>
+            </div>
+            <div className="fc-toolbar-chunk cal-topbar-title">
+              {agendaMode ? <h2 className="agenda-title">Upcoming</h2> : <h2 className="fc-toolbar-title">{viewTitle}</h2>}
+            </div>
+            <div className="fc-toolbar-chunk cal-topbar-end">
+              {!agendaMode && (
+                <>
+                  <div className="fc-button-group">
+                    <button type="button" className="fc-prev-button fc-button fc-button-primary" aria-label="Previous" onClick={() => calendarRef.current?.getApi().prev()}>
+                      <span className="fc-icon fc-icon-chevron-left" />
+                    </button>
+                    <button type="button" className="fc-next-button fc-button fc-button-primary" aria-label="Next" onClick={() => calendarRef.current?.getApi().next()}>
+                      <span className="fc-icon fc-icon-chevron-right" />
+                    </button>
+                  </div>
+                  <button type="button" className="fc-todaySelect-button fc-button fc-button-primary" onClick={goToday}>
+                    today
+                  </button>
+                </>
+              )}
+              <div className="fc-button-group">
+                {(
+                  [
+                    ['dayGridMonth', 'month'],
+                    ['timeGridWeek', 'week'],
+                    ['timeGridDay', 'day'],
+                  ] as const
+                ).map(([view, label]) => (
+                  <button
+                    key={view}
+                    type="button"
+                    className={`fc-${view}-button fc-button fc-button-primary` + (!agendaMode && viewType === view ? ' fc-button-active' : '')}
+                    onClick={() => (agendaMode ? exitAgenda(view) : calendarRef.current?.getApi().changeView(view))}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={'fc-listBtn-button fc-button fc-button-primary' + (agendaMode ? ' fc-button-active' : '')}
+                  onClick={() => !agendaMode && enterAgenda()}
+                >
+                  list
+                </button>
+              </div>
+              {toolbarEnd}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="cal-main-row">
       <div className="cal-main-col">
       <div className="calendar-fc-host" ref={fcHostRef} style={agendaMode ? { display: 'none' } : undefined}>
@@ -1350,7 +1420,9 @@ export default function CalendarView({
           tasksBtn: { text: tasksOpen ? '✓ Tasks' : 'Tasks', click: toggleTasks },
         }}
         headerToolbar={
-          isNarrow
+          merged
+            ? false
+            : isNarrow
             ? { left: 'addEvent', center: 'title', right: 'prev,next todaySelect' }
             : {
                 left: 'addEvent calPicker catPicker tasksBtn',
@@ -1424,6 +1496,7 @@ export default function CalendarView({
 
       {agendaMode && (
         <AgendaView
+          hideToolbar={merged}
           visibleCalendarIds={visibleCalendarIds}
           visibleCategoryIds={effectiveCategoryIds}
           calPickerLabel={calPickerLabel}

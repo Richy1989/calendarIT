@@ -19,6 +19,7 @@ import ProfileMenu from './ProfileMenu'
 import SettingsPage from './SettingsPage'
 import BackupReminder from './components/BackupReminder'
 import Logo from './Logo'
+import { NARROW_QUERY, useMediaQuery } from './lib/useMediaQuery'
 import './App.css'
 
 type Mode = 'login' | 'register'
@@ -49,6 +50,7 @@ export default function App() {
   // A search pick sets this; CalendarView watches it and jumps to that day. The bumping
   // counter lets picking the same date twice re-trigger the navigation.
   const [focus, setFocus] = useState<{ date: string; n: number } | null>(null)
+  const isNarrow = useMediaQuery(NARROW_QUERY)
   // Which calendars/categories are shown: null = all. Persisted locally so the choice sticks.
   const [visibleCals, setVisibleCals] = useState<string[] | null>(getVisibleCalendars())
   const [visibleCats, setVisibleCats] = useState<string[] | null>(getVisibleCategories())
@@ -141,36 +143,55 @@ export default function App() {
     )
   }
 
+  // The header's pieces: their own bar on a phone, the calendar's toolbar on a desktop.
+  const brand = (
+    <div className="brand">
+      <Logo />
+      <span className="brand-word">
+        Calendar<b>IT</b>
+      </span>
+    </div>
+  )
+  const search = <SearchBar onPick={(date) => setFocus((f) => ({ date, n: (f?.n ?? 0) + 1 }))} />
+  const profileMenu = (
+    <ProfileMenu
+      email={profile?.email}
+      avatarUrl={profile?.avatarDataUrl}
+      onOpenSettings={() => setSettingsSection('general')}
+      onLogout={logout}
+    />
+  )
+
   return (
     <ThemeProvider serverAppearance={serverAppearance}>
     <ClockProvider serverUse24Hour={profile?.use24HourClock ?? null}>
     <WeekStartProvider serverWeekStart={profile?.weekStart}>
-    <div className="app">
-      <header className="app-header">
-        <div className="brand">
-          <Logo />
-          <span className="brand-word">
-            Calendar<b>IT</b>
-          </span>
-        </div>
-        <div className="header-search">
-          <SearchBar onPick={(date) => setFocus((f) => ({ date, n: (f?.n ?? 0) + 1 }))} />
-        </div>
-        <div className="header-actions">
-          <LiveDateTime />
-          <ProfileMenu
-            email={profile?.email}
-            avatarUrl={profile?.avatarDataUrl}
-            onOpenSettings={() => setSettingsSection('general')}
-            onLogout={logout}
-          />
-        </div>
-      </header>
+    <div className={'app' + (isNarrow ? '' : ' is-merged')}>
+      {isNarrow && (
+        <header className="app-header">
+          {brand}
+          <div className="header-search">{search}</div>
+          <div className="header-actions">
+            <LiveDateTime />
+            {profileMenu}
+          </div>
+        </header>
+      )}
       <main className="app-main">
         {profile?.email && <BackupReminder userKey={profile.email} />}
         <section className="calendar-shell">
           <CalendarView
             focus={focus}
+            toolbarStart={isNarrow ? undefined : brand}
+            toolbarEnd={
+              isNarrow ? undefined : (
+                <span className="cal-topbar-app">
+                  <span className="header-search">{search}</span>
+                  <LiveDateTime />
+                  {profileMenu}
+                </span>
+              )
+            }
             serverView={profile?.defaultView ?? null}
             visibleCalendarIds={visibleCals}
             onChangeVisible={(ids) => {
