@@ -38,6 +38,9 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+        // Android account type for the system calendar: the app id, so debug and release builds
+        // installed side by side keep their accounts apart.
+        resValue("string", "account_type", "org.hyperstarit.planit")
     }
 
     // foss: no Google libraries (GitHub APK, F-Droid; push via UnifiedPush).
@@ -62,6 +65,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+            resValue("string", "account_type", "org.hyperstarit.planit.debug")
             versionNameSuffix = "-debug"
         }
         release {
@@ -80,6 +84,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
     }
 
     testOptions {

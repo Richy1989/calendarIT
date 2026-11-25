@@ -82,6 +82,9 @@ fun CalendarScreen(onAccounts: () -> Unit, onTasks: () -> Unit, viewModel: Calen
     val askPermission = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
     ) { notificationsAllowed = it }
+    val askCalendar = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
+    ) { granted -> if (granted.values.all { it }) viewModel.showInSystemCalendar(true) }
     LaunchedEffect(Unit) {
         if (!notificationsAllowed && viewModel.shouldAskForNotifications()) {
             askPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -127,6 +130,19 @@ fun CalendarScreen(onAccounts: () -> Unit, onTasks: () -> Unit, viewModel: Calen
                         trailingContent = { androidx.compose.material3.Switch(viewModel.remindersOn, viewModel::turnReminders) },
                         modifier = Modifier.padding(horizontal = 8.dp),
                     ) { Text("Reminders on this phone") }
+                    ListItem(
+                        supportingContent = { Text("Other calendar apps show your appointments and can change them.") },
+                        trailingContent = {
+                            androidx.compose.material3.Switch(viewModel.inSystemCalendar, { on ->
+                                if (on) {
+                                    askCalendar.launch(arrayOf(android.Manifest.permission.READ_CALENDAR, android.Manifest.permission.WRITE_CALENDAR))
+                                } else {
+                                    viewModel.showInSystemCalendar(false)
+                                }
+                            })
+                        },
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    ) { Text("Show in phone's calendar") }
                     if (viewModel.remindersOn && !notificationsAllowed) {
                         TextButton(onClick = {
                             context.startActivity(

@@ -310,6 +310,19 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   intent (no DB read when it fires). The phone is never a server push subscription, so web and
   phone reminders don't double. Drawer switch "Reminders on this phone"; notification permission
   asked once.
+- **System calendar** (`system/`, opt-in drawer switch, needs READ/WRITE_CALENDAR): each PlanIt
+  account is an Android account of type `R.string.account_type` (= the app id, so debug and
+  release don't clash; `AuthenticatorService`), each calendar a provider calendar written as its
+  sync adapter (`CALLER_IS_SYNCADAPTER`; `WRITE_SYNC_SETTINGS` to mark it syncable).
+  `SystemCalendar.sync()` = import then export: other apps' DIRTY/DELETED/new rows become
+  `LocalChanges` (create, whole edit, delete, new EXDATEs → occurrence deletes, exception rows →
+  occurrence edit or, when cancelled, delete), then PlanIt's state is written over the provider
+  (`ProviderMapping`: series with RRULE + DURATION + EXDATE of deletions only, edited occurrences
+  as exception rows via ORIGINAL_SYNC_ID, all-day midnight UTC with an exclusive end; content
+  fingerprint in SYNC_DATA2 skips unchanged rows). No reminder rows and MAX_REMINDERS=0: PlanIt
+  rings them. Runs after every sync and local change, and when Android runs `CalendarSyncService`
+  (another app changed something — Android schedules it, usually within a minute or two). Turning
+  it off removes the Android accounts and with them their calendars. Tasks aren't there.
 - Tests: Robolectric + MockWebServer (`SyncEngineTest`, `CertificatesTest` with a real
   self-signed TLS server, `MigrationTest`); `LiveServerTest` runs against a real backend only with
   `PLANIT_LIVE_URL`/`_EMAIL`/`_PASSWORD` set (throwaway account).

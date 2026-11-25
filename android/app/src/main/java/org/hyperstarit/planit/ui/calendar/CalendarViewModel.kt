@@ -43,9 +43,25 @@ class CalendarViewModel @Inject constructor(
     private val appScope: kotlinx.coroutines.CoroutineScope,
     private val reminderPrefs: org.hyperstarit.planit.reminders.ReminderPrefs,
     private val reminders: org.hyperstarit.planit.reminders.ReminderScheduler,
+    private val system: org.hyperstarit.planit.system.SystemCalendar,
 ) : ViewModel() {
     var remindersOn by mutableStateOf(reminderPrefs.enabled)
         private set
+    var inSystemCalendar by mutableStateOf(system.enabled && system.permitted())
+        private set
+
+    /** On: after the calendar permission was granted. Off: the system calendar loses PlanIt's calendars. */
+    fun showInSystemCalendar(on: Boolean) {
+        inSystemCalendar = on
+        appScope.launch {
+            if (on) {
+                system.enabled = true
+                system.sync()
+            } else {
+                system.turnOff()
+            }
+        }
+    }
 
     fun turnReminders(on: Boolean) {
         reminderPrefs.enabled = on
