@@ -143,6 +143,13 @@ fetched by `CalendarFeedFetcher`: public addresses only (`OutboundHostPolicy` on
 redirects by hand (≤5), a login in the URL never sent to another host, 5 MB cap, conditional GET.
 An unchanged event keeps its `UpdatedAt` across refreshes (CalDAV ETags stay put).
 
+**Tasks** (`TaskItem`, table `Tasks`, `TaskService`, `/api/tasks`): to-dos in the user's own
+calendars, synced over CalDAV as **VTODO resources in the same collection** as the events (one
+resource name space per calendar: a UID is either an event or a task, PUT of the other kind →
+409). `TaskICalMapper`/`TaskWriter` map VTODOs; subtasks are one level deep — `RelatedToUid`
+keeps the RELATED-TO as sent (a child may arrive before its parent and is linked later), deeper
+trees are flattened onto the top task. Tasks don't repeat; a phone's RRULE is only kept.
+
 ### Auth
 
 ASP.NET Core Identity (Guid keys, `ApplicationUser`) + JWT access tokens with **rotating refresh

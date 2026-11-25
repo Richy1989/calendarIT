@@ -43,8 +43,14 @@ public class TaskItem
     /// <summary>iCalendar PRIORITY: 0 none, 1 high, 5 normal, 9 low (other values from phones are kept).</summary>
     public int Priority { get; set; }
 
-    /// <summary>The task this is a subtask of (iCalendar RELATED-TO), or null.</summary>
+    /// <summary>The task this is a subtask of, or null.</summary>
     public Guid? ParentId { get; set; }
+
+    /// <summary>
+    /// The UID its RELATED-TO names, as written — kept even while that task isn't here (a phone
+    /// may send a subtask before its parent), so the two are linked once it arrives.
+    /// </summary>
+    public string? RelatedToUid { get; set; }
 
     /// <summary>Order among its siblings in the web list (iCalendar X-APPLE-SORT-ORDER-like).</summary>
     public int SortOrder { get; set; }

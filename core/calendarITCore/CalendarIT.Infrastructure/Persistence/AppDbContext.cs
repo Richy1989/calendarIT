@@ -187,6 +187,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(t => t.Notes).HasMaxLength(8000);
             entity.Property(t => t.TimeZoneId).HasMaxLength(64);
             entity.Property(t => t.RRule).HasMaxLength(1000);
+            entity.Property(t => t.RelatedToUid).HasMaxLength(255);
             entity.Property(t => t.Status).HasConversion<string>().HasMaxLength(16);
             entity.HasIndex(t => new { t.CalendarId, t.Uid }).IsUnique();
             entity.HasIndex(t => new { t.CalendarId, t.Status });

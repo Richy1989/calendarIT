@@ -385,7 +385,7 @@ public static class ICalEventMapper
     /// VTIMEZONE for it — matched to the real zone that keeps the same clocks, or read directly.
     /// Only when neither helps is the wall clock read as UTC.
     /// </summary>
-    private sealed class IncomingZones(ICalEvent ve)
+    internal sealed class IncomingZones(Ical.Net.CalendarComponents.RecurringComponent ve)
     {
         private readonly Dictionary<(string, int), (string? Id, ZoneDefinition? Definition)> _resolved = [];
 
@@ -445,7 +445,7 @@ public static class ICalEventMapper
         }
     }
 
-    private static string? Clip(string? value, int max) =>
+    internal static string? Clip(string? value, int max) =>
         value is null || value.Length <= max ? value : value[..max];
 
     /// <summary>The VEVENT's COLOR as hex, or null when absent/unresolvable.</summary>

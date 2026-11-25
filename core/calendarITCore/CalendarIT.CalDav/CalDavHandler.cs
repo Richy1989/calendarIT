@@ -7,6 +7,7 @@ using Ical.Net.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Calendar = CalendarIT.Domain.Calendar;
+using TaskItem = CalendarIT.Domain.TaskItem;
 using DomainEvent = CalendarIT.Domain.CalendarEvent;
 using ICalCalendar = Ical.Net.Calendar;
 
@@ -117,7 +118,11 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
                 .Where(e => e.CalendarId == cal.Id && e.SeriesMasterId == null) // overrides live inside their master's resource
                 .Select(e => new { e.Uid, e.UpdatedAt })
                 .ToListAsync(ctx.RequestAborted);
-            foreach (var e in events)
+            var tasks = await db.Tasks.AsNoTracking()
+                .Where(t => t.CalendarId == cal.Id)
+                .Select(t => new { t.Uid, t.UpdatedAt })
+                .ToListAsync(ctx.RequestAborted);
+            foreach (var e in events.Concat(tasks.Select(t => new { t.Uid, t.UpdatedAt })))
             {
                 responses.Add(BuildResponse(EventHref(cal.Id, e.Uid), requested, new Dictionary<XName, object?>
                 {
@@ -134,15 +139,16 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
     public async Task<IResult> PropfindEvent(Guid calendarId, string resource, HttpContext ctx)
     {
         var e = await FindEventAsync(ctx.User, calendarId, resource, track: false, ctx.RequestAborted);
-        if (e is null)
+        var t = e is null ? await FindTaskAsync(ctx.User, calendarId, resource, track: false, ctx.RequestAborted) : null;
+        if (e is null && t is null)
         {
             return Results.NotFound();
         }
         var requested = await ReadRequestedPropsAsync(ctx);
-        return MultiStatus(BuildResponse(EventHref(calendarId, e.Uid), requested, new Dictionary<XName, object?>
+        return MultiStatus(BuildResponse(EventHref(calendarId, e?.Uid ?? t!.Uid), requested, new Dictionary<XName, object?>
         {
             [D + "resourcetype"] = null, // plain resource
-            [D + "getetag"] = ETagOf(e.UpdatedAt),
+            [D + "getetag"] = ETagOf(e?.UpdatedAt ?? t!.UpdatedAt),
             [D + "getcontenttype"] = CalendarContentType,
         }));
     }
@@ -181,8 +187,12 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
                 .Where(e => e.CalendarId == cal.Id && e.SeriesMasterId == null && uids.Contains(e.Uid))
                 .ToListAsync(ctx.RequestAborted);
 
-            var found = new HashSet<string>(events.Select(e => e.Uid), StringComparer.OrdinalIgnoreCase);
-            var responses = events.Select(e => EventDataResponse(cal.Id, e)).ToList();
+            var tasks = await db.Tasks.AsNoTracking()
+                .Where(t => t.CalendarId == cal.Id && uids.Contains(t.Uid))
+                .ToListAsync(ctx.RequestAborted);
+
+            var found = new HashSet<string>(events.Select(e => e.Uid).Concat(tasks.Select(t => t.Uid)), StringComparer.OrdinalIgnoreCase);
+            var responses = events.Select(e => EventDataResponse(cal.Id, e)).Concat(tasks.Select(t => TaskDataResponse(cal.Id, t))).ToList();
             responses.AddRange(uids.Where(u => !found.Contains(u)).Select(u =>
                 new XElement(D + "response",
                     new XElement(D + "href", EventHref(cal.Id, u)),
@@ -197,6 +207,25 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
 
         if (root == C + "calendar-query")
         {
+            // Which components the query is about: VTODO, VEVENT, or (no component filter) both.
+            // A task query returns every task: its other filters (due ranges, COMPLETED) may only
+            // ever widen the answer — the client applies them again — never narrow it wrongly.
+            var components = body.Descendants(C + "comp-filter")
+                .Select(f => f.Attribute("name")?.Value?.ToUpperInvariant())
+                .Where(n => n is "VEVENT" or "VTODO")
+                .ToHashSet();
+            var wantsTasks = components.Count == 0 || components.Contains("VTODO");
+            var wantsEvents = components.Count == 0 || components.Contains("VEVENT");
+            var taskResponses = wantsTasks
+                ? (await db.Tasks.AsNoTracking().Where(t => t.CalendarId == cal.Id).ToListAsync(ctx.RequestAborted))
+                    .Select(t => TaskDataResponse(cal.Id, t))
+                    .ToList()
+                : [];
+            if (!wantsEvents)
+            {
+                return MultiStatus([.. taskResponses]);
+            }
+
             // Honour the client's time-range (RFC 4791 §9.9). Clients ask for a window — the next
             // few months, typically — and returning the entire calendar on every poll instead
             // meant the response grew with the account's whole history rather than the window.
@@ -230,7 +259,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             {
                 events = events.Where(e => e.RRule is null || SeriesTouches(e, from, rangeEnd)).ToList();
             }
-            return MultiStatus([.. events.Select(e => EventDataResponse(cal.Id, e))]);
+            return MultiStatus([.. events.Select(e => EventDataResponse(cal.Id, e)), .. taskResponses]);
         }
 
         return Results.StatusCode(StatusCodes.Status403Forbidden); // unsupported report
@@ -285,7 +314,13 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         var e = await FindEventAsync(ctx.User, calendarId, resource, track: false, ctx.RequestAborted);
         if (e is null)
         {
-            return Results.NotFound();
+            var t = await FindTaskAsync(ctx.User, calendarId, resource, track: false, ctx.RequestAborted);
+            if (t is null)
+            {
+                return Results.NotFound();
+            }
+            ctx.Response.Headers.ETag = ETagOf(t.UpdatedAt);
+            return Results.Text(TaskICalMapper.Serialize(t), CalendarContentType);
         }
         ctx.Response.Headers.ETag = ETagOf(e.UpdatedAt);
         return Results.Text(Serialize(e), CalendarContentType);
@@ -317,6 +352,12 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         catch (Exception)
         {
             parsed = null;
+        }
+
+        // A resource holding a VTODO (and no VEVENT) is a task.
+        if (parsed is not null && parsed.Events.Count == 0 && parsed.Todos.FirstOrDefault() is { } todo)
+        {
+            return await PutTaskAsync(cal, resource, todo, ctx);
         }
 
         // One resource is one series: the master plus any overrides (RECURRENCE-ID) of the same
@@ -359,6 +400,10 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         {
             return Results.StatusCode(StatusCodes.Status412PreconditionFailed);
         }
+        if (existing is null && await db.Tasks.AnyAsync(t => t.CalendarId == cal.Id && t.Uid == uid, ctx.RequestAborted))
+        {
+            return Results.StatusCode(StatusCodes.Status409Conflict); // that name is a task, not an event
+        }
 
         // For category resolution: an incoming CATEGORIES/COLOR is matched against the
         // user's categories (by name, else nearest color) inside the mapper.
@@ -393,7 +438,7 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         var e = await FindEventAsync(ctx.User, calendarId, resource, track: true, ctx.RequestAborted);
         if (e is null)
         {
-            return Results.NotFound();
+            return await DeleteTaskAsync(calendarId, resource, ctx);
         }
         if (await db.Calendars.AnyAsync(c => c.Id == e.CalendarId && c.SourceUrl != null, ctx.RequestAborted))
         {
@@ -407,6 +452,65 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         }
 
         db.Events.Remove(e);
+        await db.SaveChangesAsync(ctx.RequestAborted);
+        return Results.StatusCode(StatusCodes.Status204NoContent);
+    }
+
+    private async Task<IResult> PutTaskAsync(Calendar cal, string resource, Ical.Net.CalendarComponents.Todo todo, HttpContext ctx)
+    {
+        var uid = string.IsNullOrWhiteSpace(todo.Uid) ? Uri.UnescapeDataString(resource[..^4]) : todo.Uid;
+        if (uid.Length > ICalEventMapper.MaxUidLength)
+        {
+            return Results.BadRequest();
+        }
+        var existing = await db.Tasks.FirstOrDefaultAsync(t => t.CalendarId == cal.Id && t.Uid == uid, ctx.RequestAborted);
+        var ifMatch = ctx.Request.Headers.IfMatch.ToString();
+        var ifNoneMatch = ctx.Request.Headers.IfNoneMatch.ToString();
+        if (existing is null && !string.IsNullOrEmpty(ifMatch))
+        {
+            return Results.StatusCode(StatusCodes.Status412PreconditionFailed);
+        }
+        if (existing is not null &&
+            (ifNoneMatch == "*" || (!string.IsNullOrEmpty(ifMatch) && ifMatch != ETagOf(existing.UpdatedAt))))
+        {
+            return Results.StatusCode(StatusCodes.Status412PreconditionFailed);
+        }
+        if (existing is null && await db.Events.AnyAsync(e => e.CalendarId == cal.Id && e.Uid == uid && e.SeriesMasterId == null, ctx.RequestAborted))
+        {
+            return Results.StatusCode(StatusCodes.Status409Conflict); // that name is an event, not a task
+        }
+
+        var task = await new TaskWriter(db).WriteAsync(existing, todo, cal.Id, uid, timeProvider.GetUtcNow().UtcDateTime, ctx.RequestAborted);
+        try
+        {
+            await db.SaveChangesAsync(ctx.RequestAborted);
+        }
+        catch (DbUpdateException) when (existing is null)
+        {
+            return Results.StatusCode(StatusCodes.Status412PreconditionFailed); // created meanwhile
+        }
+        ctx.Response.Headers.ETag = ETagOf(task.UpdatedAt);
+        return Results.StatusCode(existing is null ? StatusCodes.Status201Created : StatusCodes.Status204NoContent);
+    }
+
+    private async Task<IResult> DeleteTaskAsync(Guid calendarId, string resource, HttpContext ctx)
+    {
+        var t = await FindTaskAsync(ctx.User, calendarId, resource, track: true, ctx.RequestAborted);
+        if (t is null)
+        {
+            return Results.NotFound();
+        }
+        var ifMatch = ctx.Request.Headers.IfMatch.ToString();
+        if (!string.IsNullOrEmpty(ifMatch) && ifMatch != ETagOf(t.UpdatedAt))
+        {
+            return Results.StatusCode(StatusCodes.Status412PreconditionFailed);
+        }
+        // A phone deletes subtasks one by one; any it keeps stay, as tasks of their own.
+        foreach (var child in await db.Tasks.Where(c => c.ParentId == t.Id).ToListAsync(ctx.RequestAborted))
+        {
+            child.ParentId = null;
+        }
+        db.Tasks.Remove(t);
         await db.SaveChangesAsync(ctx.RequestAborted);
         return Results.StatusCode(StatusCodes.Status204NoContent);
     }
@@ -482,6 +586,24 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         return [cal];
     }
 
+    /// <summary>The task a resource name stands for, in a calendar of the user's, or null.</summary>
+    private async Task<TaskItem?> FindTaskAsync(
+        ClaimsPrincipal user, Guid calendarId, string resource, bool track, CancellationToken ct)
+    {
+        if (!resource.EndsWith(".ics", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+        var cal = await GetOwnedCalendarAsync(user, calendarId, ct);
+        if (cal is null)
+        {
+            return null;
+        }
+        var uid = Uri.UnescapeDataString(resource[..^4]);
+        var query = track ? db.Tasks : db.Tasks.AsNoTracking();
+        return await query.FirstOrDefaultAsync(t => t.CalendarId == cal.Id && t.Uid == uid, ct);
+    }
+
     private async Task<DomainEvent?> FindEventAsync(
         ClaimsPrincipal user, Guid calendarId, string resource, bool track, CancellationToken ct)
     {
@@ -509,7 +631,13 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             .GroupBy(_ => 1)
             .Select(g => new { Count = g.Count(), Max = g.Max(e => (DateTime?)e.UpdatedAt) })
             .FirstOrDefaultAsync();
-        var ctag = $"{(agg?.Max?.Ticks ?? 0) / 10:x}-{agg?.Count ?? 0}";
+        var taskAgg = await db.Tasks.AsNoTracking()
+            .Where(t => t.CalendarId == cal.Id)
+            .GroupBy(_ => 1)
+            .Select(g => new { Count = g.Count(), Max = g.Max(t => (DateTime?)t.UpdatedAt) })
+            .FirstOrDefaultAsync();
+        var newest = new[] { agg?.Max, taskAgg?.Max }.Max();
+        var ctag = $"{(newest?.Ticks ?? 0) / 10:x}-{agg?.Count ?? 0}-{taskAgg?.Count ?? 0}";
 
         return new Dictionary<XName, object?>
         {
@@ -517,7 +645,11 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             [D + "displayname"] = cal.Name,
             [D + "current-user-principal"] = new XElement(D + "href", PrincipalHref),
             [D + "owner"] = new XElement(D + "href", PrincipalHref),
-            [C + "supported-calendar-component-set"] = new XElement(C + "comp", new XAttribute("name", "VEVENT")),
+            [C + "supported-calendar-component-set"] = new object[]
+            {
+                new XElement(C + "comp", new XAttribute("name", "VEVENT")),
+                new XElement(C + "comp", new XAttribute("name", "VTODO")),
+            },
             [CS + "getctag"] = ctag,
             [D + "sync-token"] = SyncToken(DateTime.UtcNow),
             [D + "supported-report-set"] = new object[]
@@ -620,6 +752,23 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
                 }));
         }
 
+        var taskQuery = db.Tasks.AsNoTracking().Where(t => t.CalendarId == cal.Id);
+        if (since is { } tasksFrom)
+        {
+            var changedFrom = tasksFrom - SyncOverlap;
+            taskQuery = taskQuery.Where(t => t.UpdatedAt >= changedFrom);
+        }
+        foreach (var t in await taskQuery.ToListAsync(ct))
+        {
+            responses.Add(withData
+                ? TaskDataResponse(cal.Id, t)
+                : BuildResponse(EventHref(cal.Id, t.Uid), [.. wanted], new Dictionary<XName, object?>
+                {
+                    [D + "getetag"] = ETagOf(t.UpdatedAt),
+                    [D + "getcontenttype"] = CalendarContentType,
+                }));
+        }
+
         if (since is { } deletedFrom)
         {
             var cutoff = deletedFrom - SyncOverlap;
@@ -635,6 +784,10 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
                     .Where(e => e.CalendarId == cal.Id && e.SeriesMasterId == null && goneUids.Contains(e.Uid))
                     .Select(e => e.Uid)
                     .ToListAsync(ct);
+                present.AddRange(await db.Tasks.AsNoTracking()
+                    .Where(t => t.CalendarId == cal.Id && goneUids.Contains(t.Uid))
+                    .Select(t => t.Uid)
+                    .ToListAsync(ct));
                 foreach (var uid in goneUids.Except(present, StringComparer.Ordinal))
                 {
                     responses.Add(new XElement(D + "response",
@@ -690,6 +843,16 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         }
         return new CalendarSerializer().SerializeToString(cal)!;
     }
+
+    private static XElement TaskDataResponse(Guid calendarId, TaskItem t) =>
+        new(D + "response",
+            new XElement(D + "href", EventHref(calendarId, t.Uid)),
+            new XElement(D + "propstat",
+                new XElement(D + "prop",
+                    new XElement(D + "getetag", ETagOf(t.UpdatedAt)),
+                    new XElement(D + "getcontenttype", CalendarContentType),
+                    new XElement(C + "calendar-data", TaskICalMapper.Serialize(t))),
+                new XElement(D + "status", "HTTP/1.1 200 OK")));
 
     private XElement EventDataResponse(Guid calendarId, DomainEvent e) =>
         new(D + "response",

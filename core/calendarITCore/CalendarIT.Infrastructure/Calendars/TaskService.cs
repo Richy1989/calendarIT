@@ -169,6 +169,7 @@ public sealed class TaskService(AppDbContext db, TimeProvider timeProvider) : IT
         task.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes;
         task.Priority = priority;
         task.ParentId = parent?.Id;
+        task.RelatedToUid = parent?.Uid;
         task.CalendarId = calendarId;
         // Subtasks follow their task into another calendar.
         foreach (var sub in task.Subtasks)
