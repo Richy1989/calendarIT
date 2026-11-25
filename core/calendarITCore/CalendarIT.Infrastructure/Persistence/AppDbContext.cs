@@ -30,6 +30,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public DbSet<DeletedResource> DeletedResources => Set<DeletedResource>();
 
+    public DbSet<TaskItem> Tasks => Set<TaskItem>();
+
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
     public DbSet<MailAccount> MailAccounts => Set<MailAccount>();
@@ -176,6 +178,30 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.HasIndex(n => new { n.ReminderId, n.OccurrenceStartUtc }).IsUnique();
         });
 
+        builder.Entity<TaskItem>(entity =>
+        {
+            entity.ToTable("Tasks");
+            entity.HasKey(t => t.Id);
+            entity.Property(t => t.Uid).HasMaxLength(255).IsRequired();
+            entity.Property(t => t.Title).HasMaxLength(500).IsRequired();
+            entity.Property(t => t.Notes).HasMaxLength(8000);
+            entity.Property(t => t.TimeZoneId).HasMaxLength(64);
+            entity.Property(t => t.RRule).HasMaxLength(1000);
+            entity.Property(t => t.Status).HasConversion<string>().HasMaxLength(16);
+            entity.HasIndex(t => new { t.CalendarId, t.Uid }).IsUnique();
+            entity.HasIndex(t => new { t.CalendarId, t.Status });
+            entity.HasOne(t => t.Calendar)
+                .WithMany()
+                .HasForeignKey(t => t.CalendarId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Deleting a task deletes its subtasks; done in code too, since a self-reference
+            // can't cascade in every provider.
+            entity.HasOne(t => t.Parent)
+                .WithMany(t => t.Subtasks)
+                .HasForeignKey(t => t.ParentId)
+                .OnDelete(DeleteBehavior.ClientCascade);
+        });
+
         builder.Entity<DeletedResource>(entity =>
         {
             entity.HasKey(d => d.Id);
@@ -309,6 +335,22 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                     Id = Guid.NewGuid(),
                     CalendarId = calendarId.OriginalValue,
                     Uid = entry.Property(e => e.Uid).OriginalValue,
+                    DeletedAtUtc = now,
+                });
+            }
+        }
+        foreach (var entry in ChangeTracker.Entries<TaskItem>())
+        {
+            var calendarId = entry.Property(t => t.CalendarId);
+            var left = entry.State == EntityState.Deleted
+                || (entry.State == EntityState.Modified && calendarId.IsModified && calendarId.OriginalValue != calendarId.CurrentValue);
+            if (left && !deletedCalendars.Contains(calendarId.OriginalValue))
+            {
+                gone.Add(new DeletedResource
+                {
+                    Id = Guid.NewGuid(),
+                    CalendarId = calendarId.OriginalValue,
+                    Uid = entry.Property(t => t.Uid).OriginalValue,
                     DeletedAtUtc = now,
                 });
             }

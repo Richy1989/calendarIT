@@ -85,6 +85,7 @@ public static class DependencyInjection
         services.AddScoped<IEventService, EventService>();
         services.AddScoped<IInternalInvitationDelivery, InternalInvitationDelivery>();
         services.AddScoped<ICalendarService, CalendarService>();
+        services.AddScoped<ITaskService, TaskService>();
         services.AddSingleton<CalendarFeedFetcher>();
         services.AddScoped<CalendarSubscriptionService>();
         services.AddScoped<ICalendarSubscriptionService>(sp => sp.GetRequiredService<CalendarSubscriptionService>());

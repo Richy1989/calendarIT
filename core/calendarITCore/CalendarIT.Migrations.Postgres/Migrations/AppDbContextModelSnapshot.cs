@@ -525,6 +525,81 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.ToTable("ReminderSnoozes");
                 });
 
+            modelBuilder.Entity("CalendarIT.Domain.TaskItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CalendarId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("DueAllDay")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("DueUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
+                    b.Property<Guid?>("ParentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RRule")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Uid")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentId");
+
+                    b.HasIndex("CalendarId", "Status");
+
+                    b.HasIndex("CalendarId", "Uid")
+                        .IsUnique();
+
+                    b.ToTable("Tasks", (string)null);
+                });
+
             modelBuilder.Entity("CalendarIT.Infrastructure.Identity.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -921,6 +996,24 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Navigation("Reminder");
                 });
 
+            modelBuilder.Entity("CalendarIT.Domain.TaskItem", b =>
+                {
+                    b.HasOne("CalendarIT.Domain.Calendar", "Calendar")
+                        .WithMany()
+                        .HasForeignKey("CalendarId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CalendarIT.Domain.TaskItem", "Parent")
+                        .WithMany("Subtasks")
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.ClientCascade);
+
+                    b.Navigation("Calendar");
+
+                    b.Navigation("Parent");
+                });
+
             modelBuilder.Entity("CalendarIT.Infrastructure.Identity.RefreshToken", b =>
                 {
                     b.HasOne("CalendarIT.Infrastructure.Identity.ApplicationUser", null)
@@ -998,6 +1091,11 @@ namespace CalendarIT.Migrations.Postgres.Migrations
             modelBuilder.Entity("CalendarIT.Domain.Category", b =>
                 {
                     b.Navigation("Events");
+                });
+
+            modelBuilder.Entity("CalendarIT.Domain.TaskItem", b =>
+                {
+                    b.Navigation("Subtasks");
                 });
 #pragma warning restore 612, 618
         }
