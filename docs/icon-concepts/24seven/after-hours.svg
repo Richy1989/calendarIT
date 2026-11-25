@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title id="title">24seven — After Hours</title>
+  <rect width="96" height="96" rx="21" fill="#242125" />
+  <g transform="translate(16 25) skewY(-10)">
+    <path fill="#ff694e" d="M4,5 65,5 65,24 40,62 18,62 44,27 4,27Z" />
+    <path fill="#ff694e" d="M0,0 61,0 65,5 4,5Z" />
+    <path fill="#ff694e" d="M61,0 61,19 65,24 65,5Z" />
+    <path fill="#ff694e" d="M61,19 36,57 40,62 65,24Z" />
+    <path fill="#ff694e" d="M36,57 14,57 18,62 40,62Z" />
+    <path fill="#ff694e" d="M14,57 40,22 44,27 18,62Z" />
+    <path fill="#ff694e" d="M40,22 0,22 4,27 44,27Z" />
+    <path fill="#ff694e" d="M0,22 0,0 4,5 4,27Z" />
+    <path fill="#fff0d7" d="M0,0 61,0 61,19 36,57 14,57 40,22 0,22Z" />
+    <g transform="translate(5 3.2) scale(.45 .45)">
+      <path fill="#28221f" d="M0,7 7,0 21,0 26,5 26,16 11,26 26,26 26,35 0,35 0,23 15,13 15,9 10,9 8,12 0,12Z" />
+      <path fill="#28221f" d="M46,0 55,0 55,19 59,19 59,27 55,27 55,35 45,35 45,27 29,27 29,19 38,0 47,0 38,19 45,19 45,0Z" />
+    </g>
+  </g>
+</svg>

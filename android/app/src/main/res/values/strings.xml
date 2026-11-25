@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">PlanIt</string>
-    <string name="widget_month">PlanIt month</string>
+    <string name="app_name">24seven</string>
+    <string name="widget_month">24seven month</string>
     <string name="widget_month_description">The whole month with your appointments</string>
 </resources>

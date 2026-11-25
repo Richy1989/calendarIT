@@ -25,7 +25,7 @@ public sealed record UpdateClockRequest(bool Use24Hour);
 public sealed record UpdateWeekStartRequest(string? WeekStart);
 
 /// <summary>
-/// Payload for the app's look: a theme ("midnight", "daylight", "graphite"; null = default) and
+/// Payload for the app's look: a theme ("corner-store", "midnight", "daylight", "graphite"; null = default) and
 /// the two main colors as "#rrggbb" (null = the theme's own). Saved as a whole.
 /// </summary>
 public sealed record UpdateAppearanceRequest(string? Theme, string? AccentColor, string? HighlightColor);

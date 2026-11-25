@@ -1,7 +1,7 @@
-/* CalendarIT service worker — shows reminder notifications pushed by the backend.
+/* 24seven service worker — shows reminder notifications pushed by the backend.
  *
  * The backend sends a JSON payload { title, body, url, tag, snoozeToken }. We show it as a
- * notification; clicking focuses an already-open CalendarIT tab (or opens one) at `url`. With a
+ * notification; clicking focuses an already-open 24seven tab (or opens one) at `url`. With a
  * snoozeToken it gets Snooze / Dismiss buttons: Snooze posts the token back, and the server shows
  * the reminder again in 10 minutes (this worker has no sign-in, and can't keep a timer running).
  * Served from the site root so its scope covers the whole app. */

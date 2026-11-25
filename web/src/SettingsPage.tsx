@@ -113,7 +113,7 @@ export default function SettingsPage({
         </div>
       </div>
 
-      <footer className="settings-foot">CalendarIT · self-hosted</footer>
+      <footer className="settings-foot">24seven · self-hosted</footer>
     </div>
   )
 }
@@ -226,7 +226,7 @@ const WEEK_START_OPTIONS: readonly { label: string; value: WeekStartPref }[] = [
 /**
  * Device-level notification control. Enabling tries real Web Push (delivers when the app is
  * closed); on a browser that can't subscribe (e.g. Brave with Google services off) it falls back
- * to local notifications that fire while CalendarIT is open. Per-browser.
+ * to local notifications that fire while 24seven is open. Per-browser.
  */
 function NotificationsCard() {
   const supported = isLocalNotifySupported()
@@ -282,11 +282,11 @@ function NotificationsCard() {
           {enabled && mode === 'local' && (
             <p className="settings-hint">
               This browser doesn’t support background push (or it’s turned off), so notifications
-              work while CalendarIT is open in a tab or installed as an app.
+              work while 24seven is open in a tab or installed as an app.
             </p>
           )}
           {enabled && mode === 'push' && (
-            <p className="settings-hint">Notifications work even when CalendarIT isn’t open.</p>
+            <p className="settings-hint">Notifications work even when 24seven isn’t open.</p>
           )}
           {notice && <p className="settings-hint">{notice}</p>}
           {pushPermission() === 'denied' && !notice && (
@@ -1579,7 +1579,7 @@ function SyncSection() {
       <div className="settings-card">
         <h2>Sync your calendar</h2>
         <p className="settings-sub">
-          CalendarIT speaks <strong>CalDAV</strong>, an open standard — any app or device that supports CalDAV
+          24seven speaks <strong>CalDAV</strong>, an open standard — any app or device that supports CalDAV
           can sync your calendar two-way. Events created or edited on either side show up on the other.
         </p>
 
@@ -1588,7 +1588,7 @@ function SyncSection() {
           {profile?.email && row('Username', profile.email)}
           <div className="settings-row">
             <span className="settings-row-label">Password</span>
-            <span className="settings-row-value">your CalendarIT account password</span>
+            <span className="settings-row-value">your 24seven account password</span>
           </div>
         </div>
       </div>
@@ -1601,7 +1601,7 @@ function SyncSection() {
             Enter the server URL and username from above — many clients can also auto-discover the server
             from just the hostname.
           </li>
-          <li>Enter your CalendarIT password.</li>
+          <li>Enter your 24seven password.</li>
           <li>Enable the <strong>Personal</strong> calendar and grant calendar permissions if asked.</li>
           <li>Done — your events appear in the client, and edits sync back here.</li>
         </ol>
@@ -1666,7 +1666,7 @@ function AboutSection() {
   return (
     <>
       <div className="settings-card">
-        <h2>About CalendarIT</h2>
+        <h2>About 24seven</h2>
         <p className="settings-sub">A self-hosted calendar.</p>
 
         <div className="settings-rows">
@@ -1687,7 +1687,7 @@ function AboutSection() {
       <div className="settings-card">
         <h2>Open-source libraries</h2>
         <p className="settings-sub">
-          CalendarIT stands on excellent open-source work. These are the major libraries it's built on and
+          24seven stands on excellent open-source work. These are the major libraries it's built on and
           the licenses they're offered under.
         </p>
 

@@ -10,7 +10,7 @@ plugins {
 }
 
 /**
- * Release signing, from secrets/keystore.properties (local, ignored by git) or PLANIT_* environment
+ * Release signing, from secrets/keystore.properties (local, ignored by git) or RELEASE_* environment
  * variables (CI). Neither present → release builds come out unsigned. See secrets/README.md.
  */
 val secretsDir = rootProject.projectDir.parentFile.resolve("secrets")
@@ -22,10 +22,10 @@ val keystoreProperties = Properties().apply {
 fun signingValue(env: String, key: String): String? =
     System.getenv(env)?.takeIf { it.isNotBlank() } ?: keystoreProperties.getProperty(key)?.takeIf { it.isNotBlank() }
 
-val releaseStoreFile = signingValue("PLANIT_KEYSTORE_FILE", "storeFile")?.let { secretsDir.resolve(it) }
+val releaseStoreFile = signingValue("RELEASE_KEYSTORE_FILE", "storeFile")?.let { secretsDir.resolve(it) }
 
 android {
-    namespace = "org.hyperstarit.planit"
+    namespace = "org.hyperstarit.twentyfourseven"
     // Compose needs the 37.2 platform; minSdk and targetSdk are what decide device behavior.
     compileSdk {
         version = release(37) { minorApiLevel = 2 }
@@ -33,14 +33,14 @@ android {
 
     defaultConfig {
         // Permanent once on Google Play.
-        applicationId = "org.hyperstarit.planit"
+        applicationId = "org.hyperstarit.twentyfourseven"
         minSdk = 34
         targetSdk = 37
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         // Android account type for the system calendar: the app id, so debug and release builds
         // installed side by side keep their accounts apart.
-        resValue("string", "account_type", "org.hyperstarit.planit")
+        resValue("string", "account_type", "org.hyperstarit.twentyfourseven")
     }
 
     // foss: no Google libraries (GitHub APK, F-Droid; push via UnifiedPush).
@@ -55,9 +55,9 @@ android {
         if (releaseStoreFile != null) {
             create("release") {
                 storeFile = releaseStoreFile
-                storePassword = signingValue("PLANIT_KEYSTORE_PASSWORD", "storePassword")
-                keyAlias = signingValue("PLANIT_KEY_ALIAS", "keyAlias")
-                keyPassword = signingValue("PLANIT_KEY_PASSWORD", "keyPassword")
+                storePassword = signingValue("RELEASE_KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = signingValue("RELEASE_KEY_ALIAS", "keyAlias")
+                keyPassword = signingValue("RELEASE_KEY_PASSWORD", "keyPassword")
             }
         }
     }
@@ -65,7 +65,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
-            resValue("string", "account_type", "org.hyperstarit.planit.debug")
+            resValue("string", "account_type", "org.hyperstarit.twentyfourseven.debug")
             versionNameSuffix = "-debug"
         }
         release {

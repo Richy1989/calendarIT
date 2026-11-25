@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title id="title">Block Party — a sculpted thirty-one on a vermilion tile</title>
+  <rect width="96" height="96" rx="21" fill="#ff694e"/>
+  <!-- Two cut-paper numerals share a diagonal baseline and a deep ink edge. -->
+  <g transform="translate(12 32) skewY(-10)">
+    <path fill="#28221f" d="m0 0 31 0 7 7v11l-6 5 6 1v17l-8 7H8l-8-7 8-7h12v-1h-7l-8-7 9-7h8v-1H7l-7-7z"/>
+    <path fill="#28221f" d="m36 9 11-9h12l8 7v41H52l-8-7 1-17-2 1-7-7z"/>
+    <path fill="#fff1d9" d="M0 0h30v14l-7 6 7 2v13l-7 6H0V30h17v-6H5v-9h12v-5H0z"/>
+    <path fill="#fff1d9" d="M36 9 47 0h12v41H45V14l-9 6z"/>
+  </g>
+</svg>

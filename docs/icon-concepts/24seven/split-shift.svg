@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title id="title">24seven — Split Shift</title>
+  <rect width="96" height="96" rx="21" fill="#ffbf47" />
+  <path fill="#c86a26" d="M15,75 78,15 83,22 20,82Z" />
+  <path fill="#c86a26" d="M13,73 76,13 78,15 15,75Z" />
+  <path fill="#c86a26" d="M76,13 81,20 83,22 78,15Z" />
+  <path fill="#c86a26" d="M81,20 18,80 20,82 83,22Z" />
+  <path fill="#c86a26" d="M18,80 13,73 15,75 20,82Z" />
+  <path fill="#28221f" d="M13,73 76,13 81,20 18,80Z" />
+  <g transform="translate(13 15.5) scale(.64 .74)">
+    <path fill="#28221f" d="M0,7 7,0 21,0 26,5 26,16 11,26 26,26 26,35 0,35 0,23 15,13 15,9 10,9 8,12 0,12Z" />
+    <path fill="#28221f" d="M46,0 55,0 55,19 59,19 59,27 55,27 55,35 45,35 45,27 29,27 29,19 38,0 47,0 38,19 45,19 45,0Z" />
+  </g>
+  <g transform="translate(53 50) scale(.98 .85)">
+    <path fill="#28221f" d="M4,4 32,4 32,12 19,39 8,39 22,13 4,13Z" />
+    <path fill="#28221f" d="M0,0 28,0 32,4 4,4Z" />
+    <path fill="#28221f" d="M28,0 28,8 32,12 32,4Z" />
+    <path fill="#28221f" d="M28,8 15,35 19,39 32,12Z" />
+    <path fill="#28221f" d="M15,35 4,35 8,39 19,39Z" />
+    <path fill="#28221f" d="M4,35 18,9 22,13 8,39Z" />
+    <path fill="#28221f" d="M18,9 0,9 4,13 22,13Z" />
+    <path fill="#28221f" d="M0,9 0,0 4,4 4,13Z" />
+    <path fill="#fff0d7" d="M0,0 28,0 28,8 15,35 4,35 18,9 0,9Z" />
+  </g>
+</svg>

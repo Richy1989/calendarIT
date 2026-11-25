@@ -148,7 +148,7 @@ export default function App() {
     <div className="brand">
       <Logo />
       <span className="brand-word">
-        Calendar<b>IT</b>
+        24<b>seven</b>
       </span>
     </div>
   )

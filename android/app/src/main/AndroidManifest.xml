@@ -9,15 +9,15 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- The system calendar (opt-in): other calendar apps see and edit PlanIt's appointments. -->
+    <!-- The system calendar (opt-in): other calendar apps see and edit 24seven's appointments. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
-    <!-- Marks PlanIt's accounts as syncing their calendars (normal permissions, granted at install). -->
+    <!-- Marks 24seven's accounts as syncing their calendars (normal permissions, granted at install). -->
     <uses-permission android:name="android.permission.READ_SYNC_SETTINGS" />
     <uses-permission android:name="android.permission.WRITE_SYNC_SETTINGS" />
 
     <application
-        android:name=".PlanItApp"
+        android:name=".TwentyFourSevenApp"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
@@ -25,7 +25,7 @@
         android:label="@string/app_name"
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
-        android:theme="@style/Theme.PlanIt.Starting">
+        android:theme="@style/Theme.App.Starting">
 
         <activity
             android:name=".MainActivity"
@@ -84,14 +84,14 @@
 
         <!-- UnifiedPush: the distributor app (e.g. ntfy) hands over "sync now" nudges. -->
         <service
-            android:name=".push.PlanItPushService"
+            android:name=".push.SyncPushService"
             android:exported="false">
             <intent-filter>
                 <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
             </intent-filter>
         </service>
 
-        <!-- WorkManager is set up by PlanItApp (Hilt workers), not by its own startup initializer. -->
+        <!-- WorkManager is set up by TwentyFourSevenApp (Hilt workers), not by its own startup initializer. -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-labelledby="title">
+  <title id="title">Dogear — a bound calendar leaf with a folded corner</title>
+  <rect width="96" height="96" rx="21" fill="#e8e5dc"/>
+  <path fill="#202121" d="M22 24h10v7a3 3 0 0 0 6 0v-7h20v7a3 3 0 0 0 6 0v-7h10v27H50v24H22z"/>
+  <path fill="#ce4430" d="M55 56h19L55 75z"/>
+</svg>

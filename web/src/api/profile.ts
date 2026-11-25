@@ -1,6 +1,7 @@
 import { api } from './client'
 import type { components } from './schema'
 import { ensureAccessToken } from '../auth/session'
+import { DEFAULT_THEME } from '../lib/appearance'
 
 export type ProfileDto = components['schemas']['ProfileDto']
 
@@ -80,7 +81,8 @@ export async function saveAppearance(a: { theme: string; accent: string | null; 
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ theme: a.theme === 'midnight' ? null : a.theme, accentColor: a.accent, highlightColor: a.highlight }),
+    // The default theme is stored as null, so a later change of default reaches those who never picked.
+    body: JSON.stringify({ theme: a.theme === DEFAULT_THEME ? null : a.theme, accentColor: a.accent, highlightColor: a.highlight }),
   })
   if (!res.ok) throw new Error('Failed to save appearance')
 }

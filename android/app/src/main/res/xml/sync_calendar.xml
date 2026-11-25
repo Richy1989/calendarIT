@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- PlanIt writes its accounts' calendars into Android's calendar provider and takes in what other
+<!-- 24seven writes its accounts' calendars into Android's calendar provider and takes in what other
      apps change there. -->
 <sync-adapter xmlns:android="http://schemas.android.com/apk/res/android"
     android:contentAuthority="com.android.calendar"

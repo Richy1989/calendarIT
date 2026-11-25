@@ -34,14 +34,14 @@ npm run gen:api    # regenerate src/api/schema.d.ts from the LIVE backend OpenAP
 Android app (run from `android/`; JDK 21, Android SDK with platform 37.2):
 
 ```bash
-./gradlew assembleFossDebug          # app/build/outputs/apk/foss/debug/ (id org.hyperstarit.planit.debug)
+./gradlew assembleFossDebug          # app/build/outputs/apk/foss/debug/ (id org.hyperstarit.twentyfourseven.debug)
 ./gradlew testFossDebugUnitTest      # JVM unit tests
 ./gradlew lintFossDebug
 ```
 
 Release signing: keystore + `keystore.properties` in the repo-root `secrets/` folder (everything
 there but its README and `keystore.properties.example` is git- and docker-ignored — never commit
-or `git add -f` anything from it), or `PLANIT_KEYSTORE_*`/`PLANIT_KEY_*` env vars; without them
+or `git add -f` anything from it), or `RELEASE_KEYSTORE_*`/`RELEASE_KEY_*` env vars; without them
 release builds are unsigned. See `secrets/README.md`.
 
 Flavors: `foss` (no Google libraries: GitHub/F-Droid) and `play`. Debug builds allow plain http
@@ -171,7 +171,7 @@ due — and are logged in `NotificationLog` under the stored due, so a moved due
 They aren't synced as VALARMs (a phone would alarm twice).
 
 **App sync API** (`/api/sync`, `/api/devices`; `Infrastructure/Sync`) — for the native Android app
-(PlanIt, `org.hyperstarit.planit`, offline-first). Pull = paged delta by an opaque cursor (same
+(24seven, `org.hyperstarit.twentyfourseven`, offline-first). Pull = paged delta by an opaque cursor (same
 `UpdatedAt` + 2-min overlap + `DeletedResources` facts as CalDAV sync; tombstones carry
 `Kind`/`EntityId`), events as stored series (master + overrides, never expanded), calendars and
 categories always whole. Push = ordered ops that each call the same service method as the REST
@@ -248,14 +248,14 @@ section of `appsettings.json`; the format lives in code. nginx (bundle image) lo
 never reached the API, in the same layout (`deploy/nginx.conf`); the release workflow checks
 the built image's log for leaked tokens and raw escapes.
 
-### Android app (PlanIt)
+### Android app (24seven)
 
-Native Kotlin in `android/` (`org.hyperstarit.planit`, minSdk 34): Compose + Material 3, Hilt,
+Native Kotlin in `android/` (`org.hyperstarit.twentyfourseven`, minSdk 34): Compose + Material 3, Hilt,
 Room (the offline source of truth; schemas exported to `app/schemas`, never a destructive
 migration), DataStore, OkHttp + kotlinx.serialization (`net/ApiClient`, hand-written models of the
 sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app start).
 
-- **Accounts** (`accounts/Accounts`): several at once, kind `planit` (now) or `caldav` (later);
+- **Accounts** (`accounts/Accounts`): several at once, kind `calendarit` (now) or `caldav` (later);
   every row carries `accountId`. First launch picks the kind. Per-account tokens sealed with an
   Android Keystore AES-GCM key (`SecretStore`/`KeystoreSecretBox`, never backed up); `AccountAuth`
   serializes refreshes (rotating tokens) and a refused refresh marks the account `needsSignIn` —
@@ -270,7 +270,7 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
 - **Offline-first store** (`data/db`): server copies (`events`, `overrides`, `tasks`) are written
   only by sync; the user's pending changes live in same-shaped `*_edits` tables and the queries
   read both (an edit wins). `sync/LocalChanges` writes the edit and queues an `outbox` op (folding:
-  edit into a pending create/edit, create+delete cancels). `sync/PlanItSync`: push (results:
+  edit into a pending create/edit, create+delete cancels). `sync/CalendarItSync`: push (results:
   ok → drop op and rebase queued ops on returned `versions`; conflict/notFound/invalid/forbidden →
   drop that thing's queue + a `notices` row, "apply mine anyway" re-queues on the new version;
   error → keep with backoff), then pull (paged; calendars/categories whole; a reset or first
@@ -310,16 +310,16 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   intent (no DB read when it fires). The phone is never a server push subscription, so web and
   phone reminders don't double. Drawer switch "Reminders on this phone"; notification permission
   asked once.
-- **System calendar** (`system/`, opt-in drawer switch, needs READ/WRITE_CALENDAR): each PlanIt
+- **System calendar** (`system/`, opt-in drawer switch, needs READ/WRITE_CALENDAR): each 24seven
   account is an Android account of type `R.string.account_type` (= the app id, so debug and
   release don't clash; `AuthenticatorService`), each calendar a provider calendar written as its
   sync adapter (`CALLER_IS_SYNCADAPTER`; `WRITE_SYNC_SETTINGS` to mark it syncable).
   `SystemCalendar.sync()` = import then export: other apps' DIRTY/DELETED/new rows become
   `LocalChanges` (create, whole edit, delete, new EXDATEs → occurrence deletes, exception rows →
-  occurrence edit or, when cancelled, delete), then PlanIt's state is written over the provider
+  occurrence edit or, when cancelled, delete), then 24seven's state is written over the provider
   (`ProviderMapping`: series with RRULE + DURATION + EXDATE of deletions only, edited occurrences
   as exception rows via ORIGINAL_SYNC_ID, all-day midnight UTC with an exclusive end; content
-  fingerprint in SYNC_DATA2 skips unchanged rows). No reminder rows and MAX_REMINDERS=0: PlanIt
+  fingerprint in SYNC_DATA2 skips unchanged rows). No reminder rows and MAX_REMINDERS=0: 24seven
   rings them. Runs after every sync and local change, and when Android runs `CalendarSyncService`
   (another app changed something — Android schedules it, usually within a minute or two). Turning
   it off removes the Android accounts and with them their calendars. Tasks aren't there.
@@ -327,7 +327,7 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   account (each server signs with its own VAPID key, fetched from `/api/push/public-key`); the
   distributor (e.g. ntfy) gives an endpoint + keys, stored in `PushPrefs` and sent with every
   device registration (`Accounts.registerDevice` must always include it, or a re-register wipes
-  it). `PlanItPushService.onMessage` → sync now. No distributor → the 15-min schedule, as before.
+  it). `SyncPushService.onMessage` → sync now. No distributor → the 15-min schedule, as before.
   Server: `SyncChangeInterceptor` (an EF SaveChanges interceptor, so every write path counts) →
   `DeviceNotifier` → `DeviceNotifierService` bundles per user for 3 s and sends a content-free
   `{"type":"sync"}` Web Push to the user's unifiedpush devices; 404/410 clears the device's
@@ -342,9 +342,19 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   every sync and local change (`MonthWidget.refresh`) and hourly. Drawer "Add month widget to home
   screen" uses the system pin dialog. Glance composables can't read `Locale.getDefault()` (lint):
   take it from the context in `provideGlance` and pass it down.
+- **Design** (`ui/theme`): the web's look, ported — `Palette` holds the `index.css` tokens
+  (Corner Store — the default — /Midnight/Daylight/Graphite; Settings → Appearance, "Match phone" =
+  Daylight/Midnight, kept in
+  `AppearancePrefs`, plain SharedPreferences so the first frame and the widget have it), mapped onto
+  Material's `ColorScheme` so stock pickers/dialogs match; read brand tokens via `Brand.colors`,
+  never hard-code a colour. Fonts are the web's (Space Grotesk / Inter / JetBrains Mono, latin
+  subsets in `res/font`, OFL texts in `assets/licenses`); icons are the web's stroke icons
+  (`Glyphs`); shared pieces (PrimaryButton, Panel, Segmented, FormRow, …) live in `Components.kt`.
+  Navigation: bottom bar Calendar · Tasks · Settings (device switches live in Settings; the drawer
+  only picks visible calendars), Accounts → Add account pushed from Settings.
 - Tests: Robolectric + MockWebServer (`SyncEngineTest`, `CertificatesTest` with a real
   self-signed TLS server, `MigrationTest`); `LiveServerTest` runs against a real backend only with
-  `PLANIT_LIVE_URL`/`_EMAIL`/`_PASSWORD` set (throwaway account).
+  `LIVE_SERVER_URL`/`_EMAIL`/`_PASSWORD` set (throwaway account).
 
 ### Frontend
 
@@ -367,8 +377,13 @@ on phones) on a draft `CalendarView` owns and draws live as a `.fc-draft-ghost` 
 options", editing, and the list view use `EventModal`. Both share `lib/eventForm.ts` (repeat
 presets, reminder wording) and take a new timed event's reminders from its calendar
 (`Calendar.DefaultReminders`, set in Settings → Calendars; all-day events start with none).
-**Themes**: `index.css` defines Midnight (`:root`, default), Daylight and Graphite
-(`:root[data-theme=…]`); every color in the CSS comes from those tokens (`color-mix()` for
+**Brand**: the product is **24seven** (web, app, mails, CalDAV display name); the icon is
+`docs/icon/corner-store.svg` (copied to `public/logo.svg`/`logo.png`/`apple-touch-icon.png`; the
+Android vectors in `res/drawable` are generated from it with its skew baked in). Code, repo, image
+and server identifiers (namespaces, PRODID, data-protection name, logs) still say CalendarIT.
+**Themes**: `index.css` defines Corner Store (`:root`, the default — the icon's ink, cream and
+coral), Midnight, Daylight and Graphite (`:root[data-theme=…]`). The default is stored as a null
+profile theme (`DEFAULT_THEME`), so changing it reaches everyone who never picked one; every color in the CSS comes from those tokens (`color-mix()` for
 alphas, never a hard-coded rgba/hex). The user's accent/highlight override `--accent` /
 `--highlight` on `<html>`, and the gradient, links and ring derive from them, so set those two,
 not their derivatives. `lib/appearance.ts` applies it before the first render (`main.tsx`);
@@ -402,6 +417,14 @@ localStorage for first paint and reconcile to the server profile.
   log, pushes (with SBOM + provenance attestations) `richy1989/calendarit:X.Y.Z` (+ `:latest` unless the tag has a `-suffix`), and creates
   the GitHub Release from the notes file + Docker line + GitHub's changelog link. Versions are
   `0.x` (the `v8.0.0` tag was a typo for 0.8.0; the next after 0.9.0 is 0.10.0, never 8.x).
+- **Releasing the Android app** (own version line): bump `versionName` *and* `versionCode` in
+  `android/app/build.gradle.kts`, write `docs/releases/24seven-vX.Y.Z.md` (same layout, `# 24seven
+  X.Y.Z for Android`), commit, then `git tag 24seven-vX.Y.Z && git push origin 24seven-vX.Y.Z`.
+  `android-release.yml` runs `test.yml`, refuses a tag that doesn't match `versionName`, signs
+  with the `RELEASE_KEYSTORE_BASE64` / `RELEASE_KEYSTORE_PASSWORD` / `RELEASE_KEY_ALIAS` /
+  `RELEASE_KEY_PASSWORD` repo secrets (stops if any is missing), verifies the APKs, and publishes
+  `24seven-X.Y.Z.apk` + its `.sha256` (not marked "latest": the server release stays that); the
+  Play `.aab` is only a workflow artifact. Server `v*` and app `24seven-v*` tags never trigger each other.
 - **Keep the About page in sync**: when a library listed there (`FRONTEND_LIBRARIES` /
   `BACKEND_LIBRARIES` in `web/src/SettingsPage.tsx`) is added, removed, replaced, or changes its
   name/license/URL, update that list in the same change.

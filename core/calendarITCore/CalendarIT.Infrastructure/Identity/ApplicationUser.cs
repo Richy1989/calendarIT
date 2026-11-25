@@ -35,7 +35,7 @@ public sealed class ApplicationUser : IdentityUser<Guid>
     /// </summary>
     public string? WeekStart { get; set; }
 
-    /// <summary>The app's look: "midnight", "daylight" or "graphite". Null = the default (midnight).</summary>
+    /// <summary>The app's look: "corner-store", "midnight", "daylight" or "graphite". Null = the default (corner-store).</summary>
     public string? Theme { get; set; }
 
     /// <summary>The user's accent color, "#rrggbb", over the theme's. Null = the theme's own.</summary>

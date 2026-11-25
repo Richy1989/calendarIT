@@ -1,12 +1,56 @@
 /* ============================================================================
-   CalendarIT — design tokens & base
-   Identity: a "precision instrument for time". Deep ink canvas, one duotone
-   spectrum (violet -> cyan) spent only on the signature moments, mono for data.
-   Dark-committed by design.
+   24seven — design tokens & base
+   Identity: the corner store that never closes. A warm ink canvas, cream type, and the icon's
+   coral spent on the signature moments, glowing toward amber; mono for data.
    ========================================================================== */
 
 :root {
-  /* ---- Midnight (default): deep ink canvas, violet -> cyan ---- */
+  /* ---- Corner Store (default): the icon's warm ink, cream and coral ---- */
+  color-scheme: dark;
+
+  /* Canvas & surfaces */
+  --bg: #141110;
+  --bg-2: #181412;
+  --surface: #1f1a17;
+  --surface-2: #26201c;
+  --surface-3: #2f2823;
+  --hairline: #372f29;
+  --hairline-strong: #4a3f37;
+
+  /* Ink */
+  --text: #fff0d7;
+  --text-dim: #c9b9a0;
+  --text-faint: #8f8070;
+  --on-accent: #28221f; /* the icon's ink, on its coral */
+  --danger: #ff4d6d;
+  --danger-ink: #ffb3bf;
+
+  /* The two main colors, which the user can override (Settings -> Appearance): the accent
+     (buttons, focus, links, today) and the highlight (the now line, selection, the gradient's
+     far end). Everything else in the spectrum is derived from them. */
+  --accent: #ff694e;
+  --highlight: #ffb547;
+  --grad-tint: #ff3d6e; /* what the gradient's start leans toward */
+
+  /* Light & depth */
+  --shadow-ink: #000;
+  --overlay-ink: #0a0807;
+  --glow-strength: 0.8;
+
+  /* Geometry */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+
+  /* Type roles */
+  --font-display: 'Space Grotesk Variable', system-ui, sans-serif;
+  --font-body: 'Inter Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+:root[data-theme='midnight'] {
+  /* ---- Midnight: deep ink canvas, violet -> cyan ---- */
   color-scheme: dark;
 
   /* Canvas & surfaces */
@@ -37,17 +81,6 @@
   --shadow-ink: #000;
   --overlay-ink: #06080d;
   --glow-strength: 1;
-
-  /* Geometry */
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 18px;
-  --r-xl: 24px;
-
-  /* Type roles */
-  --font-display: 'Space Grotesk Variable', system-ui, sans-serif;
-  --font-body: 'Inter Variable', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
 }
 
 /* ---- Daylight: a light, airy page with the same spectrum, darkened to read on white ---- */

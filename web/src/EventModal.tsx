@@ -170,7 +170,7 @@ export default function EventModal({
     setReminders((rs) => rs.map((r, idx) => (idx === i ? { ...r, minutesBefore } : r)))
   // Switching a reminder to Browser needs notifications enabled on this device first. This tries
   // real Web Push, and on a browser that can't subscribe (e.g. Brave with Google services off)
-  // falls back to local mode — notifications shown while CalendarIT is open. Only if the user
+  // falls back to local mode — notifications shown while 24seven is open. Only if the user
   // blocks the permission (or the browser can't notify at all) do we keep the row on Email.
   const setReminderChannel = async (i: number, channel: string) => {
     if (channel === 'WebPush') {
@@ -184,10 +184,10 @@ export default function EventModal({
         return
       }
       // 'push' or 'local' — the reminder can be delivered. In local mode this device only shows
-      // notifications while CalendarIT is open, so start the poller now and say so.
+      // notifications while 24seven is open, so start the poller now and say so.
       if (result === 'local') {
         startLocalReminderPoller()
-        setPushHint('This browser will show reminders while CalendarIT is open in a tab or installed as an app.')
+        setPushHint('This browser will show reminders while 24seven is open in a tab or installed as an app.')
       } else {
         setPushHint(null)
       }

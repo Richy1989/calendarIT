@@ -41,11 +41,11 @@ public sealed class PasswordResetMailer(
     {
         var message = new MimeMessage();
         message.To.Add(MailboxAddress.Parse(toAddress));
-        message.Subject = "Reset your CalendarIT password";
+        message.Subject = "Reset your 24seven password";
         message.Body = new TextPart("plain")
         {
             Text = $"""
-                Someone asked to reset the password for your CalendarIT account.
+                Someone asked to reset the password for your 24seven account.
 
                 Open this link to choose a new one:
 

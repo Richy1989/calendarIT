@@ -6,7 +6,7 @@ by Docker (`.dockerignore`). Never force-add anything here (`git add -f`).
 
 ## Setup
 
-1. Copy your keystore here, e.g. `secrets/planit-release.jks`.
+1. Copy your keystore here, e.g. `secrets/24seven-release.jks`.
 2. `cp secrets/keystore.properties.example secrets/keystore.properties`
 3. Fill in `secrets/keystore.properties` (file name of the keystore, alias, both passwords).
 4. Restrict access: `chmod 700 secrets && chmod 600 secrets/*.jks secrets/keystore.properties`
@@ -26,13 +26,26 @@ Check that nothing secret is tracked: `git status --ignored secrets/` lists them
 
 ## Environment variables instead (CI)
 
-`PLANIT_KEYSTORE_FILE` (absolute path), `PLANIT_KEYSTORE_PASSWORD`, `PLANIT_KEY_ALIAS`,
-`PLANIT_KEY_PASSWORD` take precedence over the file.
+`RELEASE_KEYSTORE_FILE` (absolute path), `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`,
+`RELEASE_KEY_PASSWORD` take precedence over the file.
+
+The GitHub release pipeline (`.github/workflows/android-release.yml`, on a `24seven-vX.Y.Z` tag)
+needs four repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+| --- | --- |
+| `RELEASE_KEYSTORE_BASE64` | `base64 -w0 secrets/24seven-release.p12` |
+| `RELEASE_KEYSTORE_PASSWORD` | `storePassword` from `keystore.properties` |
+| `RELEASE_KEY_ALIAS` | `keyAlias` |
+| `RELEASE_KEY_PASSWORD` | `keyPassword` |
+
+With `gh`: `base64 -w0 secrets/24seven-release.p12 | gh secret set RELEASE_KEYSTORE_BASE64`, and
+`gh secret set RELEASE_KEYSTORE_PASSWORD` (prompts) for the others.
 
 ## No keystore yet?
 
 ```bash
-keytool -genkeypair -v -keystore secrets/planit-release.jks -alias planit \
+keytool -genkeypair -v -storetype PKCS12 -keystore secrets/24seven-release.p12 -alias 24seven \
   -keyalg RSA -keysize 4096 -validity 10000
 ```
 

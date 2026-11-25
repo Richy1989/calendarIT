@@ -8,11 +8,13 @@ describe('normalizeAppearance', () => {
     })
   })
 
-  it('falls back to Midnight and the theme colors for anything else', () => {
+  it('falls back to Corner Store and the theme colors for anything else', () => {
     expect(normalizeAppearance({ theme: 'neon', accent: 'red', highlight: '#12345' })).toEqual({
-      theme: 'midnight', accent: null, highlight: null,
+      theme: 'corner-store', accent: null, highlight: null,
     })
-    expect(normalizeAppearance(null)).toEqual({ theme: 'midnight', accent: null, highlight: null })
+    expect(normalizeAppearance(null)).toEqual({ theme: 'corner-store', accent: null, highlight: null })
+    // Midnight, once the default, is now a theme like the others.
+    expect(normalizeAppearance({ theme: 'midnight' }).theme).toBe('midnight')
     // A value that would break out of the CSS property never gets through.
     expect(normalizeAppearance({ accent: '#123456;background:url(x)' }).accent).toBeNull()
   })
@@ -29,6 +31,6 @@ describe('inkOn', () => {
 
 describe('THEMES', () => {
   it('offers three distinct themes', () => {
-    expect(THEMES.map((t) => t.id)).toEqual(['midnight', 'daylight', 'graphite'])
+    expect(THEMES.map((t) => t.id)).toEqual(['corner-store', 'midnight', 'daylight', 'graphite'])
   })
 })

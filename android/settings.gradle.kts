@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PlanIt"
+rootProject.name = "24seven"
 include(":app")

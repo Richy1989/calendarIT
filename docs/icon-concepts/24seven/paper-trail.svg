@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title id="title">24seven — Paper Trail</title>
+  <rect width="96" height="96" rx="21" fill="#f3e5ce" />
+  <g transform="translate(28 20) skewY(-8)">
+    <g transform="translate(-11.4 21)">
+      <path fill="#28221f" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      <g transform="translate(.85 .8) scale(.966 .953)">
+        <path fill="#ff8762" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      </g>
+    </g>
+    <g transform="translate(-9.5 17.5)">
+      <path fill="#28221f" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      <g transform="translate(.85 .8) scale(.966 .953)">
+        <path fill="#ff8762" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      </g>
+    </g>
+    <g transform="translate(-7.6 14)">
+      <path fill="#28221f" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      <g transform="translate(.85 .8) scale(.966 .953)">
+        <path fill="#ff8762" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      </g>
+    </g>
+    <g transform="translate(-5.7 10.5)">
+      <path fill="#28221f" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      <g transform="translate(.85 .8) scale(.966 .953)">
+        <path fill="#ff8762" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      </g>
+    </g>
+    <g transform="translate(-3.8 7)">
+      <path fill="#28221f" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      <g transform="translate(.85 .8) scale(.966 .953)">
+        <path fill="#ff8762" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      </g>
+    </g>
+    <g transform="translate(-1.9 3.5)">
+      <path fill="#28221f" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      <g transform="translate(.85 .8) scale(.966 .953)">
+        <path fill="#ff8762" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      </g>
+    </g>
+    <g transform="translate(0 0)">
+      <path fill="#28221f" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      <g transform="translate(.85 .8) scale(.966 .953)">
+        <path fill="#d6ef73" d="M0,0 52,0 55,3 55,39 52,42 0,42 -3,39 -3,3Z" />
+      </g>
+    </g>
+    <g transform="translate(5.1 6.5) scale(.73 .80)">
+      <path fill="#28221f" d="M0,7 7,0 21,0 26,5 26,16 11,26 26,26 26,35 0,35 0,23 15,13 15,9 10,9 8,12 0,12Z" />
+      <path fill="#28221f" d="M46,0 55,0 55,19 59,19 59,27 55,27 55,35 45,35 45,27 29,27 29,19 38,0 47,0 38,19 45,19 45,0Z" />
+    </g>
+  </g>
+</svg>

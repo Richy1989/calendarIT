@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-labelledby="title">
+  <title id="title">Day Cycle — an open C with a day marker at three o’clock</title>
+  <rect width="96" height="96" rx="21" fill="#1b1c1c"/>
+  <path fill="#f2efe6" d="M71.688 27.408a30 30 0 1 0 0 41.184l-9.756-8.919a16.8 16.8 0 1 1 0-23.346z"/>
+  <circle cx="73" cy="48" r="6.6" fill="#ff5d48"/>
+</svg>

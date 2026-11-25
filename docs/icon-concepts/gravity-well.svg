@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title id="title">Gravity Well — a calendar grid bending around an appointment</title>
+  <rect width="96" height="96" rx="21" fill="#28219a"/>
+  <g fill="none" stroke="#e0e6ff" stroke-width="2.35" stroke-linecap="round">
+    <path d="M15 20C35 20 39 20 46 23S65 29 81 20"/>
+    <path d="M15 31C36 31 39 33 45 38S59 51 68 42 73 34 81 31"/>
+    <path d="M15 42C35 42 37 44 45 50S58 60 66 52 75 44 81 42"/>
+    <path d="M15 53C35 53 38 54 46 60S59 66 66 61 75 55 81 53"/>
+    <path d="M15 64C35 64 40 65 47 68S61 73 68 69 77 65 81 64"/>
+    <path d="M15 75C36 75 40 75 47 77S66 80 81 75"/>
+    <path d="M17 17V78"/>
+    <path d="M29 17C29 34 32 39 32 48S29 66 29 78"/>
+    <path d="M41 17C41 35 49 44 49 52S41 69 41 78"/>
+    <path d="M53 17C53 35 57 42 57 50S53 67 53 79"/>
+    <path d="M65 17C65 33 63 38 62 46S65 68 65 78"/>
+    <path d="M77 17C77 31 71 38 70 47S77 65 77 78"/>
+  </g>
+  <circle cx="57" cy="45" r="8" fill="#28219a"/>
+  <circle cx="57" cy="45" r="5.6" fill="#ecff60"/>
+</svg>

@@ -54,14 +54,14 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         {
             [D + "resourcetype"] = new XElement(D + "collection"),
             [D + "current-user-principal"] = new XElement(D + "href", PrincipalHref),
-            [D + "displayname"] = "CalendarIT",
+            [D + "displayname"] = "24seven",
         }));
     }
 
     public async Task<IResult> PropfindPrincipal(HttpContext ctx)
     {
         var requested = await ReadRequestedPropsAsync(ctx);
-        var name = ctx.User.FindFirstValue(ClaimTypes.Name) ?? "CalendarIT";
+        var name = ctx.User.FindFirstValue(ClaimTypes.Name) ?? "24seven";
         return MultiStatus(BuildResponse(PrincipalHref, requested, new Dictionary<XName, object?>
         {
             [D + "resourcetype"] = new object[] { new XElement(D + "collection"), new XElement(D + "principal") },

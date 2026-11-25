@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title id="title">Leap Day — a folded-paper hare in midair</title>
+  <rect width="96" height="96" rx="21" fill="#e9ed6d"/>
+  <!-- The narrow gaps between facets are the paper creases. -->
+  <g fill="#1d2520">
+    <path d="m12 49 10 3-6 8z"/>
+    <path d="M18 61 37 38l12 23z"/>
+    <path d="m39 37 17-2-5 24z"/>
+    <path d="m53 60 5-24 11 9z"/>
+    <path d="m58 33 9-4 13 13-10 1z"/>
+    <path d="M56 32 38 13l15 5 10 12z"/>
+    <path d="M65 28 56 10l11 9 2 9z"/>
+    <path d="M22 64h24L13 77z"/>
+    <path d="m53 62 15-14 7 2-14 5z"/>
+  </g>
+  <circle cx="68.5" cy="34.8" r="1.65" fill="#e9ed6d"/>
+  <path d="m61 75 6-6 6 6-6 6z" fill="#e65129"/>
+</svg>

@@ -19,7 +19,7 @@ public sealed class ProfileService(AppDbContext db) : IProfileService
         new(StringComparer.Ordinal) { "sunday", "monday" };
 
     private static readonly HashSet<string> KnownThemes =
-        new(StringComparer.Ordinal) { "midnight", "daylight", "graphite" };
+        new(StringComparer.Ordinal) { "corner-store", "midnight", "daylight", "graphite" };
 
     public async Task<ProfileDto?> GetAsync(Guid userId, CancellationToken cancellationToken = default)
     {

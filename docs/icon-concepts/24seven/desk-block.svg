@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title id="title">24seven — Desk Block</title>
+  <rect width="96" height="96" rx="21" fill="#abb7ff" />
+  <path fill="#fff0d7" d="M11,30 48,12 85,30 48,49Z" />
+  <path fill="#28221f" d="M11,30 48,49 48,84 11,65Z" />
+  <path fill="#ff7953" d="M48,49 85,30 85,65 48,84Z" />
+  <path fill="#28221f" d="M32,29 35.8,27.2 43,30.7 39.2,32.6Z" />
+  <path fill="#28221f" d="M49,21 52.8,19.2 60,22.7 56.2,24.6Z" />
+  <g transform="matrix(.52 .267 0 .74 14.4 36.4)">
+    <path fill="#fff0d7" d="M0,7 7,0 21,0 26,5 26,16 11,26 26,26 26,35 0,35 0,23 15,13 15,9 10,9 8,12 0,12Z" />
+    <path fill="#fff0d7" d="M46,0 55,0 55,19 59,19 59,27 55,27 55,35 45,35 45,27 29,27 29,19 38,0 47,0 38,19 45,19 45,0Z" />
+  </g>
+  <g transform="matrix(.90 -.462 0 .74 54 50.7)">
+    <path fill="#28221f" d="M0,0 28,0 28,8 15,35 4,35 18,9 0,9Z" />
+  </g>
+</svg>

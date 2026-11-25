@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed (monochrome) launcher icon: the cream letter faces only.
+     Generated from docs/icon/corner-store.svg (its skew baked into the points). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:scaleX="0.75" android:scaleY="0.75" android:translateX="18" android:translateY="18">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M17.000,34.000 24.000,25.639 38.000,22.918 43.000,26.946 43.000,37.946 28.000,50.862 43.000,47.946 43.000,56.946 17.000,62.000 17.000,50.000 32.000,37.084 32.000,33.084 27.000,34.056 25.000,37.445 17.000,39.000Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M63.000,18.059 72.000,16.309 72.000,35.309 76.000,34.532 76.000,42.532 72.000,43.309 72.000,51.309 62.000,53.253 62.000,45.253 46.000,48.363 46.000,40.363 55.000,19.614 64.000,17.864 55.000,38.614 62.000,37.253 62.000,18.253Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M25.320,66.383 31.920,65.100 31.920,67.420 26.640,68.446 26.640,69.606 31.920,68.580 31.920,73.220 30.600,74.636 24.000,75.919 24.000,73.599 29.280,72.573 29.280,71.413 24.000,72.439 24.000,67.799Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M34.164,64.664 42.084,63.124 42.084,65.444 36.804,66.470 36.804,67.630 40.764,66.861 40.764,69.181 36.804,69.950 36.804,71.110 42.084,70.084 42.084,72.404 34.164,73.944Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M44.328,62.688 46.968,62.175 48.288,67.718 49.608,61.662 52.248,61.148 49.608,70.942 46.968,71.455Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M54.492,60.712 62.412,59.173 62.412,61.493 57.132,62.519 57.132,63.679 61.092,62.909 61.092,65.229 57.132,65.999 57.132,67.159 62.412,66.133 62.412,68.453 54.492,69.992Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M64.656,58.737 67.296,58.223 69.936,62.350 69.936,57.710 72.576,57.197 72.576,66.477 69.936,66.990 67.296,62.863 67.296,67.503 64.656,68.017Z" />
+    </group>
+</vector>
