@@ -65,7 +65,16 @@ import org.hyperstarit.planit.ui.editor.Scope
 /** The calendar: month, week, day or agenda; the drawer picks calendars and leads to the accounts. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CalendarScreen(onAccounts: () -> Unit, onTasks: () -> Unit, viewModel: CalendarViewModel = hiltViewModel()) {
+fun CalendarScreen(
+    onAccounts: () -> Unit,
+    onTasks: () -> Unit,
+    openDate: kotlinx.coroutines.flow.MutableStateFlow<java.time.LocalDate?> = kotlinx.coroutines.flow.MutableStateFlow(null),
+    viewModel: CalendarViewModel = hiltViewModel(),
+) {
+    val requested by openDate.collectAsStateWithLifecycle()
+    LaunchedEffect(requested) {
+        requested?.let { viewModel.openDay(it); openDate.value = null }
+    }
     val formats = rememberFormats()
     val focus by viewModel.focus.collectAsStateWithLifecycle()
     val shown by viewModel.shown.collectAsStateWithLifecycle()
@@ -163,6 +172,12 @@ fun CalendarScreen(onAccounts: () -> Unit, onTasks: () -> Unit, viewModel: Calen
                             }
                         },
                     ) { Text("Instant updates") }
+                    NavigationDrawerItem(
+                        label = { Text("Add month widget to home screen") },
+                        selected = false,
+                        onClick = { scope.launch { drawer.close(); org.hyperstarit.planit.widget.MonthWidgetPin.request(context) } },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
                     if (viewModel.remindersOn && !notificationsAllowed) {
                         TextButton(onClick = {
                             context.startActivity(

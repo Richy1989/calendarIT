@@ -23,6 +23,9 @@ class RootViewModel @Inject constructor(accounts: Accounts) : ViewModel() {
     /** Null until the accounts are read (the splash stays up meanwhile). */
     val hasAccounts = accounts.all.map { it.isNotEmpty() }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     var screen by mutableStateOf(Screen.CALENDAR)
+
+    /** A day to open (from the widget), taken by the calendar once shown. */
+    val openDate = kotlinx.coroutines.flow.MutableStateFlow<java.time.LocalDate?>(null)
 }
 
 enum class Screen { CALENDAR, ACCOUNTS, ADD_ACCOUNT, TASKS }
@@ -43,6 +46,6 @@ fun PlanItRoot(viewModel: RootViewModel) {
             onAddAccount = { viewModel.screen = Screen.ADD_ACCOUNT },
         )
         viewModel.screen == Screen.TASKS -> TasksScreen(onBack = { viewModel.screen = Screen.CALENDAR })
-        else -> CalendarScreen(onAccounts = { viewModel.screen = Screen.ACCOUNTS }, onTasks = { viewModel.screen = Screen.TASKS })
+        else -> CalendarScreen(onAccounts = { viewModel.screen = Screen.ACCOUNTS }, onTasks = { viewModel.screen = Screen.TASKS }, openDate = viewModel.openDate)
     }
 }

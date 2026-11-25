@@ -70,6 +70,18 @@
                 android:resource="@xml/sync_calendar" />
         </service>
 
+        <receiver
+            android:name=".widget.MonthWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_month">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/month_widget_info" />
+        </receiver>
+
         <!-- UnifiedPush: the distributor app (e.g. ntfy) hands over "sync now" nudges. -->
         <service
             android:name=".push.PlanItPushService"

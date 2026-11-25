@@ -136,6 +136,8 @@ dependencies {
     implementation(libs.serialization.json)
     implementation(libs.okhttp)
     implementation(libs.ical4j)
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
     implementation(libs.unifiedpush.connector)
     implementation(libs.kizitonwose.calendar)
 

@@ -334,6 +334,14 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   endpoint. Endpoints are capability URLs: only their host is ever logged. Push targets go through
   the same public-only `OutboundHostPolicy` as browser pushes (a home-network ntfy is refused).
   ntfy.sh answers 507 until the ntfy app has connected to the new topic.
+- **Month widget** (`widget/`, Jetpack Glance): `MonthModel` (pure: whole weeks from the locale's
+  first day, per-day chips that fit — all-day first — and "+n") drawn by `MonthWidget`
+  (SizeMode.Exact: rows per cell computed from the widget's height), ‹ › and the month name
+  (back to today) via action callbacks in Glance state, a tapped day opens the app on it
+  (`MainActivity.EXTRA_DATE` → `RootViewModel.openDate`). Reads the local copy; redrawn after
+  every sync and local change (`MonthWidget.refresh`) and hourly. Drawer "Add month widget to home
+  screen" uses the system pin dialog. Glance composables can't read `Locale.getDefault()` (lint):
+  take it from the context in `provideGlance` and pass it down.
 - Tests: Robolectric + MockWebServer (`SyncEngineTest`, `CertificatesTest` with a real
   self-signed TLS server, `MigrationTest`); `LiveServerTest` runs against a real backend only with
   `PLANIT_LIVE_URL`/`_EMAIL`/`_PASSWORD` set (throwaway account).

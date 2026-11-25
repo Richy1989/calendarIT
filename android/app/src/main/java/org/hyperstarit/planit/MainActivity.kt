@@ -18,10 +18,24 @@ import org.hyperstarit.planit.ui.theme.PlanItTheme
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    companion object {
+        const val EXTRA_DATE = "org.hyperstarit.planit.DATE"
+    }
+
     @Inject lateinit var scheduler: SyncScheduler
     @Inject lateinit var push: org.hyperstarit.planit.push.PushRegistrar
     @Inject lateinit var scope: kotlinx.coroutines.CoroutineScope
     private val root: RootViewModel by viewModels()
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        openFrom(intent)
+    }
+
+    /** A day tapped in the widget opens that day. */
+    private fun openFrom(intent: android.content.Intent?) {
+        intent?.getStringExtra(EXTRA_DATE)?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }?.let { root.openDate.value = it }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // The splash stays until the accounts are read, so the wrong screen never flashes.
@@ -37,6 +51,7 @@ class MainActivity : ComponentActivity() {
         org.unifiedpush.android.connector.UnifiedPush.tryUseCurrentOrDefaultDistributor(this) { ok ->
             if (ok) scope.launch { push.registerAll() }
         }
+        openFrom(intent)
         setContent {
             PlanItTheme { PlanItRoot(root) }
         }

@@ -123,7 +123,7 @@ object AppModule {
     @Provides
     @Singleton
     fun localChanges(
-        db: PlanItDatabase, clock: Clock, scheduler: SyncScheduler,
+        @ApplicationContext context: Context, db: PlanItDatabase, clock: Clock, scheduler: SyncScheduler,
         reminders: org.hyperstarit.planit.reminders.ReminderScheduler, scope: CoroutineScope,
         // Lazy: the system calendar takes in other apps' changes through LocalChanges itself.
         system: dagger.Lazy<org.hyperstarit.planit.system.SystemCalendar>,
@@ -131,6 +131,7 @@ object AppModule {
         scheduler.requestNow()
         scope.launch {
             reminders.reschedule()
+            org.hyperstarit.planit.widget.MonthWidget.refresh(context)
             system.get().sync()
         }
     })
@@ -148,10 +149,11 @@ object AppModule {
     @Provides
     @Singleton
     fun runner(
-        db: PlanItDatabase, accounts: Accounts, planIt: PlanItSync, reminders: org.hyperstarit.planit.reminders.ReminderScheduler,
+        @ApplicationContext context: Context, db: PlanItDatabase, accounts: Accounts, planIt: PlanItSync, reminders: org.hyperstarit.planit.reminders.ReminderScheduler,
         system: org.hyperstarit.planit.system.SystemCalendar,
     ) = SyncRunner(db, accounts, planIt, afterSync = {
         reminders.reschedule()
         system.sync()
+        org.hyperstarit.planit.widget.MonthWidget.refresh(context)
     })
 }
