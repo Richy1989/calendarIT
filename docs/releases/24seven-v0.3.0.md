@@ -29,7 +29,7 @@ _The first published release of the 24seven Android app._
 
 📦 Deployment & Docs
 
-- Needs Android 14 or newer and a CalendarIT server with the app sync API — the next server release after 0.9.0 (0.10.0), or a build of `main`.
+- Needs Android 14 or newer and a CalendarIT server with the app sync API — the next server release after 0.10.0, or a build of `main` until then.
 - Releases of the app are tagged `24seven-vX.Y.Z`, separate from the server's `vX.Y.Z`.
 
 [<img src="https://raw.githubusercontent.com/Richy1989/keepIT/main/docs/bymeacoffee.png" alt="Buy Me A Coffee" height="60">](https://buymeacoffee.com/spaceelephant)
