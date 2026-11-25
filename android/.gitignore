@@ -1,0 +1,18 @@
+# Gradle / Android Studio
+.gradle/
+.kotlin/
+build/
+local.properties
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+# Signing material never goes in the repo (CI takes it from secrets).
+keystore.properties
+*.jks
+*.keystore
+
+# The repo's root .gitignore drops Debug/ and Release/ for .NET; the debug source set is source here.
+!app/src/debug/
+!app/src/release/

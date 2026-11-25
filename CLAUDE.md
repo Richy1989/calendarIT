@@ -31,6 +31,17 @@ npm run lint       # oxlint
 npm run gen:api    # regenerate src/api/schema.d.ts from the LIVE backend OpenAPI (backend must be running on :5299)
 ```
 
+Android app (run from `android/`; JDK 21, Android SDK with platform 37.2):
+
+```bash
+./gradlew assembleFossDebug          # app/build/outputs/apk/foss/debug/ (id org.hyperstarit.planit.debug)
+./gradlew testFossDebugUnitTest      # JVM unit tests
+./gradlew lintFossDebug
+```
+
+Flavors: `foss` (no Google libraries: GitHub/F-Droid) and `play`. Debug builds allow plain http
+(the emulator reaches a dev backend at `http://10.0.2.2:5299`); release builds are https-only.
+
 Both at once: `./deploy/dev.ps1` (or `dev.sh`) runs backend + frontend in one terminal.
 Demo data: `./deploy/seed.ps1` seeds user `test@test.com` / `Test1234#1234`.
 Docker: one `Dockerfile`, two targets. The default (`runtime`, what `docker compose up --build`
@@ -229,6 +240,16 @@ control characters shown as `\xNN`, so outside input can't drive the terminal sh
 section of `appsettings.json`; the format lives in code. nginx (bundle image) logs only what
 never reached the API, in the same layout (`deploy/nginx.conf`); the release workflow checks
 the built image's log for leaked tokens and raw escapes.
+
+### Android app (PlanIt)
+
+Native Kotlin in `android/` (`org.hyperstarit.planit`, minSdk 34): Compose + Material 3, Hilt,
+Room (the offline source of truth; schemas exported to `app/schemas`, never a destructive
+migration), DataStore, OkHttp + kotlinx.serialization (`net/ApiClient`, hand-written models of the
+sync protocol). `auth/SessionManager` owns the session: tokens sealed with an Android Keystore
+AES-GCM key (`KeystoreSecretBox`, never backed up), refreshes serialized through one Mutex (rotating
+refresh tokens), a refused refresh ends the session, and it never retries a login (server
+lockout). Signing out clears the database.
 
 ### Frontend
 

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Placeholder brand colors until the new logo (see project notes). -->
+    <color name="brand">#5B5BD6</color>
+    <color name="brand_dark">#14141F</color>
+</resources>
