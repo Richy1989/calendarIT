@@ -9,7 +9,8 @@
 #                 already have Work/Personal/Family (registration defaults) — those are
 #                 reused; the rest are created. Each event references one; its colour comes
 #                 from the category.
-#   Events     -> anchored to the FIRST DAY OF THE CURRENT MONTH, so the seeded calendar
+#   Events     -> from seed-events.json (shared with seed.ps1), anchored to the FIRST DAY
+#                 OF THE CURRENT MONTH, so the seeded calendar
 #                 always looks current: weekly recurring series (standup, gym, team sync,
 #                 sprint review, family dinner), all-day + multi-day events (birthday,
 #                 conference, payday), and one-off appointments across this and next month.
@@ -174,98 +175,59 @@ if [[ "$existing" -gt 0 && "$force" -ne 1 ]]; then
 fi
 
 # ---------- create --------------------------------------------------------------------
-# Each event names a category (see above); its colour is inherited from that category.
+# The events live in seed-events.json, shared with seed.ps1. Each names its calendar and
+# category (its colour comes from the category) and a day relative to the first of this or
+# next month: "plusDays" on from there, then the first "weekday" (1=Mon..7=Sun) on or after.
+# Timed events give local wall-clock "start"/"end" times; all-day ones span "days" days.
 
+event_fixture="$(dirname -- "${BASH_SOURCE[0]}")/seed-events.json"
+next_month=$(date -d "$month_start + 1 month" +%F)
+
+# fixture_day FROM PLUS_DAYS WEEKDAY -> YYYY-MM-DD
+fixture_day() {
+    local d=$month_start
+    [[ "$1" != nextMonth ]] || d=$next_month
+    d=$(plus_days "$d" "$2")
+    [[ -z "$3" ]] || d=$(first_dow "$d" "$3")
+    echo "$d"
+}
+
+echo "==> seeding events (anchor: $month_start, tz: $time_zone)"
 created=0
-# The calendar the next post_event calls target — flip between the two before each group.
-cal_id=''
-cal_name=''
-use_personal() { cal_id=$personal_id; cal_name='Personal'; }
-use_work()     { cal_id=$work_id;     cal_name='Work'; }
-
-# post_event TITLE CATEGORY START END ALLDAY RECURRENCE LOCATION DESCRIPTION REMINDERS_JSON
-post_event() {
-    local category_ref="${category_id[$2]:-}"
-    jq -n --arg title "$1" --arg category "$category_ref" --arg start "$3" --arg end "$4" \
-          --argjson allDay "$5" --arg rec "$6" --arg loc "$7" --arg desc "$8" \
-          --argjson reminders "${9:-[]}" --arg tz "$time_zone" --arg cal "$cal_id" '{
+while IFS= read -r spec; do
+    # Unit-separated, not tab-separated: read would merge empty tab fields.
+    IFS=$'\x1f' read -r title calendar category from plus weekday all_day days start_time end_time < <(jq -r '[
+        .title, .calendar, .category, .on.from, (.on.plusDays // 0), (.on.weekday // ""),
+        (.allDay // false), (.days // 1), (.start // ""), (.end // "")] | map(tostring) | join("\u001f")' <<<"$spec")
+    day=$(fixture_day "$from" "$plus" "$weekday")
+    if [[ "$all_day" == true ]]; then
+        # All-day: the date at UTC midnight; the end is the INCLUSIVE last day (API convention).
+        start=$(allday_iso "$day")
+        end=''
+        [[ "$days" -le 1 ]] || end=$(allday_iso "$(plus_days "$day" $((days - 1)))")
+    else
+        start=$(utc_iso "$day" "$start_time")
+        end=$(utc_iso "$day" "$end_time")
+    fi
+    cal=$personal_id
+    [[ "$calendar" != Work ]] || cal=$work_id
+    jq -c --arg cal "$cal" --arg category "${category_id[$category]:-}" --arg start "$start" --arg end "$end" \
+          --arg tz "$time_zone" '{
         calendarId: $cal,
-        title: $title,
+        title: .title,
         categoryId: (if $category == "" then null else $category end),
         start: $start,
         end: (if $end == "" then null else $end end),
-        allDay: $allDay,
-        recurrence: (if $rec == "" then null else $rec end),
-        location: (if $loc == "" then null else $loc end),
-        description: (if $desc == "" then null else $desc end),
-        timeZone: $tz, reminders: $reminders
-    }' | curl -sS -f -X POST "$base_url/api/events" -H "$auth" \
+        allDay: (.allDay // false),
+        recurrence: .recurrence,
+        location: .location,
+        description: .description,
+        timeZone: $tz,
+        reminders: (.reminders // [])
+    }' <<<"$spec" | curl -sS -f -X POST "$base_url/api/events" -H "$auth" \
         -H 'Content-Type: application/json' -d @- >/dev/null
-    echo "    + $1 ($cal_name / $2)"
+    echo "    + $title ($calendar / $category)"
     created=$((created + 1))
-}
-
-monday=$(first_dow "$month_start" 1)
-tuesday=$(first_dow "$month_start" 2)
-friday=$(first_dow "$month_start" 5)
-sunday=$(first_dow "$month_start" 7)
-week2=$(plus_days "$month_start" 7)
-week3=$(plus_days "$month_start" 14)
-week4=$(plus_days "$month_start" 21)
-next_month=$(date -d "$month_start + 1 month" +%F)
-conf_start=$(first_dow "$week3" 2)
-
-echo "==> seeding events (anchor: $month_start, tz: $time_zone)"
-
-# --- recurring series ---
-use_work
-post_event 'Team standup' 'Work' "$(utc_iso "$monday" 09:15)" "$(utc_iso "$monday" 09:30)" false \
-    'FREQ=WEEKLY;BYDAY=MO,WE,FR' 'Zoom' "Daily sync — what shipped, what's next, blockers." \
-    '[{"minutesBefore":10,"channel":"Email"}]'
-post_event 'Team sync' 'Work' "$(utc_iso "$monday" 11:00)" "$(utc_iso "$monday" 12:00)" false \
-    'FREQ=WEEKLY' 'Room 2.04' 'Weekly planning and demos.'
-post_event 'Sprint review' 'Work' "$(utc_iso "$friday" 14:00)" "$(utc_iso "$friday" 15:00)" false \
-    'FREQ=WEEKLY;INTERVAL=2' 'Room 1.01' 'Demo, retro, next sprint scope.'
-use_personal
-post_event 'Gym' 'Health' "$(utc_iso "$tuesday" 18:00)" "$(utc_iso "$tuesday" 19:30)" false \
-    'FREQ=WEEKLY;BYDAY=TU,TH' 'FitOne' ''
-post_event 'Family dinner' 'Family' "$(utc_iso "$sunday" 18:00)" "$(utc_iso "$sunday" 20:00)" false \
-    'FREQ=WEEKLY' '' ''
-
-# --- all-day / multi-day ---
-use_work
-post_event 'DevConf' 'Travel' "$(allday_iso "$conf_start")" "$(allday_iso "$(plus_days "$conf_start" 2)")" true \
-    '' 'Convention Center' 'Three days of talks and workshops.'
-use_personal
-post_event "Mom's birthday" 'Family' "$(allday_iso "$(plus_days "$month_start" 11)")" '' true '' '' '' \
-    '[{"minutesBefore":1440,"channel":"Email"}]'
-post_event 'Payday' 'Finance' "$(allday_iso "$(plus_days "$month_start" 27)")" '' true '' '' ''
-post_event 'Day off' 'Personal' "$(allday_iso "$(first_dow "$(plus_days "$next_month" 7)" 5)")" '' true '' '' ''
-
-# --- one-off appointments, this month ---
-wed2=$(first_dow "$week2" 3); thu2=$(first_dow "$week2" 4); sat2=$(first_dow "$week2" 6)
-fri3=$(first_dow "$week3" 5); sat3=$(first_dow "$week3" 6); mon3=$(first_dow "$week3" 1)
-tue4=$(first_dow "$week4" 2); fri4=$(first_dow "$week4" 5)
-use_work
-post_event '1:1 with Sam' 'Work' "$(utc_iso "$thu2" 10:00)" "$(utc_iso "$thu2" 10:30)" false '' '' ''
-post_event 'Lunch with Alex' 'Social' "$(utc_iso "$fri3" 12:30)" "$(utc_iso "$fri3" 13:30)" false '' 'Café Milano' ''
-post_event 'Project deadline: v1.0' 'Work' "$(utc_iso "$fri4" 17:00)" "$(utc_iso "$fri4" 18:00)" false '' '' 'Ship it. 🚀' \
-    '[{"minutesBefore":120,"channel":"Email"}]'
-use_personal
-post_event 'Dentist' 'Health' "$(utc_iso "$wed2" 08:30)" "$(utc_iso "$wed2" 09:15)" false '' 'Dr. Weber' '' \
-    '[{"minutesBefore":60,"channel":"Email"}]'
-post_event 'Movie night' 'Social' "$(utc_iso "$sat2" 20:00)" "$(utc_iso "$sat2" 22:30)" false '' 'Cinestar' ''
-post_event 'Badminton with Chris' 'Health' "$(utc_iso "$sat3" 10:00)" "$(utc_iso "$sat3" 11:30)" false '' '' ''
-post_event 'Car service' 'Personal' "$(utc_iso "$mon3" 07:45)" "$(utc_iso "$mon3" 08:15)" false '' 'Autohaus Nord' ''
-post_event 'Haircut' 'Personal' "$(utc_iso "$tue4" 16:30)" "$(utc_iso "$tue4" 17:00)" false '' '' ''
-
-# --- one-off appointments, next month ---
-wed_n=$(first_dow "$next_month" 3)
-mon_n=$(first_dow "$(plus_days "$next_month" 14)" 1)
-use_work
-post_event 'Quarterly planning' 'Work' "$(utc_iso "$wed_n" 09:00)" "$(utc_iso "$wed_n" 12:00)" false '' 'Room 1.01' ''
-use_personal
-post_event 'Doctor check-up' 'Health' "$(utc_iso "$mon_n" 09:30)" "$(utc_iso "$mon_n" 10:00)" false '' '' '' \
-    '[{"minutesBefore":60,"channel":"Email"}]'
+done < <(jq -c '.[]' "$event_fixture")
 
 echo "==> done ($created events). Demo calendar ready for $email."

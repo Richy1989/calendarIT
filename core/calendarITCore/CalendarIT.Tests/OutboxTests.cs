@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Net;
 using CalendarIT.Application;
 using CalendarIT.Application.Mail;
@@ -120,12 +121,12 @@ public sealed class OutboxTests : IDisposable
         return m;
     }
 
-    private OutboxDispatchJob Job() =>
+    private OutboxDispatchJob Job(ILogger<OutboxDispatchJob>? logger = null) =>
         new(new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
-            _clock, NullLogger<OutboxDispatchJob>.Instance);
+            _clock, logger ?? NullLogger<OutboxDispatchJob>.Instance);
 
-    private Task RunAsync(FakeServer server) =>
-        Job().RunAsync(_db, _accounts, new MailConnectionOptions(), connect: server.Connect);
+    private Task RunAsync(FakeServer server, ILogger<OutboxDispatchJob>? logger = null) =>
+        Job(logger).RunAsync(_db, _accounts, new MailConnectionOptions(), connect: server.Connect);
 
     [Fact]
     public async Task Queue_WithoutAMailAccount_QueuesNothing()
@@ -265,6 +266,39 @@ public sealed class OutboxTests : IDisposable
         await RunAsync(new FakeServer());
 
         Assert.Empty(_db.OutboxMessages);
+    }
+
+    [Theory]
+    [InlineData("account removed")]
+    [InlineData("server unreachable")]
+    public async Task Dispatch_AnUndeliverablePasswordReset_IsDropped_AndItsLinkNeverLogged(string why)
+    {
+        const string token = "SYNTHETIC-RESET-TOKEN-51d0e2";
+        await ConnectMailAsync(_alice, "alice@example.com");
+        var message = Message("alice@example.com");
+        message.Body = new TextPart("plain") { Text = $"Open https://cal.example.com/reset-password?email=alice%40example.com&token={token}" };
+        await Outbox().QueueAsync(_alice, message, OutboxKind.PasswordReset);
+        var server = new FakeServer();
+        if (why == "account removed")
+        {
+            await _accounts.DeleteAsync(_alice);
+        }
+        else
+        {
+            server.Unreachable.Add("alice@example.com");
+        }
+        var logger = new CapturingLogger<OutboxDispatchJob>();
+
+        for (var i = 0; i < OutboxDispatchJob.MaxAttempts && await _db.OutboxMessages.AnyAsync(); i++)
+        {
+            _clock.Now += TimeSpan.FromDays(1);
+            await RunAsync(server, logger);
+        }
+
+        Assert.Empty(_db.OutboxMessages);
+        Assert.DoesNotContain(token, logger.All);
+        Assert.DoesNotContain("reset-password?", logger.All);
+        Assert.Contains("reset-password-link", logger.All);
     }
 
     [Fact]

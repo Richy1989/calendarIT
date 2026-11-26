@@ -9,7 +9,8 @@
 #                 already have Work/Personal/Family (registration defaults) — those are
 #                 reused; the rest are created. Each event references one; its colour comes
 #                 from the category.
-#   Events     -> anchored to the FIRST DAY OF THE CURRENT MONTH, so the seeded calendar
+#   Events     -> from seed-events.json (shared with seed.sh), anchored to the FIRST DAY
+#                 OF THE CURRENT MONTH, so the seeded calendar
 #                 always looks current: weekly recurring series (standup, gym, team sync,
 #                 sprint review, family dinner), all-day + multi-day events (birthday,
 #                 conference, payday), and one-off appointments across this and next month.
@@ -178,126 +179,52 @@ if ($existing.Count -gt 0 -and -not $Force) {
     exit 0
 }
 
-# ---------- event definitions ---------------------------------------------------------
-# Each event names a category (see above); its colour is inherited from that category.
-
-$monday    = First-Dow $monthStart ([DayOfWeek]::Monday)
-$tuesday   = First-Dow $monthStart ([DayOfWeek]::Tuesday)
-$friday    = First-Dow $monthStart ([DayOfWeek]::Friday)
-$sunday    = First-Dow $monthStart ([DayOfWeek]::Sunday)
-$week2     = $monthStart.AddDays(7)
-$week3     = $monthStart.AddDays(14)
-$week4     = $monthStart.AddDays(21)
-$nextMonth = $monthStart.AddMonths(1)
-$confStart = First-Dow $week3 ([DayOfWeek]::Tuesday)
-
-$events = @(
-    # --- recurring series -------------------------------------------------------------
-    @{ title = 'Team standup'; category = 'Work'; work = $true
-       start = UtcIso $monday 9 15; end = UtcIso $monday 9 30
-       recurrence = 'FREQ=WEEKLY;BYDAY=MO,WE,FR'; location = 'Zoom'
-       description = 'Daily sync — what shipped, what''s next, blockers.'
-       reminders = @(@{ minutesBefore = 10; channel = 'Email' }) }
-
-    @{ title = 'Team sync'; category = 'Work'; work = $true
-       start = UtcIso $monday 11 0; end = UtcIso $monday 12 0
-       recurrence = 'FREQ=WEEKLY'; location = 'Room 2.04'
-       description = 'Weekly planning and demos.' }
-
-    @{ title = 'Gym'; category = 'Health'
-       start = UtcIso $tuesday 18 0; end = UtcIso $tuesday 19 30
-       recurrence = 'FREQ=WEEKLY;BYDAY=TU,TH'; location = 'FitOne' }
-
-    @{ title = 'Sprint review'; category = 'Work'; work = $true
-       start = UtcIso $friday 14 0; end = UtcIso $friday 15 0
-       recurrence = 'FREQ=WEEKLY;INTERVAL=2'; location = 'Room 1.01'
-       description = 'Demo, retro, next sprint scope.' }
-
-    @{ title = 'Family dinner'; category = 'Family'
-       start = UtcIso $sunday 18 0; end = UtcIso $sunday 20 0
-       recurrence = 'FREQ=WEEKLY' }
-
-    # --- all-day / multi-day ----------------------------------------------------------
-    @{ title = "Mom's birthday"; category = 'Family'
-       start = AllDayIso $monthStart.AddDays(11); allDay = $true
-       reminders = @(@{ minutesBefore = 1440; channel = 'Email' }) }
-
-    @{ title = 'DevConf'; category = 'Travel'; work = $true
-       start = AllDayIso $confStart; end = AllDayIso $confStart.AddDays(2); allDay = $true
-       location = 'Convention Center'
-       description = 'Three days of talks and workshops.' }
-
-    @{ title = 'Payday'; category = 'Finance'
-       start = AllDayIso $monthStart.AddDays(27); allDay = $true }
-
-    @{ title = 'Day off'; category = 'Personal'
-       start = AllDayIso (First-Dow $nextMonth.AddDays(7) ([DayOfWeek]::Friday)); allDay = $true }
-
-    # --- one-off appointments, this month ---------------------------------------------
-    @{ title = 'Dentist'; category = 'Health'
-       start = UtcIso (First-Dow $week2 ([DayOfWeek]::Wednesday)) 8 30
-       end   = UtcIso (First-Dow $week2 ([DayOfWeek]::Wednesday)) 9 15
-       location = 'Dr. Weber'; reminders = @(@{ minutesBefore = 60; channel = 'Email' }) }
-
-    @{ title = '1:1 with Sam'; category = 'Work'; work = $true
-       start = UtcIso (First-Dow $week2 ([DayOfWeek]::Thursday)) 10 0
-       end   = UtcIso (First-Dow $week2 ([DayOfWeek]::Thursday)) 10 30 }
-
-    @{ title = 'Movie night'; category = 'Social'
-       start = UtcIso (First-Dow $week2 ([DayOfWeek]::Saturday)) 20 0
-       end   = UtcIso (First-Dow $week2 ([DayOfWeek]::Saturday)) 22 30
-       location = 'Cinestar' }
-
-    @{ title = 'Lunch with Alex'; category = 'Social'; work = $true
-       start = UtcIso (First-Dow $week3 ([DayOfWeek]::Friday)) 12 30
-       end   = UtcIso (First-Dow $week3 ([DayOfWeek]::Friday)) 13 30
-       location = 'Café Milano' }
-
-    @{ title = 'Badminton with Chris'; category = 'Health'
-       start = UtcIso (First-Dow $week3 ([DayOfWeek]::Saturday)) 10 0
-       end   = UtcIso (First-Dow $week3 ([DayOfWeek]::Saturday)) 11 30 }
-
-    @{ title = 'Car service'; category = 'Personal'
-       start = UtcIso (First-Dow $week3 ([DayOfWeek]::Monday)) 7 45
-       end   = UtcIso (First-Dow $week3 ([DayOfWeek]::Monday)) 8 15
-       location = 'Autohaus Nord' }
-
-    @{ title = 'Haircut'; category = 'Personal'
-       start = UtcIso (First-Dow $week4 ([DayOfWeek]::Tuesday)) 16 30
-       end   = UtcIso (First-Dow $week4 ([DayOfWeek]::Tuesday)) 17 0 }
-
-    @{ title = 'Project deadline: v1.0'; category = 'Work'; work = $true
-       start = UtcIso (First-Dow $week4 ([DayOfWeek]::Friday)) 17 0
-       end   = UtcIso (First-Dow $week4 ([DayOfWeek]::Friday)) 18 0
-       description = 'Ship it. 🚀'
-       reminders = @(@{ minutesBefore = 120; channel = 'Email' }) }
-
-    # --- one-off appointments, next month ---------------------------------------------
-    @{ title = 'Quarterly planning'; category = 'Work'; work = $true
-       start = UtcIso (First-Dow $nextMonth ([DayOfWeek]::Wednesday)) 9 0
-       end   = UtcIso (First-Dow $nextMonth ([DayOfWeek]::Wednesday)) 12 0
-       location = 'Room 1.01' }
-
-    @{ title = 'Doctor check-up'; category = 'Health'
-       start = UtcIso (First-Dow $nextMonth.AddDays(14) ([DayOfWeek]::Monday)) 9 30
-       end   = UtcIso (First-Dow $nextMonth.AddDays(14) ([DayOfWeek]::Monday)) 10 0
-       reminders = @(@{ minutesBefore = 60; channel = 'Email' }) }
-)
-
 # ---------- create --------------------------------------------------------------------
+# The events live in seed-events.json, shared with seed.sh. Each names its calendar and
+# category (its colour comes from the category) and a day relative to the first of this or
+# next month: "plusDays" on from there, then the first "weekday" (1=Mon..7=Sun) on or after.
+# Timed events give local wall-clock "start"/"end" times; all-day ones span "days" days.
+
+$nextMonth = $monthStart.AddMonths(1)
+$events = @(Get-Content -Raw (Join-Path $PSScriptRoot 'seed-events.json') | ConvertFrom-Json)
+
+function Fixture-Day($on) {
+    $d = if ($on.from -eq 'nextMonth') { $nextMonth } else { $monthStart }
+    $d = $d.AddDays([int]($on.plusDays ?? 0))
+    # ISO weekday 1=Mon..7=Sun → .NET DayOfWeek (Sunday = 0).
+    if ($null -ne $on.weekday) { $d = First-Dow $d ([DayOfWeek]([int]$on.weekday % 7)) }
+    return $d
+}
+
+function Local-Time([datetime]$day, [string]$hhmm) {
+    $parts = $hhmm.Split(':')
+    return UtcIso $day ([int]$parts[0]) ([int]$parts[1])
+}
 
 Write-Host "==> seeding $($events.Count) events (anchor: $($monthStart.ToString('yyyy-MM-dd')), tz: $timeZone)" -ForegroundColor Cyan
 
 foreach ($e in $events) {
+    $day = Fixture-Day $e.on
+    $allDay = [bool]($e.allDay ?? $false)
+    if ($allDay) {
+        # All-day: the date at UTC midnight; the end is the INCLUSIVE last day (API convention).
+        $start = AllDayIso $day
+        $days = [int]($e.days ?? 1)
+        $end = if ($days -gt 1) { AllDayIso $day.AddDays($days - 1) } else { $null }
+    }
+    else {
+        $start = Local-Time $day $e.start
+        $end = Local-Time $day $e.end
+    }
     $body = @{
-        calendarId  = if ($e.work) { $workId } else { $personalId }
+        calendarId  = if ($e.calendar -eq 'Work') { $workId } else { $personalId }
         title       = $e.title
         description = $e.description ?? $null
         location    = $e.location ?? $null
         categoryId  = $categoryId[$e.category]
-        start       = $e.start
-        end         = $e.end ?? $null
-        allDay      = [bool]($e.allDay ?? $false)
+        start       = $start
+        end         = $end
+        allDay      = $allDay
         recurrence  = $e.recurrence ?? $null
         timeZone    = $timeZone
         reminders   = @($e.reminders ?? @())
@@ -305,9 +232,8 @@ foreach ($e in $events) {
 
     $null = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/events" -Headers $auth `
         -ContentType 'application/json' -Body $body
-    $kind = if ($e.recurrence) { 'recurring' } elseif ($e.allDay) { 'all-day' } else { 'one-off' }
-    $cal  = if ($e.work) { 'Work' } else { 'Personal' }
-    Write-Host ("    + {0,-24} ({1}, {2}, {3})" -f $e.title, $kind, $cal, $e.category)
+    $kind = if ($e.recurrence) { 'recurring' } elseif ($allDay) { 'all-day' } else { 'one-off' }
+    Write-Host ("    + {0,-24} ({1}, {2}, {3})" -f $e.title, $kind, $e.calendar, $e.category)
 }
 
 Write-Host "==> done. Demo calendar ready for $Email." -ForegroundColor Green

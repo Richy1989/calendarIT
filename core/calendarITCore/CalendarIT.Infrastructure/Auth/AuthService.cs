@@ -9,6 +9,7 @@ using CalendarIT.Infrastructure.Mail;
 using CalendarIT.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -155,8 +156,14 @@ public sealed class AuthService(
         // Claim the old token with a conditional update: of two refreshes racing on the same
         // token, exactly one gets a row back. Read-then-write let both succeed, forking the
         // session into two live chains.
+        //
+        // The claim and its successor commit together, under the user's token lock: a failed
+        // insert leaves the old token usable (rather than a dead session, and reuse detection
+        // signing out every device on the retry), and a sign-out can't land between the two and
+        // find nothing to revoke while the new token is about to appear.
         var (rawRefresh, refreshExpiresAt) = tokenService.CreateRefreshToken();
         var newHash = tokenService.HashRefreshToken(rawRefresh);
+        await using var transaction = await BeginTokenWriteAsync(stored.UserId, cancellationToken);
         var claimed = await db.RefreshTokens
             .Where(t => t.Id == stored.Id && t.RevokedAt == null)
             .ExecuteUpdateAsync(s => s
@@ -170,6 +177,7 @@ public sealed class AuthService(
         var tokens = await IssueAsync(
             user, stored.SessionId, stored.SessionStartedAt, client ?? new AuthClient(stored.UserAgent, stored.IpAddress),
             rawRefresh, refreshExpiresAt, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return AuthResult.Success(tokens);
     }
 
@@ -208,9 +216,14 @@ public sealed class AuthService(
     public async Task<bool> RevokeSessionAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default)
     {
         var now = timeProvider.GetUtcNow();
-        var revoked = await db.RefreshTokens
-            .Where(t => t.UserId == userId && t.SessionId == sessionId && t.RevokedAt == null)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), cancellationToken);
+        int revoked;
+        await using (var transaction = await BeginTokenWriteAsync(userId, cancellationToken))
+        {
+            revoked = await db.RefreshTokens
+                .Where(t => t.UserId == userId && t.SessionId == sessionId && t.RevokedAt == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
         if (cache is not null)
         {
             SessionValidator.Evict(cache, [sessionId]);
@@ -220,20 +233,25 @@ public sealed class AuthService(
 
     public async Task<int> RevokeSessionsAsync(Guid userId, Guid? keepSessionId, CancellationToken cancellationToken = default)
     {
-        var sessions = await db.RefreshTokens.AsNoTracking()
-            .Where(t => t.UserId == userId && t.RevokedAt == null && t.SessionId != keepSessionId)
-            .Select(t => t.SessionId)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-        if (sessions.Count == 0)
+        List<Guid> sessions;
+        await using (var transaction = await BeginTokenWriteAsync(userId, cancellationToken))
         {
-            return 0;
-        }
+            sessions = await db.RefreshTokens.AsNoTracking()
+                .Where(t => t.UserId == userId && t.RevokedAt == null && t.SessionId != keepSessionId)
+                .Select(t => t.SessionId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            if (sessions.Count == 0)
+            {
+                return 0;
+            }
 
-        var now = timeProvider.GetUtcNow();
-        await db.RefreshTokens
-            .Where(t => t.UserId == userId && t.RevokedAt == null && t.SessionId != keepSessionId)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), cancellationToken);
+            var now = timeProvider.GetUtcNow();
+            await db.RefreshTokens
+                .Where(t => t.UserId == userId && t.RevokedAt == null && t.SessionId != keepSessionId)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
         if (cache is not null)
         {
             SessionValidator.Evict(cache, sessions);
@@ -300,11 +318,7 @@ public sealed class AuthService(
             cache.Set(key, true, ResetCooldown);
         }
 
-        // Base64Url because the raw token contains characters that don't survive a query string.
-        var token = await userManager.GeneratePasswordResetTokenAsync(user);
-        var encoded = Base64Url.EncodeToString(Encoding.UTF8.GetBytes(token));
-        var link = $"{linkBase.TrimEnd('/')}/reset-password?email={Uri.EscapeDataString(user.Email)}&token={encoded}";
-
+        var link = await PasswordResetLinks.CreateAsync(userManager, user, linkBase);
         await resetMailer.SendAsync(user.Id, user.Email, link, cancellationToken);
     }
 
@@ -395,18 +409,46 @@ public sealed class AuthService(
 
     private async Task RevokeAllForUserAsync(Guid userId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var sessions = await db.RefreshTokens.AsNoTracking()
-            .Where(t => t.UserId == userId && t.RevokedAt == null)
-            .Select(t => t.SessionId)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-        await db.RefreshTokens
-            .Where(t => t.UserId == userId && t.RevokedAt == null)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), cancellationToken);
+        List<Guid> sessions;
+        await using (var transaction = await BeginTokenWriteAsync(userId, cancellationToken))
+        {
+            sessions = await db.RefreshTokens.AsNoTracking()
+                .Where(t => t.UserId == userId && t.RevokedAt == null)
+                .Select(t => t.SessionId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            await db.RefreshTokens
+                .Where(t => t.UserId == userId && t.RevokedAt == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
         if (cache is not null)
         {
             SessionValidator.Evict(cache, sessions);
         }
+    }
+
+    /// <summary>
+    /// A transaction in which one user's refresh tokens are changed, holding that user's token lock
+    /// until it ends: rotations and revocations of one user run one after the other.
+    ///
+    /// SQLite needs nothing more — EF opens its transactions with BEGIN IMMEDIATE, which holds the
+    /// database's single write lock. PostgreSQL (READ COMMITTED) would let a revocation's UPDATE
+    /// work from a snapshot taken before a concurrent rotation committed, so it would never see the
+    /// rotated-in token; locking the user's row first makes every later statement start after the
+    /// other transaction has finished, and so see its rows.
+    /// </summary>
+    private async Task<IDbContextTransaction> BeginTokenWriteAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        if (db.Database.IsNpgsql())
+        {
+            var users = db.Model.FindEntityType(typeof(ApplicationUser))!;
+            var table = users.GetSchema() is { } schema ? $"\"{schema}\".\"{users.GetTableName()}\"" : $"\"{users.GetTableName()}\"";
+            var id = users.FindProperty(nameof(ApplicationUser.Id))!.GetColumnName();
+            await db.Database.ExecuteSqlRawAsync($"SELECT 1 FROM {table} WHERE \"{id}\" = {{0}} FOR UPDATE", [userId], cancellationToken);
+        }
+        return transaction;
     }
 
     private static string? Clip(string? value, int max) =>

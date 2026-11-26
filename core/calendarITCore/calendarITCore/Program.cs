@@ -10,6 +10,12 @@ using Microsoft.Extensions.Options;
 using Serilog;
 using System.Threading.RateLimiting;
 
+// Operator commands (e.g. reset-password-link) run instead of the server and print to the terminal.
+if (AdminCommands.IsCommand(args))
+{
+    return await AdminCommands.RunAsync(args, Console.Out, Console.Error);
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddSerilogLogging();
@@ -158,3 +164,4 @@ if (servesSpa)
 }
 
 app.Run();
+return 0;

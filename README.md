@@ -55,10 +55,12 @@ After the first sync, the native app keeps a copy of your events and tasks on th
 
 From a checkout of `main`, the included Compose file builds the web app and API together and starts PostgreSQL. You'll need Docker Compose and an HTTPS reverse proxy for this setup.
 
-1. Copy `.env.example` to `.env`. Set `POSTGRES_PASSWORD`, generate a `JWT_SIGNING_KEY` with `openssl rand -base64 48`, and set `PUBLIC_BASE_URL` to your public HTTPS address.
+1. Copy `.env.example` to `.env`. Generate a `POSTGRES_PASSWORD` with `openssl rand -hex 24` and a `JWT_SIGNING_KEY` with `openssl rand -base64 48`, and set `PUBLIC_BASE_URL` to your public HTTPS address. Compose refuses to start without both.
 2. Run `docker compose up -d --build` from the repository root.
 3. Attach your reverse proxy to the `calendarit-edge` Docker network and forward requests to `http://app:8080`. For a proxy running on the host, the Compose file also shows a loopback port mapping.
 4. Open your HTTPS address and register your first account. To close sign-up afterward, set `DISABLE_REGISTRATION=true` in `.env` and run `docker compose up -d`.
+
+**Database password (existing installations).** Earlier Compose files fell back to `changeme` when `POSTGRES_PASSWORD` was unset; now Compose stops with `set POSTGRES_PASSWORD in .env`. Postgres reads that variable only when it initializes an empty volume, so setting a new value in `.env` does not change the password of an existing database — the app would then fail to log in. Either put the password the volume was created with (`changeme` if you never set one) into `.env`, or rotate it: start the stack with the old value, run `docker compose exec db psql -U calendarit -d calendarit -c "ALTER USER calendarit PASSWORD 'new-value'"`, then put the new value in `.env` and run `docker compose up -d`.
 
 The Compose file includes the network and volume declarations. Unraid users can install either the standard template or the version with Traefik labels. [Compose file](docker-compose.yml) · [Environment example](.env.example) · [Unraid](deploy/calendarit.unraid.xml) · [Unraid with Traefik](deploy/calendarit-traefik.unraid.xml)
 
@@ -86,7 +88,7 @@ Open <http://localhost:8080> to register and use the web app.
 | Calendars and colors | In web **Settings**, create calendars and assign category colors. Recolor a category once to update all its appointments. |
 | Email and reminders | In **Settings → Email**, connect SMTP for outgoing invitations and reminders, and IMAP for incoming invitations and replies. **Outgoing mail** shows queued messages and delivery errors. |
 | Browser notifications | Enable **Browser** for a reminder and allow notifications in that browser. Web Push requires HTTPS or localhost. The server persists its generated keys in `APPDATA_PATH`. |
-| Password recovery | Set `PUBLIC_BASE_URL` so **Forgot your password?** can generate a single-use link valid for two hours. The server sends it through the user's connected mail account. If that account is unavailable, the instance owner can find the link by searching `docker compose logs app` for `password-reset`. Treat those logs as sensitive. |
+| Password recovery | Set `PUBLIC_BASE_URL` so **Forgot your password?** can generate a single-use link valid for two hours. The server sends it through the user's connected mail account. Reset links are never written to the log: if that account is unavailable, the log only says so (`password-reset:no-mail`), and the instance owner issues a link by hand with `docker compose exec -u 1654 app dotnet /app/calendarITCore.dll reset-password-link user@example.com` (use your `PUID` if you set one; the bundle image's container is named after your deployment). The link is printed to that terminal only — hand it over privately. |
 | Reverse proxy | Set `FORWARDED_PROXY_HOPS` to the number of proxies in front of the API. Use `1` for a single proxy in front of the Compose app, or `2` when that proxy fronts the bundled nginx image. |
 
 For database selection, mail host policy, authentication limits, log levels, container user IDs and optional Web Push keys, see the commented [Compose file](docker-compose.yml) and [environment example](.env.example).

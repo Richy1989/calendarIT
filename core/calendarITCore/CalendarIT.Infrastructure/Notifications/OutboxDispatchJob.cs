@@ -209,35 +209,18 @@ public sealed class OutboxDispatchJob(
     {
         if (m.Kind == OutboxKind.PasswordReset)
         {
-            // The documented fallback: whoever can read the server log can hand the link over —
-            // the same person who could read the database anyway.
+            // The link itself never goes to the log (see PasswordResetMailer): the message, and the
+            // live token in it, are deleted, and the operator is told how to issue a new one.
             logger.LogWarning(
                 "[password-reset:no-mail] the reset mail for user {UserId} could not be sent ({Reason}). " +
-                "Give them the link by hand — it expires and is single-use:\n{Body}",
-                m.UserId, reason, BodyOf(m));
+                "To issue a link by hand, run: " + PasswordResetMailer.ResetCommandHint,
+                m.UserId, reason);
             db.OutboxMessages.Remove(m);
             return;
         }
         m.Status = OutboxStatus.Failed;
         m.LastError = reason;
         logger.LogWarning("Gave up on {Kind} mail {MessageId} for user {UserId}: {Reason}", m.Kind, m.Id, m.UserId, reason);
-    }
-
-    private static string BodyOf(OutboxMessage m)
-    {
-        if (m.Mime is null)
-        {
-            return "(no content)";
-        }
-        try
-        {
-            using var stream = new MemoryStream(m.Mime);
-            return MimeMessage.Load(stream).TextBody ?? "(no text body)";
-        }
-        catch (Exception)
-        {
-            return "(unreadable)";
-        }
     }
 }
 

@@ -74,6 +74,7 @@ public sealed class SyncService(
         var budget = limit;
         var phase = state.Phase;
         var position = state.Position;
+        var positionId = state.PositionId;
         var eventPage = new List<SyncSeriesDto>();
         var taskPage = new List<SyncTaskDto>();
 
@@ -85,7 +86,7 @@ public sealed class SyncService(
             {
                 masters = masters.Where(e => e.UpdatedAt >= from);
             }
-            var (ids, last, done) = await PageAsync(masters, e => e.UpdatedAt, e => e.Id, position, budget, cancellationToken);
+            var (ids, last, lastId, done) = await PageAsync(masters, position, positionId, budget, cancellationToken);
             if (ids.Count > 0)
             {
                 var rows = await db.Events.AsNoTracking()
@@ -102,10 +103,11 @@ public sealed class SyncService(
             {
                 phase = SyncCursor.TasksPhase;
                 position = null;
+                positionId = null;
             }
             else
             {
-                position = last;
+                (position, positionId) = (last, lastId);
             }
         }
 
@@ -116,7 +118,7 @@ public sealed class SyncService(
             {
                 own = own.Where(t => t.UpdatedAt >= from);
             }
-            var (ids, last, done) = await PageAsync(own, t => t.UpdatedAt, t => t.Id, position, budget, cancellationToken);
+            var (ids, last, lastId, done) = await PageAsync(own, position, positionId, budget, cancellationToken);
             if (ids.Count > 0)
             {
                 var rows = await db.Tasks.AsNoTracking().Include(t => t.Reminders)
@@ -128,10 +130,11 @@ public sealed class SyncService(
             {
                 phase = SyncCursor.DonePhase;
                 position = null;
+                positionId = null;
             }
             else
             {
-                position = last;
+                (position, positionId) = (last, lastId);
             }
         }
 
@@ -143,7 +146,7 @@ public sealed class SyncService(
         }
 
         var next = hasMore
-            ? state with { Phase = phase, Position = position }
+            ? state with { Phase = phase, Position = position, PositionId = positionId }
             : new SyncCursor(Since: state.Issued, Issued: null, Phase: SyncCursor.EventsPhase, Position: null);
 
         return new SyncPullResponse(
@@ -154,36 +157,36 @@ public sealed class SyncService(
     }
 
     /// <summary>
-    /// Ids of the next page, in <c>UpdatedAt</c> order after <paramref name="after"/>. A page never
-    /// ends inside a run of rows sharing one <c>UpdatedAt</c> (an import writes thousands at one
-    /// instant): the run is taken whole, so "after the last one" can't skip any of it. That keeps
-    /// the position a plain timestamp, the same in SQLite and Postgres.
+    /// Ids of the next page — at most <paramref name="budget"/> — in (<c>UpdatedAt</c>, <c>Id</c>)
+    /// order after the position. Keyset paging on both keys: a run of rows sharing one
+    /// <c>UpdatedAt</c> (an import writes thousands at one instant) is split across pages like any
+    /// other, without skipping or repeating a row. Both the order and the comparison run in the
+    /// database, so they agree whatever the provider's Guid ordering is.
+    ///
+    /// A position without an id comes from a cursor of an older server, which took such a run
+    /// whole: everything at that instant was sent, so the page starts after it.
     /// </summary>
-    private static async Task<(List<Guid> Ids, DateTime? Last, bool Done)> PageAsync<T>(
-        IQueryable<T> rows,
-        System.Linq.Expressions.Expression<Func<T, DateTime>> updatedAt,
-        System.Linq.Expressions.Expression<Func<T, Guid>> id,
-        DateTime? after,
-        int budget,
-        CancellationToken cancellationToken) where T : class
+    private static async Task<(List<Guid> Ids, DateTime? Last, Guid? LastId, bool Done)> PageAsync<T>(
+        IQueryable<T> rows, DateTime? after, Guid? afterId, int budget, CancellationToken cancellationToken) where T : class
     {
-        if (after is { } a)
+        if (after is { } at && afterId is { } id)
         {
-            rows = rows.Where(Greater(updatedAt, a));
+            rows = rows.Where(r => EF.Property<DateTime>(r, "UpdatedAt") > at
+                || (EF.Property<DateTime>(r, "UpdatedAt") == at && EF.Property<Guid>(r, "Id").CompareTo(id) > 0));
         }
-        var head = await rows.OrderBy(updatedAt)
+        else if (after is { } old)
+        {
+            rows = rows.Where(r => EF.Property<DateTime>(r, "UpdatedAt") > old);
+        }
+        var page = await rows
+            .OrderBy(r => EF.Property<DateTime>(r, "UpdatedAt")).ThenBy(r => EF.Property<Guid>(r, "Id"))
             .Select(r => new Stamp { Id = EF.Property<Guid>(r, "Id"), At = EF.Property<DateTime>(r, "UpdatedAt") })
             .Take(budget)
             .ToListAsync(cancellationToken);
-        if (head.Count < budget)
-        {
-            return (head.Select(h => h.Id).ToList(), head.Count > 0 ? head[^1].At : after, Done: true);
-        }
-        var last = head[^1].At;
-        var ids = head.Select(h => h.Id).ToHashSet();
-        var tail = await rows.Where(Equal(updatedAt, last)).Select(id).ToListAsync(cancellationToken);
-        ids.UnionWith(tail);
-        return (ids.ToList(), last, Done: false);
+        var ids = page.Select(p => p.Id).ToList();
+        return page.Count < budget
+            ? (ids, null, null, Done: true)
+            : (ids, page[^1].At, page[^1].Id, Done: false);
     }
 
     private sealed class Stamp
@@ -191,24 +194,6 @@ public sealed class SyncService(
         public Guid Id { get; init; }
 
         public DateTime At { get; init; }
-    }
-
-    private static System.Linq.Expressions.Expression<Func<T, bool>> Greater<T>(
-        System.Linq.Expressions.Expression<Func<T, DateTime>> member, DateTime value) =>
-        System.Linq.Expressions.Expression.Lambda<Func<T, bool>>(
-            System.Linq.Expressions.Expression.GreaterThan(member.Body, Constant(value)), member.Parameters);
-
-    private static System.Linq.Expressions.Expression<Func<T, bool>> Equal<T>(
-        System.Linq.Expressions.Expression<Func<T, DateTime>> member, DateTime value) =>
-        System.Linq.Expressions.Expression.Lambda<Func<T, bool>>(
-            System.Linq.Expressions.Expression.Equal(member.Body, Constant(value)), member.Parameters);
-
-    /// <summary>A value EF sends as a parameter (a closure member), not inlined as a literal.</summary>
-    private static System.Linq.Expressions.Expression Constant(DateTime value)
-    {
-        var holder = new { Value = value };
-        return System.Linq.Expressions.Expression.Property(
-            System.Linq.Expressions.Expression.Constant(holder), nameof(holder.Value));
     }
 
     /// <summary>Events and tasks gone from the user's calendars since <paramref name="from"/>. A record
@@ -701,9 +686,10 @@ public sealed class SyncService(
 /// Where a pull stands, handed to the client as an opaque string. Between pulls it is just
 /// <see cref="Since"/> (when the last listing began); while a listing is paged it also carries
 /// when the listing began (<see cref="Issued"/>, the next <c>Since</c>), the phase (events, then
-/// tasks) and the <c>UpdatedAt</c> reached in it.
+/// tasks) and the (<c>UpdatedAt</c>, <c>Id</c>) reached in it. Cursors of older servers carry no
+/// id (five fields): they are still read, as "everything at <see cref="Position"/> was sent".
 /// </summary>
-internal sealed record SyncCursor(DateTime? Since, DateTime? Issued, char Phase, DateTime? Position)
+internal sealed record SyncCursor(DateTime? Since, DateTime? Issued, char Phase, DateTime? Position, Guid? PositionId = null)
 {
     public const char EventsPhase = 'e';
     public const char TasksPhase = 't';
@@ -714,6 +700,10 @@ internal sealed record SyncCursor(DateTime? Since, DateTime? Issued, char Phase,
     public string Format()
     {
         var raw = string.Join(':', Version, Ticks(Since), Ticks(Issued), Phase, Ticks(Position));
+        if (PositionId is { } id)
+        {
+            raw += ":" + id.ToString("N");
+        }
         return Convert.ToBase64String(Encoding.ASCII.GetBytes(raw)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
@@ -725,7 +715,7 @@ internal sealed record SyncCursor(DateTime? Since, DateTime? Issued, char Phase,
             var b64 = value.Replace('-', '+').Replace('_', '/');
             b64 = b64.PadRight(b64.Length + (4 - b64.Length % 4) % 4, '=');
             var parts = Encoding.ASCII.GetString(Convert.FromBase64String(b64)).Split(':');
-            if (parts.Length != 5 || parts[0] != Version || parts[3].Length != 1
+            if (parts.Length is not (5 or 6) || parts[0] != Version || parts[3].Length != 1
                 || parts[3][0] is not (EventsPhase or TasksPhase))
             {
                 return null;
@@ -733,12 +723,17 @@ internal sealed record SyncCursor(DateTime? Since, DateTime? Issued, char Phase,
             var since = FromTicks(parts[1]);
             var issued = FromTicks(parts[2]);
             var position = FromTicks(parts[4]);
+            Guid? positionId = parts.Length == 6 ? Guid.ParseExact(parts[5], "N") : null;
             // Between pulls there is no listing in progress; within one, it has a start.
             if (issued is null && (parts[3][0] != EventsPhase || position is not null))
             {
                 return null;
             }
-            return new SyncCursor(since, issued, parts[3][0], position);
+            if (positionId is not null && position is null)
+            {
+                return null;
+            }
+            return new SyncCursor(since, issued, parts[3][0], position, positionId);
         }
         catch (FormatException)
         {

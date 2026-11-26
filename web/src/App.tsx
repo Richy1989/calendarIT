@@ -4,7 +4,7 @@ import { api } from './api/client'
 import { getProfile } from './api/profile'
 import { getAuthConfig, requestPasswordReset, resetPassword } from './api/password'
 import { getVisibleCalendars, getVisibleCategories, saveVisibleCalendars, saveVisibleCategories } from './prefs'
-import { getTokens, onTokensChangedElsewhere, setTokens, type AuthTokens } from './auth/authStorage'
+import { getTokens, onTokensChangedElsewhere, setTokens, tokenChange, type AuthTokens } from './auth/authStorage'
 import { signOut } from './auth/session'
 import { clearEventClipboard } from './lib/eventClipboard'
 import { getNotifyMode } from './push/webPush'
@@ -67,10 +67,15 @@ export default function App() {
     setAuth(t)
   }
 
-  const signedOut = () => {
+  /** Drops everything this tab holds of the account that was signed in. */
+  const forgetAccount = () => {
     stopLocalReminderPoller()
     clearEventClipboard()
     queryClient.clear()
+  }
+
+  const signedOut = () => {
+    forgetAccount()
     setAuth(null)
   }
 
@@ -79,9 +84,13 @@ export default function App() {
     signedOut()
   }
 
-  // The listeners below are registered once; the ref keeps them calling the latest signedOut.
+  // The listeners below are registered once; the refs keep them calling the latest of these.
   const signedOutRef = useRef(signedOut)
   signedOutRef.current = signedOut
+  const forgetAccountRef = useRef(forgetAccount)
+  forgetAccountRef.current = forgetAccount
+  const tokensRef = useRef(tokens)
+  tokensRef.current = tokens
 
   // If the refresh token has also expired, session.ts clears storage and fires this —
   // drop back to the login screen instead of leaving a dead session.
@@ -91,12 +100,22 @@ export default function App() {
     return () => window.removeEventListener('auth-expired', onExpired)
   }, [])
 
-  // Signing in or out in one tab does the same in the others.
+  // Signing in or out in one tab does the same in the others. Another tab's refresh just swaps
+  // the pair in; a different account (a sign-out and someone else's sign-in may arrive as one
+  // late event in a background tab) first drops everything cached of the previous one.
   useEffect(
     () =>
       onTokensChangedElsewhere((next) => {
-        if (!next) signedOutRef.current()
-        else setAuth((current) => (current?.refreshToken === next.refreshToken ? current : next))
+        const change = tokenChange(tokensRef.current, next)
+        if (change === 'signedOut') signedOutRef.current()
+        else if (change === 'switched') {
+          forgetAccountRef.current()
+          tokensRef.current = next
+          setAuth(next)
+        } else if (change === 'refreshed') {
+          tokensRef.current = next
+          setAuth(next)
+        }
       }),
     [],
   )

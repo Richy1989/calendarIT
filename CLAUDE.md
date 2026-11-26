@@ -171,7 +171,7 @@ due — and are logged in `NotificationLog` under the stored due, so a moved due
 They aren't synced as VALARMs (a phone would alarm twice).
 
 **App sync API** (`/api/sync`, `/api/devices`; `Infrastructure/Sync`) — for the native Android app
-(24seven, `org.hyperstarit.twentyfourseven`, offline-first). Pull = paged delta by an opaque cursor (same
+(24seven, `org.hyperstarit.twentyfourseven`, offline-first). Pull = paged delta by an opaque cursor (keyset on `(UpdatedAt, Id)`, never over the limit; same
 `UpdatedAt` + 2-min overlap + `DeletedResources` facts as CalDAV sync; tombstones carry
 `Kind`/`EntityId`), events as stored series (master + overrides, never expanded), calendars and
 categories always whole. Push = ordered ops that each call the same service method as the REST
@@ -194,7 +194,9 @@ lockout (10 fails / 15 min) is enforced manually in both `AuthService` and the C
 **Sessions**: each sign-in is a session (`RefreshToken.SessionId`, constant across rotations);
 access tokens carry it as `sid`, and `SessionValidator` (JwtBearer `OnTokenValidated`, cached 30s,
 evicted on revoke) rejects tokens whose session was signed out — revocation is immediate.
-Rotation claims the old token with a conditional UPDATE (one winner per race), and a token
+Rotation claims the old token with a conditional UPDATE (one winner per race) and stores its
+successor in the same transaction, under a per-user token lock that every revocation also takes
+(`BeginTokenWriteAsync`: SQLite's BEGIN IMMEDIATE; Postgres `FOR UPDATE` on the user row), and a token
 re-presented within 30s of its rotation is a sibling tab, not theft (no chain revocation). The SPA
 also serializes refreshes across tabs with the Web Locks API. Unknown/locked accounts still burn a
 password hash (`PasswordTiming`) so timing can't enumerate users; CalDAV failures are throttled
@@ -230,7 +232,9 @@ an unverified REPLY/CANCEL is ignored, so nobody can answer for a guest or delet
 unverified REQUEST (a forwarded invite) is delivered, but only ever as pending (NeedsAction).
 UIDs are caller-supplied, so internal invite copies are matched by a server-stamped
 `SourceOrganizerUserId`, never UID alone. Password-reset links come
-only from `PUBLIC_BASE_URL` (never the request Host) to avoid an enumeration/token-exfil oracle.
+only from `PUBLIC_BASE_URL` (never the request Host) to avoid an enumeration/token-exfil oracle,
+and are never logged: without a working mail account the operator runs
+`dotnet calendarITCore.dll reset-password-link <email>` (`AdminCommands`, prints to the terminal).
 User-named hosts (mail servers, push endpoints) are SSRF-guarded on the address actually dialled (`OutboundHostPolicy`;
 `MAIL_HOST_POLICY`, push is always public-only). Security headers (CSP etc.) are set by the app
 itself (`SecurityHeaders`), so they hold without nginx; nginx hides the proxied duplicates.
@@ -267,7 +271,9 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   certificates or exactly the pinned one (any host name). Another one → `certificateChanged`,
   sync stops until reviewed. OkHttp tries IPv4/IPv6 side by side and hides TLS failures as
   *suppressed* exceptions: test with `isCertificateRefusal()`/`allFailures()`, not the cause chain.
-- **Offline-first store** (`data/db`): server copies (`events`, `overrides`, `tasks`) are written
+- **Offline-first store** (`data/db`): every synced row is keyed by `(accountId, id)` — two
+  servers restored from one backup hand out the same ids — so every DAO lookup, join and delete
+  names the account, and maps over several accounts use `scopedKey`/`byKey`. Server copies (`events`, `overrides`, `tasks`) are written
   only by sync; the user's pending changes live in same-shaped `*_edits` tables and the queries
   read both (an edit wins). `sync/LocalChanges` writes the edit and queues an `outbox` op (folding:
   edit into a pending create/edit, create+delete cancels). `sync/CalendarItSync`: push (results:
@@ -275,7 +281,7 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   drop that thing's queue + a `notices` row, "apply mine anyway" re-queues on the new version;
   error → keep with backoff), then pull (paged; calendars/categories whole; a reset or first
   listing deletes what it didn't name), then drop edits nothing is waiting on. Room schemas are
-  exported (`app/schemas`), `MIGRATION_1_2` is validated in `MigrationTest` — never a destructive
+  exported (`app/schemas`), `MIGRATION_1_2`/`MIGRATION_2_3` are validated in `MigrationTest` — never a destructive
   migration.
 - **Calendar views** (`ui/calendar`): month (kizitonwose `HorizontalCalendar`), week/day (own
   hour grid, `calendar/TimelineLayout` puts overlaps side by side), agenda; a read-only detail

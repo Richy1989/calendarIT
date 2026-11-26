@@ -8,8 +8,8 @@ namespace CalendarIT.Infrastructure.Mail;
 public interface IPasswordResetMailer
 {
     /// <summary>
-    /// Emails the link, or — when the account has no usable mail account — writes it to the
-    /// application log so the operator can still recover the account.
+    /// Queues the link for the user's own mail account. When there is none, nothing is sent and the
+    /// operator is told (without the link) how to issue one by hand.
     /// </summary>
     Task SendAsync(Guid userId, string toAddress, string resetLink, CancellationToken cancellationToken = default);
 }
@@ -27,16 +27,19 @@ public interface IPasswordResetMailer
 /// seconds for a real account and milliseconds for an unknown one — which told anyone who asked
 /// exactly which addresses have accounts here.
 ///
-/// When no mail account is connected there is nothing to send with. Rather than leave the
-/// account unrecoverable, the link is logged at warning level: on a self-hosted box whoever can
-/// read the container log already has the database, so this grants no access they didn't have —
-/// and it is the difference between a recoverable instance and one that needs SQL surgery. (If a
-/// queued reset mail can't be delivered, the outbox job logs it the same way.)
+/// When no mail account is connected there is nothing to send with. The link is <em>not</em>
+/// logged: logs end up in log shippers, support threads and bug reports, and a working reset link
+/// there is an account takeover. Instead the log says how the operator issues one themselves —
+/// the <c>reset-password-link</c> command, which prints it to their own terminal only. (A queued
+/// reset mail that can't be delivered is handled the same way by the outbox job.)
 /// </summary>
 public sealed class PasswordResetMailer(
     IMailOutbox outbox,
     ILogger<PasswordResetMailer> logger) : IPasswordResetMailer
 {
+    /// <summary>What the operator runs instead; the link goes to their terminal, never to the log.</summary>
+    public const string ResetCommandHint = "dotnet calendarITCore.dll reset-password-link <email> (see README, \"Password recovery\")";
+
     public async Task SendAsync(Guid userId, string toAddress, string resetLink, CancellationToken cancellationToken = default)
     {
         var message = new MimeMessage();
@@ -62,8 +65,8 @@ public sealed class PasswordResetMailer(
         }
 
         logger.LogWarning(
-            "[password-reset:no-mail] user {UserId} ({Email}) has no working mail account, so the link " +
-            "could not be emailed. Give it to them by hand — it expires and is single-use: {ResetLink}",
-            userId, toAddress, resetLink);
+            "[password-reset:no-mail] user {UserId} has no working mail account, so no reset link was sent. " +
+            "To issue one by hand, run: " + ResetCommandHint,
+            userId);
     }
 }

@@ -45,6 +45,7 @@ import { Popover } from './components/Popover'
 import { addDays, allDayDate, dayKey, formatTime, parseLocalValue, toLocalInput, toOffsetIso } from './lib/dates'
 import { occurrenceOf, type OccurrenceRef } from './lib/occurrences'
 import { useUndoStack } from './lib/useUndoStack'
+import { canUndoDelete, dtoToRequest, eventEditUndo, occurrenceEditUndo, type EventWrites } from './lib/eventOps'
 import { NARROW_QUERY, useMediaQuery } from './lib/useMediaQuery'
 import TaskPanel from './components/TaskPanel'
 import Sidebar from './components/Sidebar'
@@ -141,27 +142,6 @@ function draftToRequest(d: EventDraft): SaveEventRequest {
     timeZone: d.timeZone === undefined ? browserTz : d.timeZone,
     reminders: d.reminders.map((r) => ({ minutesBefore: r.minutesBefore, channel: r.channel })),
     attendees: d.attendees.map((a) => ({ email: a.email, name: a.name ?? null })),
-  }
-}
-
-// A server DTO → a save request, for recreating an event when a delete is undone. The DTO's
-// start/end are already API-shaped ISO instants, so they pass straight through. (Exdates
-// aren't carried on the DTO, so undoing the delete of a *recurring series* restores it
-// without its previously-excluded occurrences — a rare, acknowledged edge.)
-function dtoToRequest(dto: EventDto): SaveEventRequest {
-  return {
-    calendarId: dto.calendarId ?? null,
-    title: dto.title,
-    description: dto.description ?? null,
-    location: dto.location ?? null,
-    categoryId: dto.categoryId ?? null,
-    start: dto.start,
-    end: dto.end ?? null,
-    allDay: dto.allDay,
-    recurrence: dto.recurrence ?? null,
-    timeZone: dto.timeZone ?? null,
-    reminders: dto.reminders.map((r) => ({ minutesBefore: Number(r.minutesBefore), channel: r.channel })),
-    attendees: dto.attendees.map((a) => ({ email: a.email, name: a.name ?? null })),
   }
 }
 
@@ -719,6 +699,13 @@ export default function CalendarView({
     onSuccess: invalidate,
   })
 
+  // The writes undo/redo entries make, shared by the editor and drag-and-drop (lib/eventOps).
+  const writes: EventWrites = {
+    updateEvent: (id, body) => updateMut.mutateAsync({ id, body }),
+    upsertOccurrence: (seriesId, occurrence, body) => occurrenceMut.mutateAsync({ seriesId, occurrence, body }),
+    resetOccurrence: (seriesId, occurrence) => resetMut.mutateAsync({ seriesId, occurrence }),
+  }
+
   const doUndo = useCallback(async () => {
     try {
       const label = await undo()
@@ -974,20 +961,10 @@ export default function CalendarView({
       const prev = originalEdit.current
       const prevBody = prev?.seriesId === seriesId && prev.occurrence === occurrence ? draftToRequest(prev) : null
       // Undo puts the occurrence back as it was: its earlier edits, or plain series again.
-      const restore = () =>
-        d.isOverride && prevBody
-          ? occurrenceMut.mutateAsync({ seriesId, occurrence, body: prevBody })
-          : resetMut.mutateAsync({ seriesId, occurrence })
+      const entry = occurrenceEditUndo(writes, { seriesId, occurrence, hadOwnEdits: !!d.isOverride }, prevBody, body)
       occurrenceMut.mutate(
         { seriesId, occurrence, body },
-        {
-          onSuccess: () =>
-            record({
-              label: `edited “${label}” (this occurrence)`,
-              undo: restore,
-              redo: () => occurrenceMut.mutateAsync({ seriesId, occurrence, body }),
-            }),
-        },
+        { onSuccess: () => entry && record({ label: `edited “${label}” (this occurrence)`, ...entry }) },
       )
     } else if (d.id) {
       const id = d.id
@@ -999,11 +976,7 @@ export default function CalendarView({
         {
           onSuccess: () => {
             if (!prevBody) return
-            record({
-              label: `edited “${label}”`,
-              undo: () => updateMut.mutateAsync({ id, body: prevBody }),
-              redo: () => updateMut.mutateAsync({ id, body }),
-            })
+            record({ label: `edited “${label}”`, ...eventEditUndo(writes, id, prevBody, body) })
           },
         },
       )
@@ -1024,10 +997,18 @@ export default function CalendarView({
     closeDraft()
   }
 
-  // Deletes a whole event (a series with all its occurrences). Undo recreates it.
-  const remove = async (id: string) => {
+  // Deletes a whole event. A one-off can be undone (re-created from its snapshot). A series
+  // can't be re-created faithfully — its skipped dates and edited occurrences aren't on the DTO —
+  // so it asks first and isn't put on the undo stack (see canUndoDelete). `then` runs once it's gone.
+  const [confirmSeries, setConfirmSeries] = useState<{ id: string; title: string; then?: () => void } | null>(null)
+  const remove = async (id: string, then?: () => void) => {
     // Capture the event before it's gone, so undo can recreate it.
     const snapshot = await getEvent(id).catch(() => null)
+    if (snapshot && !canUndoDelete(snapshot)) {
+      setConfirmSeries({ id, title: snapshot.title || 'event', then })
+      closeDraft()
+      return
+    }
     deleteMut.mutate(
       { id },
       {
@@ -1040,10 +1021,23 @@ export default function CalendarView({
             undo: async () => { liveId = (await createMut.mutateAsync(body)).id },
             redo: () => deleteMut.mutateAsync({ id: liveId ?? id }),
           })
+          then?.()
         },
       },
     )
     closeDraft()
+  }
+  const doRemoveSeries = (c: { id: string; title: string; then?: () => void }) => {
+    setConfirmSeries(null)
+    deleteMut.mutate(
+      { id: c.id },
+      {
+        onSuccess: () => {
+          showToast(`Deleted the series “${c.title}”`)
+          c.then?.()
+        },
+      },
+    )
   }
 
   // Deletes one occurrence of a series. Undo brings it back — with its own edits, if it had some.
@@ -1111,17 +1105,16 @@ export default function CalendarView({
     void writeIcsToSystemClipboard(() => exportEventIcs(masterId))
   }
 
-  // Cut: copy the event to the clipboard, then delete it (undoable — Ctrl-Z brings it back).
-  // Always the whole series, matching Copy; Paste (Ctrl-V) re-creates it on the target day. No
-  // draft is open here, so this reuses the same undoable delete path as the context menu.
+  // Cut: copy the event to the clipboard, then delete it through the same path as the context
+  // menu (a one-off is undoable; a series asks first). Always the whole series, matching Copy;
+  // Paste (Ctrl-V) re-creates it on the target day.
   const cutEvent = async (masterId: string) => {
     const dto = await getEvent(masterId).catch(() => null)
     if (!dto) { showToast('Couldn’t cut that'); return }
     writeEventClipboard(snapshotFromDto(dto))
     void writeIcsToSystemClipboard(() => exportEventIcs(masterId))
     clearEventSelection()
-    await remove(masterId)
-    showToast(`Cut “${dto.title || 'event'}”`)
+    await remove(masterId, () => showToast(`Cut “${dto.title || 'event'}”`))
   }
 
   // Paste the clipboard event onto a day, preserving its time-of-day and duration. Creates a
@@ -1257,20 +1250,13 @@ export default function CalendarView({
     const ref = info.event.extendedProps.occurrence as OccurrenceRef | null
     if (ref) {
       const { seriesId, occurrence } = ref
+      // Back where it was: its earlier edits (the pre-drag box), or plain series again.
+      const entry = occurrenceEditUndo(writes, { seriesId, occurrence, hadOwnEdits: !!ref.overrideId }, oldBody, newBody)
       occurrenceMut.mutate(
         { seriesId, occurrence, body: newBody },
         {
           onError: () => info.revert(),
-          onSuccess: () =>
-            record({
-              label: `moved “${info.event.title || 'event'}” (this occurrence)`,
-              // Back where it was: its earlier edits, or plain series again.
-              undo: () =>
-                ref.overrideId
-                  ? occurrenceMut.mutateAsync({ seriesId, occurrence, body: oldBody })
-                  : resetMut.mutateAsync({ seriesId, occurrence }),
-              redo: () => occurrenceMut.mutateAsync({ seriesId, occurrence, body: newBody }),
-            }),
+          onSuccess: () => entry && record({ label: `moved “${info.event.title || 'event'}” (this occurrence)`, ...entry }),
         },
       )
       return
@@ -1282,12 +1268,7 @@ export default function CalendarView({
         // otherwise the calendar keeps showing times that were never stored.
         onError: () => info.revert(),
         // Record only once the move actually persisted (a reverted move isn't on the stack).
-        onSuccess: () =>
-          record({
-            label: `moved “${info.event.title || 'event'}”`,
-            undo: () => updateMut.mutateAsync({ id, body: oldBody }),
-            redo: () => updateMut.mutateAsync({ id, body: newBody }),
-          }),
+        onSuccess: () => record({ label: `moved “${info.event.title || 'event'}”`, ...eventEditUndo(writes, id, oldBody, newBody) }),
       },
     )
   }
@@ -1903,6 +1884,15 @@ export default function CalendarView({
           message="Delete this occurrence and every later one? Earlier occurrences stay. This can't be undone."
           onConfirm={() => doRemoveFollowing(confirmFollowing)}
           onClose={() => setConfirmFollowing(null)}
+        />
+      )}
+
+      {confirmSeries && (
+        <ConfirmDialog
+          title="Delete series"
+          message={`Delete “${confirmSeries.title}” with all its occurrences? This can't be undone.`}
+          onConfirm={() => doRemoveSeries(confirmSeries)}
+          onClose={() => setConfirmSeries(null)}
         />
       )}
 
