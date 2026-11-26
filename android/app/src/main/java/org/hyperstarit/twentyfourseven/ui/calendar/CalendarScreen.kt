@@ -39,8 +39,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -103,6 +105,10 @@ fun CalendarScreen(
     val scope = rememberCoroutineScope()
     val today = LocalDate.now(formats.zone)
 
+    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val sidebarButton: @Composable () -> Unit = {
+        RoundIconButton(Glyphs.menu, "Open calendar sidebar", { scope.launch { drawer.open() } })
+    }
     RightCalendarDrawer(
         state = drawer,
         sidebar = {
@@ -149,10 +155,11 @@ fun CalendarScreen(
                             ViewMode.AGENDA -> "Coming up"
                             ViewMode.MONTH -> null
                         },
+                        navigation = if (isRtl) sidebarButton else null,
                         actions = {
                             TodayButton(today.dayOfMonth, onClick = viewModel::today)
                             RoundIconButton(Glyphs.sync, "Sync now", viewModel::syncNow)
-                            RoundIconButton(Glyphs.menu, "Open calendar sidebar", { scope.launch { drawer.open() } })
+                            if (!isRtl) sidebarButton()
                         },
                     )
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {

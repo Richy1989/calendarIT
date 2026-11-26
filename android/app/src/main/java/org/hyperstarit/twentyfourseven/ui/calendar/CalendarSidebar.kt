@@ -1,6 +1,7 @@
 package org.hyperstarit.twentyfourseven.ui.calendar
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
@@ -178,33 +180,50 @@ private fun SidebarMonth(model: CalendarViewModel, focus: LocalDate, formats: Fo
     val first = month.with(TemporalAdjusters.previousOrSame(formats.firstDayOfWeek))
     val appointments = remember(model, first) { model.appointments(flowOf(DateRange(first, first.plusWeeks(6)))) }
     val shown by appointments.collectAsStateWithLifecycle(initialValue = null)
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(formats.monthTitle(month), Modifier.weight(1f), color = c.text, style = MaterialTheme.typography.titleMedium)
-        RoundIconButton(Glyphs.chevronLeft, "Previous month", { offset-- }, filled = false)
-        RoundIconButton(Glyphs.chevronRight, "Next month", { offset++ }, filled = false)
-    }
-    Row { repeat(7) {
-        Box(Modifier.weight(1f).height(26.dp), contentAlignment = Alignment.Center) {
-            Text(formats.dayName(first.plusDays(it.toLong()).dayOfWeek).take(1), style = Brand.label, color = c.textDim)
+    Column(Modifier.fillMaxWidth().pointerInput(month) {
+        val threshold = 32.dp.toPx()
+        var distance = 0f
+        detectHorizontalDragGestures(
+            onDragStart = { distance = 0f },
+            onDragEnd = {
+                when {
+                    distance <= -threshold -> offset++
+                    distance >= threshold -> offset--
+                }
+            },
+        ) { change, delta ->
+            change.consume()
+            distance += delta
         }
-    } }
-    repeat(6) { week ->
-        val start = first.plusWeeks(week.toLong())
-        val active = focus >= start && focus < start.plusWeeks(1)
-        Row(Modifier.fillMaxWidth().background(if (active) c.surface2 else Color.Transparent, CircleShape)) {
-            repeat(7) { index ->
-                val date = start.plusDays(index.toLong())
-                val selected = date == focus
-                val dots = shown?.on(date).orEmpty().map { it.color }.distinct().take(3)
-                Box(Modifier.weight(1f).height(40.dp).clickable { onDate(date) }
-                    .semantics { contentDescription = formats.longDate(date) }, contentAlignment = Alignment.Center) {
-                    Box(Modifier.size(28.dp).background(if (selected) c.accent else Color.Transparent, CircleShape),
-                        contentAlignment = Alignment.Center) {
-                        Text(date.dayOfMonth.toString(), style = MaterialTheme.typography.labelLarge,
-                            color = if (selected) c.onAccent else if (date.month == month.month) c.text else c.textFaint)
-                    }
-                    Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        dots.forEach { Box(Modifier.size(3.dp).clip(CircleShape).background(parseColor(it) ?: c.accent)) }
+    }) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(formats.monthTitle(month), Modifier.weight(1f), color = c.text, style = MaterialTheme.typography.titleMedium)
+            RoundIconButton(Glyphs.chevronLeft, "Previous month", { offset-- }, filled = false)
+            RoundIconButton(Glyphs.chevronRight, "Next month", { offset++ }, filled = false)
+        }
+        Row { repeat(7) {
+            Box(Modifier.weight(1f).height(26.dp), contentAlignment = Alignment.Center) {
+                Text(formats.dayName(first.plusDays(it.toLong()).dayOfWeek).take(1), style = Brand.label, color = c.textDim)
+            }
+        } }
+        repeat(6) { week ->
+            val start = first.plusWeeks(week.toLong())
+            val active = focus >= start && focus < start.plusWeeks(1)
+            Row(Modifier.fillMaxWidth().background(if (active) c.surface2 else Color.Transparent, CircleShape)) {
+                repeat(7) { index ->
+                    val date = start.plusDays(index.toLong())
+                    val selected = date == focus
+                    val dots = shown?.on(date).orEmpty().map { it.color }.distinct().take(3)
+                    Box(Modifier.weight(1f).height(40.dp).clickable { onDate(date) }
+                        .semantics { contentDescription = formats.longDate(date) }, contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(28.dp).background(if (selected) c.accent else Color.Transparent, CircleShape),
+                            contentAlignment = Alignment.Center) {
+                            Text(date.dayOfMonth.toString(), style = MaterialTheme.typography.labelLarge,
+                                color = if (selected) c.onAccent else if (date.month == month.month) c.text else c.textFaint)
+                        }
+                        Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            dots.forEach { Box(Modifier.size(3.dp).clip(CircleShape).background(parseColor(it) ?: c.accent)) }
+                        }
                     }
                 }
             }
