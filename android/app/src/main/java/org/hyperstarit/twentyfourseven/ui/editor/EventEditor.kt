@@ -7,10 +7,19 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import org.hyperstarit.twentyfourseven.ui.theme.PrimaryButton
+import org.hyperstarit.twentyfourseven.ui.theme.RoundIconButton
+import org.hyperstarit.twentyfourseven.ui.theme.TextAction
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
@@ -21,7 +30,6 @@ import org.hyperstarit.twentyfourseven.ui.theme.Banner
 import org.hyperstarit.twentyfourseven.ui.theme.FormRow
 import org.hyperstarit.twentyfourseven.ui.theme.Glyphs
 import org.hyperstarit.twentyfourseven.ui.theme.Hairline
-import org.hyperstarit.twentyfourseven.ui.theme.Panel
 import org.hyperstarit.twentyfourseven.ui.theme.Brand
 import org.hyperstarit.twentyfourseven.ui.theme.BrandSwitch
 import org.hyperstarit.twentyfourseven.ui.theme.ValueChip
@@ -168,7 +176,8 @@ class EventEditorViewModel @Inject constructor(
 
 private val REMINDER_CHOICES = listOf(0, 5, 10, 15, 30, 60, 120, 1440, 2880, 10080)
 
-/** Creating or editing an appointment, full screen, in the web form's layout. */
+/** Creating or editing an appointment, in a compact sheet. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EventEditor(target: EditTarget, formats: Formats, onClose: () -> Unit, viewModel: EventEditorViewModel = hiltViewModel()) {
     val session = remember { Any() }
@@ -182,72 +191,82 @@ fun EventEditor(target: EditTarget, formats: Formats, onClose: () -> Unit, viewM
         target.scope == Scope.FOLLOWING -> "Edit this and following"
         else -> "Edit appointment"
     }
-    EditorScaffold(kind, onClose, onSave = { viewModel.save(onClose) }, saveEnabled = viewModel.ready) {
-        val calendar = viewModel.calendars.firstOrNull { it.accountId == f.accountId && it.id == f.calendarId }
-        val accountId = calendar?.accountId
-        val categories = viewModel.categories.filter { it.accountId == accountId }
-        val category = categories.firstOrNull { it.id == f.categoryId }
-        val accent = parseColor(category?.color) ?: parseColor(calendar?.color) ?: c.accent
-        Row(Modifier.padding(start = 8.dp, top = 4.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(width = 4.dp, height = 34.dp).clip(RoundedCornerShape(2.dp)).background(accent))
-            InlineField(
-                f.title, { f.title = it }, "Add title", Modifier.padding(start = 14.dp),
-                style = MaterialTheme.typography.headlineSmall,
-            )
+    ModalBottomSheet(
+        onDismissRequest = onClose,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = c.surface,
+        dragHandle = null,
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(kind, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = c.text)
+            RoundIconButton(Glyphs.close, "Cancel", onClose)
         }
-        Panel(padding = 6.dp) {
+        var optionsOverride by rememberSaveable { mutableStateOf<Boolean?>(null) }
+        val showOptions = optionsOverride ?: (target is EditTarget.Existing && (f.notes.isNotBlank() || f.reminders.isNotEmpty()))
+        Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
+            val calendar = viewModel.calendars.firstOrNull { it.accountId == f.accountId && it.id == f.calendarId }
+            val categories = viewModel.categories.filter { it.accountId == calendar?.accountId }
+            val category = categories.firstOrNull { it.id == f.categoryId }
+            FormRow(Glyphs.text) {
+                InlineField(f.title, { f.title = it }, "Add title", style = MaterialTheme.typography.titleLarge)
+            }
+            Hairline()
             FormRow(Glyphs.clock) {
+                ValueChip(formats.shortDay(f.startDate), { picking = "startDate" }, Modifier.weight(1.3f).semantics { contentDescription = "Start date" })
+                if (!f.allDay) {
+                    Gap()
+                    ValueChip(formats.timeOf(f.startTime), { picking = "startTime" }, Modifier.weight(1f).semantics { contentDescription = "Start time" }, mono = true)
+                }
+            }
+            FormRow(null) {
+                ValueChip(formats.shortDay(f.endDate), { picking = "endDate" }, Modifier.weight(1.3f).semantics { contentDescription = "End date" })
+                if (!f.allDay) {
+                    Gap()
+                    ValueChip(formats.timeOf(f.endTime), { picking = "endTime" }, Modifier.weight(1f).semantics { contentDescription = "End time" }, mono = true)
+                }
+            }
+            FormRow(null) {
                 LabeledLine("All day") { BrandSwitch(f.allDay, { f.allDay = it }) }
             }
-            FormRow(null) {
-                LabeledLine("Starts") {
-                    ValueChip(formats.shortDay(f.startDate), { picking = "startDate" })
-                    if (!f.allDay) { Gap(); ValueChip(formats.timeOf(f.startTime), { picking = "startTime" }, Modifier.widthIn(min = 112.dp), mono = true) }
-                }
-            }
-            FormRow(null) {
-                LabeledLine("Ends") {
-                    ValueChip(formats.shortDay(f.endDate), { picking = "endDate" })
-                    if (!f.allDay) { Gap(); ValueChip(formats.timeOf(f.endTime), { picking = "endTime" }, Modifier.widthIn(min = 112.dp), mono = true) }
-                }
-            }
-            if (!viewModel.isSeriesPart) {
-                Hairline(Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
-                RepeatField(f, formats, onPickUntil = { picking = "until" })
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        Panel(padding = 6.dp) {
+            if (!viewModel.isSeriesPart) RepeatField(f, formats, onPickUntil = { picking = "until" })
+            Hairline()
             if (target !is EditTarget.Existing || target.scope != Scope.ONE) {
                 FormRow(Glyphs.calendar) {
-                    LabeledLine("Calendar") {
-                        ChoiceChip(
-                            calendar?.name ?: "—", viewModel.calendars.map { scopedKey(it.accountId, it.id) to it.name },
-                            { key -> viewModel.calendars.firstOrNull { scopedKey(it.accountId, it.id) == key }?.let { f.accountId = it.accountId; f.calendarId = it.id } },
-                            dots = viewModel.calendars.associate { scopedKey(it.accountId, it.id) to (parseColor(it.color) ?: c.accent) },
-                        )
-                    }
+                    ChoiceChip(
+                        calendar?.name ?: "Calendar", viewModel.calendars.map { scopedKey(it.accountId, it.id) to it.name },
+                        { key -> viewModel.calendars.firstOrNull { scopedKey(it.accountId, it.id) == key }?.let {
+                            if (f.accountId != it.accountId) f.categoryId = null
+                            f.accountId = it.accountId
+                            f.calendarId = it.id
+                        } },
+                        modifier = Modifier.semantics { contentDescription = "Calendar" },
+                        dots = viewModel.calendars.associate { scopedKey(it.accountId, it.id) to (parseColor(it.color) ?: c.accent) },
+                        selected = calendar?.let { scopedKey(it.accountId, it.id) },
+                    )
                 }
             }
             if (categories.isNotEmpty()) {
                 FormRow(Glyphs.tag) {
-                    LabeledLine("Category") {
-                        ChoiceChip(
-                            category?.name ?: "None", listOf<Pair<String?, String>>(null to "None") + categories.map { it.id to it.name }, { f.categoryId = it },
-                            dots = categories.associate<_, String?, androidx.compose.ui.graphics.Color> { it.id to (parseColor(it.color) ?: c.accent) },
-                        )
-                    }
+                    ChoiceChip(
+                        category?.name ?: "Add category", listOf<Pair<String?, String>>(null to "None") + categories.map { it.id to it.name },
+                        { f.categoryId = it }, modifier = Modifier.semantics { contentDescription = "Category" },
+                        dots = categories.associate { it.id to (parseColor(it.color) ?: c.accent) }, selected = category?.id,
+                    )
                 }
             }
             FormRow(Glyphs.pin) { InlineField(f.location, { f.location = it }, "Add location") }
+            if (showOptions) {
+                FormRow(Glyphs.text) { InlineField(f.notes, { f.notes = it }, "Add notes", singleLine = false) }
+                RemindersField(f)
+            }
+            viewModel.error?.let { Banner(it) }
         }
-        Spacer(Modifier.height(12.dp))
-        Panel(padding = 6.dp) { RemindersField(f) }
-        Spacer(Modifier.height(12.dp))
-        Panel(padding = 6.dp) {
-            FormRow(Glyphs.text) { InlineField(f.notes, { f.notes = it }, "Add notes", singleLine = false, minLines = 3) }
+        Hairline()
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextAction(if (showOptions) "Fewer options" else "More options", { optionsOverride = !showOptions })
+            Spacer(Modifier.weight(1f))
+            PrimaryButton("Save", { viewModel.save(onClose) }, enabled = viewModel.ready)
         }
-        viewModel.error?.let { Banner(it, Modifier.padding(top = 12.dp)) }
     }
     when (picking) {
         "startDate" -> PickDate(f.startDate, { picking = null }) { f.moveStart(it, f.startTime) }
@@ -347,9 +366,6 @@ private fun Stepper(value: Int, range: IntRange, onChange: (Int) -> Unit) {
 private fun RemindersField(f: EventForm) {
     val c = Brand.colors
     var adding by remember { mutableStateOf(false) }
-    if (f.reminders.isEmpty()) {
-        FormRow(Glyphs.bell) { Text("No reminders", color = c.textFaint, modifier = Modifier.weight(1f)) }
-    }
     f.reminders.forEachIndexed { i, r ->
         FormRow(if (i == 0) Glyphs.bell else null) {
             Text(reminderText(r.minutesBefore, f.allDay), modifier = Modifier.weight(1f), color = c.text)
@@ -364,7 +380,7 @@ private fun RemindersField(f: EventForm) {
             ) { Icon(Glyphs.close, "Remove reminder", tint = c.textFaint, modifier = Modifier.size(18.dp)) }
         }
     }
-    FormRow(null) {
+    FormRow(if (f.reminders.isEmpty()) Glyphs.bell else null) {
         Box {
             AddLink("Add reminder") { adding = true }
             DropdownMenu(expanded = adding, onDismissRequest = { adding = false }, containerColor = c.surface2, shape = RoundedCornerShape(14.dp)) {

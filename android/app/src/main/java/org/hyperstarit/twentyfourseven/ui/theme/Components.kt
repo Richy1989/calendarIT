@@ -371,7 +371,7 @@ fun FormRow(icon: ImageVector?, modifier: Modifier = Modifier, onClick: (() -> U
 
 /** A value a row lets you change: on surface-2 like the web's pickers; [menu] adds a chevron. */
 @Composable
-fun ValueChip(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, mono: Boolean = false, emphasis: Boolean = false, menu: Boolean = false) {
+fun ValueChip(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, mono: Boolean = false, emphasis: Boolean = false, menu: Boolean = false, dot: Color? = null) {
     val c = Brand.colors
     Row(
         modifier.clip(RoundedCornerShape(10.dp)).background(c.surface2).border(1.dp, c.hairline, RoundedCornerShape(10.dp))
@@ -379,6 +379,10 @@ fun ValueChip(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, 
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (dot != null) {
+            ColorDot(dot)
+            Spacer(Modifier.width(8.dp))
+        }
         Text(
             text,
             style = if (mono) Brand.data.copy(fontSize = 14.sp) else MaterialTheme.typography.bodyMedium,

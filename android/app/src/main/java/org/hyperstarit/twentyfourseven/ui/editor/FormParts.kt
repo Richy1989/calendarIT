@@ -110,11 +110,11 @@ fun InlineField(
 
 /** A value with a menu of choices; [dots] puts a colour before a choice (calendars, categories). */
 @Composable
-fun <T> ChoiceChip(shown: String, options: List<Pair<T, String>>, onPick: (T) -> Unit, modifier: Modifier = Modifier, dots: Map<T, Color> = emptyMap()) {
+fun <T> ChoiceChip(shown: String, options: List<Pair<T, String>>, onPick: (T) -> Unit, modifier: Modifier = Modifier, dots: Map<T, Color> = emptyMap(), selected: T? = null) {
     val c = Brand.colors
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
-        ValueChip(shown, { open = true }, menu = true)
+        ValueChip(shown, { open = true }, menu = true, dot = selected?.let { dots[it] })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = c.surface2, shape = RoundedCornerShape(14.dp)) {
             options.forEach { (value, name) ->
                 DropdownMenuItem(
