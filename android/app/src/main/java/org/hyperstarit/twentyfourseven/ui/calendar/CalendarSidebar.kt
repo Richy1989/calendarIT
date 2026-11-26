@@ -37,12 +37,12 @@ import org.hyperstarit.twentyfourseven.data.db.scopedKey
 import org.hyperstarit.twentyfourseven.ui.theme.*
 
 @Composable
-internal fun RightCalendarDrawer(state: DrawerState, sidebar: @Composable () -> Unit, content: @Composable () -> Unit) {
+internal fun CalendarDrawer(state: DrawerState, sidebar: @Composable () -> Unit, content: @Composable () -> Unit) {
     val direction = LocalLayoutDirection.current
     BoxWithConstraints {
         val width = minOf(360.dp, maxWidth * .83f)
-        // Material anchors its modal drawer at start. Mirror the container and its gesture only.
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        // Anchor the drawer to the physical left edge in every locale.
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             ModalNavigationDrawer(
                 drawerState = state,
                 gesturesEnabled = state.isOpen,

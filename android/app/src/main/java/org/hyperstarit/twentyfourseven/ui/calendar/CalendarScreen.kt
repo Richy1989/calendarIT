@@ -109,7 +109,7 @@ fun CalendarScreen(
     val sidebarButton: @Composable () -> Unit = {
         RoundIconButton(Glyphs.menu, "Open calendar sidebar", { scope.launch { drawer.open() } })
     }
-    RightCalendarDrawer(
+    CalendarDrawer(
         state = drawer,
         sidebar = {
             CalendarSidebar(
@@ -155,11 +155,11 @@ fun CalendarScreen(
                             ViewMode.AGENDA -> "Coming up"
                             ViewMode.MONTH -> null
                         },
-                        navigation = if (isRtl) sidebarButton else null,
+                        navigation = if (isRtl) null else sidebarButton,
                         actions = {
                             TodayButton(today.dayOfMonth, onClick = viewModel::today)
                             RoundIconButton(Glyphs.sync, "Sync now", viewModel::syncNow)
-                            if (!isRtl) sidebarButton()
+                            if (isRtl) sidebarButton()
                         },
                     )
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
