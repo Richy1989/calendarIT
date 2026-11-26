@@ -8,10 +8,11 @@ import org.hyperstarit.twentyfourseven.data.db.CategoryEntity
 import org.hyperstarit.twentyfourseven.data.db.EventData
 import org.hyperstarit.twentyfourseven.data.db.OverrideData
 import org.hyperstarit.twentyfourseven.data.db.Reminder
+import org.hyperstarit.twentyfourseven.data.db.scopedKey
 
 /** One appointment as a view shows it: a one-off, one occurrence of a series, or an edited occurrence. */
 data class Occurrence(
-    /** Unique among everything shown: the event id, plus the occurrence's original start for a series. */
+    /** Unique among everything shown: the account and event id, plus the occurrence's original start for a series. */
     val key: String,
     val eventId: String,
     /** The series this is an occurrence of (also for an edited one); null for a one-off. */
@@ -59,6 +60,15 @@ data class Occurrence(
     }
 }
 
+/** Calendars or categories of every account, keyed for [Occurrences.build]. */
+fun <T> List<T>.byKey(accountId: (T) -> String, id: (T) -> String): Map<String, T> = associateBy { scopedKey(accountId(it), id(it)) }
+
+@JvmName("calendarsByKey")
+fun List<CalendarEntity>.byKey(): Map<String, CalendarEntity> = byKey({ it.accountId }, { it.id })
+
+@JvmName("categoriesByKey")
+fun List<CategoryEntity>.byKey(): Map<String, CategoryEntity> = byKey({ it.accountId }, { it.id })
+
 /** The dates [from, to) as the viewer's calendar shows them. */
 data class DateRange(val from: LocalDate, val to: LocalDate)
 
@@ -74,6 +84,7 @@ object Occurrences {
     private const val HOUR = 3_600_000L
     private const val DAY = 86_400_000L
 
+    /** [calendars] and [categories] are keyed by [scopedKey] (see [byKey]): ids repeat across accounts. */
     fun build(
         events: List<EventData>,
         overrides: List<OverrideData>,
@@ -87,23 +98,24 @@ object Occurrences {
         val to = range.to.atStartOfDay(zone).toInstant().toEpochMilli()
         val fromDay = Recurrence.dayMillis(range.from)
         val toDay = Recurrence.dayMillis(range.to)
-        val visible = events.filter { it.calendarId !in hiddenCalendars && it.calendarId in calendars }
-        val seriesById = visible.filter { it.recurrence != null }.associateBy { it.id }
+        val visible = events.filter { it.calendarId !in hiddenCalendars && scopedKey(it.accountId, it.calendarId) in calendars }
+        val seriesById = visible.filter { it.recurrence != null }.associateBy { scopedKey(it.accountId, it.id) }
         val result = ArrayList<Occurrence>()
 
         fun color(event: EventData, categoryId: String?): String? {
-            val calendar = calendars[event.calendarId]
-            return categoryId?.let { categories[it]?.color }
-                ?: (if (categoryId == null) calendar?.defaultCategoryId?.let { categories[it]?.color } else null)
+            val calendar = calendars[scopedKey(event.accountId, event.calendarId)]
+            fun category(id: String) = categories[scopedKey(event.accountId, id)]
+            return categoryId?.let { category(it)?.color }
+                ?: (if (categoryId == null) calendar?.defaultCategoryId?.let { category(it)?.color } else null)
                 ?: event.color
                 ?: calendar?.color
         }
 
         fun add(event: EventData, key: String, start: Long, end: Long, seriesId: String?, recurrenceId: Long?, o: OverrideData? = null) {
             if (result.size >= MAX) return
-            val calendar = calendars[event.calendarId]
+            val calendar = calendars[scopedKey(event.accountId, event.calendarId)]
             result += Occurrence(
-                key = key, eventId = o?.id ?: event.id, seriesId = seriesId, recurrenceId = recurrenceId,
+                key = "${event.accountId}/$key", eventId = o?.id ?: event.id, seriesId = seriesId, recurrenceId = recurrenceId,
                 accountId = event.accountId, calendarId = event.calendarId, calendarName = calendar?.name.orEmpty(),
                 title = o?.title ?: event.title, location = o?.location ?: event.location,
                 description = o?.description ?: event.description, start = start, end = end,
@@ -139,7 +151,7 @@ object Occurrences {
             }
         }
         for (o in overrides) {
-            val series = seriesById[o.seriesId] ?: continue
+            val series = seriesById[scopedKey(o.accountId, o.seriesId)] ?: continue
             if (inRange(o.start, o.end, o.allDay)) {
                 add(series, "${series.id}@${o.recurrenceId}", o.start, o.end ?: o.start, series.id, o.recurrenceId, o)
             }

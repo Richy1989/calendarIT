@@ -55,6 +55,11 @@ class Accounts(
     private val lock = Mutex()
     private val auths = mutableMapOf<String, AccountAuth>()
 
+    /** What each account's server was last told about this device (its push target), this process. */
+    private val registered = java.util.concurrent.ConcurrentHashMap<String, Registration>()
+
+    private data class Registration(val push: org.hyperstarit.twentyfourseven.net.DevicePushInput?)
+
     fun api(pin: String?): ApiClient = ApiClient(Certificates.clientFor(baseHttp, pin), json)
 
     /** The account's session, made once per account (and again when its pin changes). */
@@ -103,6 +108,7 @@ class Accounts(
         }
         secrets.saveTokens(account.id, AccountAuth.tokensOf(tokens))
         forget(account.id)
+        registered.remove(account.id) // a new session: tell the server about this device again
         db.accounts().update(account.copy(needsSignIn = false, lastError = null))
     }
 
@@ -154,9 +160,22 @@ class Accounts(
     }
 
     suspend fun registerDevice(account: AccountEntity) {
-        val request = RegisterDeviceRequest(name = device.name, platform = "android", appVersion = device.appVersion, push = pushFor(account.id))
+        val push = pushFor(account.id)
+        val request = RegisterDeviceRequest(name = device.name, platform = "android", appVersion = device.appVersion, push = push)
         val id = secrets.deviceId()
         auth(account).authorized { server, token -> api(account.certificatePin).registerDevice(server, token, id, request) }
+        registered[account.id] = Registration(push)
+    }
+
+    /**
+     * Registers the device with [account]'s server unless it already knows this device and its
+     * current push target — so a registration that failed (offline, a server hiccup, a session
+     * that had ended) or a push endpoint that changed since is tried again at the next sync,
+     * per account.
+     */
+    suspend fun registerDeviceIfNeeded(account: AccountEntity) {
+        if (registered[account.id] == Registration(pushFor(account.id))) return
+        registerDevice(account)
     }
 
     private suspend fun markSignedOut(accountId: String) {

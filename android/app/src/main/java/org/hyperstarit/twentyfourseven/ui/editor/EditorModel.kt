@@ -35,6 +35,8 @@ class EventForm(val zone: ZoneId) {
     var endDate by mutableStateOf(LocalDate.now(zone))
     var endTime by mutableStateOf(LocalTime.of(10, 0))
     var calendarId by mutableStateOf<String?>(null)
+    /** The account of [calendarId]: calendar ids repeat across accounts. */
+    var accountId by mutableStateOf<String?>(null)
     var categoryId by mutableStateOf<String?>(null)
     var repeat by mutableStateOf<RepeatRule?>(null)
     /** A rule the editor can't express: kept as it is unless the user picks another. */
@@ -80,6 +82,7 @@ class EventForm(val zone: ZoneId) {
             endDate = en.toLocalDate(); endTime = en.toLocalTime().withSecond(0).withNano(0)
         }
         calendarId = e.calendarId
+        accountId = e.accountId
         this.categoryId = categoryId
         timeZone = e.timeZone
         val seriesZone = e.timeZone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: zone

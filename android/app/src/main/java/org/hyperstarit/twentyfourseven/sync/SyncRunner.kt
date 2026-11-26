@@ -23,7 +23,6 @@ class SyncRunner(
     private val afterSync: suspend () -> Unit = {},
 ) {
     private val mutex = Mutex()
-    private var devicesRegistered = false
 
     /** True when every account that could sync did; false when one should be tried again later. */
     suspend fun syncAll(): Boolean = mutex.withLock {
@@ -32,7 +31,8 @@ class SyncRunner(
             if (account.needsSignIn || account.certificateChanged || account.kind != AccountKind.CALENDARIT) continue
             try {
                 calendarIt.sync(account)
-                if (!devicesRegistered) runCatching { accounts.registerDevice(account) }
+                // Not needed for syncing; one that fails is tried again at the next sync.
+                runCatching { accounts.registerDeviceIfNeeded(account) }
             } catch (_: SessionEndedException) {
                 // Accounts marked it as needing sign-in.
             } catch (e: ProtocolException) {
@@ -52,7 +52,6 @@ class SyncRunner(
                 }
             }
         }
-        devicesRegistered = true
         runCatching { afterSync() }
         allDone
     }

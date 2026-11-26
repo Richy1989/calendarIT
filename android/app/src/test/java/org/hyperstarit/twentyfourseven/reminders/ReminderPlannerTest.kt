@@ -1,5 +1,6 @@
 package org.hyperstarit.twentyfourseven.reminders
 
+import org.hyperstarit.twentyfourseven.calendar.byKey
 import java.time.Instant
 import java.time.ZoneId
 import org.hyperstarit.twentyfourseven.calendar.Occurrence
@@ -12,7 +13,7 @@ import org.junit.Test
 class ReminderPlannerTest {
     private fun ms(iso: String) = Instant.parse(iso).toEpochMilli()
     private val berlin = ZoneId.of("Europe/Berlin")
-    private val calendars = mapOf("cal" to CalendarEntity("cal", "a", "P", null, "America/New_York", null, emptyList(), false, 0, "1"))
+    private val calendars = listOf(CalendarEntity("cal", "a", "P", null, "America/New_York", null, emptyList(), false, 0, "1")).byKey()
 
     private fun occurrence(start: String, allDay: Boolean = false, zone: String? = "Europe/Berlin", reminders: List<Reminder>, series: String? = null, rid: Long? = null) = Occurrence(
         key = "k", eventId = "e", seriesId = series, recurrenceId = rid, accountId = "a", calendarId = "cal", calendarName = "P",

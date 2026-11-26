@@ -85,11 +85,11 @@ class LiveServerTest {
                 organizerEmail = null, version = null,
             ),
         )
-        changes.updateEvent(db.events().live(created)!!.data.copy(title = "From the phone, renamed"))
+        changes.updateEvent(db.events().live(account.id, created)!!.data.copy(title = "From the phone, renamed"))
         val task = changes.createTask(
             TaskData("", account.id, calendar, "Phone task", null, null, false, null, "NeedsAction", null, "high", null, 0, emptyList(), null),
         )
-        changes.setTaskDone(task, true)
+        changes.setTaskDone(account.id, task, true)
         val standup = db.events().observeLive().first().first { it.data.title.startsWith("Standup") }.data
         changes.updateEvent(standup.copy(title = "Standup (from phone)"))
 
@@ -98,7 +98,7 @@ class LiveServerTest {
         assertTrue(db.notices().observeAll().first().isEmpty())
         val titles = db.events().observeLive().first().map { it.data.title }
         assertTrue(titles.toString(), "From the phone, renamed" in titles && "Standup (from phone)" in titles)
-        assertEquals("Completed", db.tasks().live(task)!!.data.status)
+        assertEquals("Completed", db.tasks().live(account.id, task)!!.data.status)
         assertEquals(1, db.events().observeLiveOverrides().first().count { it.data.seriesId == standup.id }) // kept: not moved
 
         // Someone else renames the series on the server; the phone's rename on the old version clashes.
@@ -111,19 +111,19 @@ class LiveServerTest {
             Request.Builder().url(server.resolve("api/events/${standup.id}")!!).header("Authorization", "Bearer $token")
                 .put(body.toRequestBody("application/json".toMediaType())).build(),
         ).execute().use { assertEquals(200, it.code) }
-        changes.updateEvent(db.events().live(standup.id)!!.data.copy(title = "Standup (phone again)"))
+        changes.updateEvent(db.events().live(account.id, standup.id)!!.data.copy(title = "Standup (phone again)"))
         runner.syncAll()
-        assertEquals("Standup (web)", db.events().live(standup.id)!!.data.title)
+        assertEquals("Standup (web)", db.events().live(account.id, standup.id)!!.data.title)
         assertEquals("conflict", db.notices().observeAll().first().single().kind)
 
         // "Apply mine anyway" goes through on the server's version.
         changes.reapply(db.notices().observeAll().first().single().id)
         runner.syncAll()
-        assertEquals("Standup (phone again)", db.events().live(standup.id)!!.data.title)
+        assertEquals("Standup (phone again)", db.events().live(account.id, standup.id)!!.data.title)
 
-        changes.deleteEvent(created)
+        changes.deleteEvent(account.id, created)
         runner.syncAll()
-        assertTrue(db.events().live(created) == null)
+        assertTrue(db.events().live(account.id, created) == null)
         db.close()
     }
 }

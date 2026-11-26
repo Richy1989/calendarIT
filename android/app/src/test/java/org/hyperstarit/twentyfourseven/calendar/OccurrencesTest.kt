@@ -16,10 +16,10 @@ class OccurrencesTest {
     private fun ms(iso: String) = Instant.parse(iso).toEpochMilli()
 
     private val calendar = CalendarEntity("cal", "a", "Personal", "#112233", null, "catDefault", emptyList(), false, 0, "1")
-    private val categories = mapOf(
-        "catDefault" to CategoryEntity("catDefault", "a", "Default", "#00AA00", "1"),
-        "work" to CategoryEntity("work", "a", "Work", "#FF0000", "1"),
-    )
+    private val categories = listOf(
+        CategoryEntity("catDefault", "a", "Default", "#00AA00", "1"),
+        CategoryEntity("work", "a", "Work", "#FF0000", "1"),
+    ).byKey()
 
     private fun event(
         id: String, start: String, end: String?, allDay: Boolean = false, rule: String? = null, exDates: List<String> = emptyList(),
@@ -31,14 +31,14 @@ class OccurrencesTest {
     )
 
     private fun build(events: List<EventData>, overrides: List<OverrideData> = emptyList(), range: DateRange, zone: ZoneId = berlin, hidden: Set<String> = emptySet()) =
-        Occurrences.build(events, overrides, mapOf("cal" to calendar), categories, hidden, range, zone)
+        Occurrences.build(events, overrides, listOf(calendar).byKey(), categories, hidden, range, zone)
 
     private val week = DateRange(LocalDate.of(2026, 11, 2), LocalDate.of(2026, 11, 9))
 
     @Test
     fun aSeries_ShowsItsOccurrences_WithItsEditedOneInPlace() {
         val series = event("standup", "2026-11-02T08:00:00Z", "2026-11-02T08:15:00Z", rule = "FREQ=DAILY;COUNT=5", exDates = listOf("2026-11-04T08:00:00Z"))
-        val moved = OverrideData("o", "standup", ms("2026-11-04T08:00:00Z"), "Standup (late)", null, null, null,
+        val moved = OverrideData("o", "a", "standup", ms("2026-11-04T08:00:00Z"), "Standup (late)", null, null, null,
             ms("2026-11-04T10:00:00Z"), ms("2026-11-04T10:15:00Z"), false, "Europe/Berlin", emptyList())
 
         val shown = build(listOf(series), listOf(moved), week)

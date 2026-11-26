@@ -1,5 +1,6 @@
 package org.hyperstarit.twentyfourseven.ui.home
 
+import org.hyperstarit.twentyfourseven.data.db.scopedKey
 import android.text.format.DateUtils
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -91,9 +92,9 @@ class HomeViewModel @Inject constructor(
     val state = combine(
         accounts.all, db.calendars().observeAll(), db.events().observeCounts(), db.notices().observeAll(), db.outbox().observePending(),
     ) { all, calendars, counts, notices, pending ->
-        val byCalendar = counts.associate { it.calendarId to it.count }
+        val byCalendar = counts.associate { scopedKey(it.accountId, it.calendarId) to it.count }
         HomeState(
-            sections = all.map { a -> AccountSection(a, calendars.filter { it.accountId == a.id }.map { it to (byCalendar[it.id] ?: 0) }) },
+            sections = all.map { a -> AccountSection(a, calendars.filter { it.accountId == a.id }.map { it to (byCalendar[scopedKey(it.accountId, it.id)] ?: 0) }) },
             notices = notices,
             pending = pending,
         )

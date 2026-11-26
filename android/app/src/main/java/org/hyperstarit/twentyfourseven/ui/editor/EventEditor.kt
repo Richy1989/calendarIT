@@ -1,5 +1,6 @@
 package org.hyperstarit.twentyfourseven.ui.editor
 
+import org.hyperstarit.twentyfourseven.data.db.scopedKey
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -104,6 +105,7 @@ class EventEditorViewModel @Inject constructor(
                     val calendar = all.firstOrNull()
                     calendars = all
                     form.calendarId = calendar?.id
+                    form.accountId = calendar?.accountId
                     val time = target.time ?: LocalTime.of(9, 0)
                     form.startDate = target.date; form.startTime = time
                     val end = target.date.atTime(time).plusHours(1)
@@ -113,7 +115,7 @@ class EventEditorViewModel @Inject constructor(
                 }
                 is EditTarget.Existing -> {
                     val o = target.occurrence
-                    val master = db.events().live(o.seriesId ?: o.eventId)?.data ?: return@launch
+                    val master = db.events().live(o.accountId, o.seriesId ?: o.eventId)?.data ?: return@launch
                     base = master
                     // Moving between accounts isn't a move: only this account's calendars.
                     calendars = all.filter { it.accountId == master.accountId }
@@ -130,7 +132,7 @@ class EventEditorViewModel @Inject constructor(
 
     private suspend fun categoryOf(eventId: String, master: EventData): String? =
         if (eventId == master.id) master.categoryId
-        else (db.events().overrideEdits(master.id) .map { it.data } + db.events().serverOverrides(master.id).map { it.data })
+        else (db.events().overrideEdits(master.accountId, master.id).map { it.data } + db.events().serverOverrides(master.accountId, master.id).map { it.data })
             .firstOrNull { it.id == eventId }?.categoryId ?: master.categoryId
 
     val isSeriesPart get() = (target as? EditTarget.Existing)?.scope.let { it == Scope.ONE }
@@ -141,7 +143,7 @@ class EventEditorViewModel @Inject constructor(
         viewModelScope.launch {
             when (t) {
                 is EditTarget.New -> {
-                    val calendar = calendars.first { it.id == form.calendarId }
+                    val calendar = calendars.first { it.accountId == form.accountId && it.id == form.calendarId }
                     val blank = EventData(
                         id = "", accountId = calendar.accountId, calendarId = calendar.id, title = "", description = null, location = null,
                         categoryId = null, color = null, start = 0, end = null, allDay = false, timeZone = form.zone.id, recurrence = null,
@@ -154,8 +156,8 @@ class EventEditorViewModel @Inject constructor(
                     val o = t.occurrence
                     when (t.scope) {
                         null, Scope.ALL -> changes.updateEvent(form.toEvent(master))
-                        Scope.ONE -> changes.editOccurrence(master.id, o.recurrenceId!!, form.toEvent(master).copy(recurrence = null))
-                        Scope.FOLLOWING -> changes.editFollowing(master.id, o.recurrenceId!!, form.toEvent(master))
+                        Scope.ONE -> changes.editOccurrence(master.accountId, master.id, o.recurrenceId!!, form.toEvent(master).copy(recurrence = null))
+                        Scope.FOLLOWING -> changes.editFollowing(master.accountId, master.id, o.recurrenceId!!, form.toEvent(master))
                     }
                 }
             }
@@ -181,7 +183,7 @@ fun EventEditor(target: EditTarget, formats: Formats, onClose: () -> Unit, viewM
         else -> "Edit appointment"
     }
     EditorScaffold(kind, onClose, onSave = { viewModel.save(onClose) }, saveEnabled = viewModel.ready) {
-        val calendar = viewModel.calendars.firstOrNull { it.id == f.calendarId }
+        val calendar = viewModel.calendars.firstOrNull { it.accountId == f.accountId && it.id == f.calendarId }
         val accountId = calendar?.accountId
         val categories = viewModel.categories.filter { it.accountId == accountId }
         val category = categories.firstOrNull { it.id == f.categoryId }
@@ -220,8 +222,9 @@ fun EventEditor(target: EditTarget, formats: Formats, onClose: () -> Unit, viewM
                 FormRow(Glyphs.calendar) {
                     LabeledLine("Calendar") {
                         ChoiceChip(
-                            calendar?.name ?: "—", viewModel.calendars.map { it.id to it.name }, { f.calendarId = it },
-                            dots = viewModel.calendars.associate { it.id to (parseColor(it.color) ?: c.accent) },
+                            calendar?.name ?: "—", viewModel.calendars.map { scopedKey(it.accountId, it.id) to it.name },
+                            { key -> viewModel.calendars.firstOrNull { scopedKey(it.accountId, it.id) == key }?.let { f.accountId = it.accountId; f.calendarId = it.id } },
+                            dots = viewModel.calendars.associate { scopedKey(it.accountId, it.id) to (parseColor(it.color) ?: c.accent) },
                         )
                     }
                 }

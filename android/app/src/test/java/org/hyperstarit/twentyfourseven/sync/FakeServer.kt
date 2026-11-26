@@ -19,6 +19,9 @@ class FakeServer {
     val pullCursors = CopyOnWriteArrayList<String?>()
     val logins = AtomicInteger()
     val refreshes = AtomicInteger()
+    val deviceRegistrations = AtomicInteger()
+    /** Device registrations answered with a server error while > 0 (counts down). */
+    var failDeviceRegistrations = 0
     var refreshRefused = false
     var accessValidFor = 900L
 
@@ -38,8 +41,13 @@ class FakeServer {
                     refreshes.incrementAndGet()
                     if (refreshRefused) response(401, """{"errors":["Session ended."]}""") else tokens()
                 }
-                "/api/devices/${request.url.pathSegments.last()}" ->
+                "/api/devices/${request.url.pathSegments.last()}" -> if (failDeviceRegistrations > 0) {
+                    failDeviceRegistrations--
+                    response(503, "")
+                } else {
+                    deviceRegistrations.incrementAndGet()
                     response(200, """{"id":"x","name":"n","platform":"android","createdAt":"2026-01-01T00:00:00Z","lastSeenAt":"2026-01-01T00:00:00Z"}""")
+                }
                 "/api/sync" -> if (request.method == "GET") {
                     pullCursors += request.url.queryParameter("cursor")
                     response(200, if (pages.size > 1) pages.removeAt(0) else pages.first())

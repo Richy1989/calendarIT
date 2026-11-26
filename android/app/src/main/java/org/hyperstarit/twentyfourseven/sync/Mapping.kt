@@ -45,9 +45,9 @@ internal fun SyncSeriesDto.row(accountId: String) = EventData(
     invitationStatus = invitationStatus, organizerEmail = organizerEmail, version = version,
 )
 
-internal fun SyncSeriesDto.overrideRows() = overrides.map {
+internal fun SyncSeriesDto.overrideRows(accountId: String) = overrides.map {
     OverrideData(
-        id = it.id, seriesId = id, recurrenceId = millis(it.recurrenceId), title = it.title,
+        id = it.id, accountId = accountId, seriesId = id, recurrenceId = millis(it.recurrenceId), title = it.title,
         description = it.description, location = it.location, categoryId = it.categoryId,
         start = millis(it.start), end = it.end?.let(::millis), allDay = it.allDay, timeZone = it.timeZone,
         reminders = it.reminders.rows(),

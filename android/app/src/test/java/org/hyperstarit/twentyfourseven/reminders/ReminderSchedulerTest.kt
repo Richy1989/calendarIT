@@ -69,7 +69,7 @@ class ReminderSchedulerTest {
         assertEquals(2, alarms.size)
         assertEquals(now + 2 * 3_600_000L - 10 * 60_000L, alarms.minOf { it.triggerAtTime })
 
-        db.events().deleteServer(listOf("b"))
+        db.events().deleteServer("a", listOf("b"))
         scheduler.reschedule()
         assertEquals(1, alarms.size)
     }

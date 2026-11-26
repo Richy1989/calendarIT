@@ -23,7 +23,7 @@ class SeriesEditsTest {
         overrides,
     )
 
-    private fun override(at: Long) = OverrideData("o$at", "s", at, "edited", null, null, null, at + 600_000, at + 4_200_000, false, "Europe/Berlin", emptyList())
+    private fun override(at: Long) = OverrideData("o$at", "a", "s", at, "edited", null, null, null, at + 600_000, at + 4_200_000, false, "Europe/Berlin", emptyList())
 
     @Test
     fun splitting_EndsTheOldSeriesJustBefore_AndCarriesWhatFollowsWhenUnmoved() {

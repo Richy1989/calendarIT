@@ -1,5 +1,6 @@
 package org.hyperstarit.twentyfourseven.widget
 
+import org.hyperstarit.twentyfourseven.calendar.byKey
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
@@ -105,8 +106,8 @@ class MonthWidget : GlanceAppWidget() {
         val source = combine(
             db.events().observeLive().map { list -> list.map { it.data } },
             db.events().observeLiveOverrides().map { list -> list.map { it.data } },
-            db.calendars().observeAll().map { list -> list.associateBy { it.id } },
-            db.categories().observeAll().map { list -> list.associateBy { it.id } },
+            db.calendars().observeAll().map { list -> list.byKey() },
+            db.categories().observeAll().map { list -> list.byKey() },
             deps.prefs().hidden,
         ) { e, o, cal, cat, h -> Source(e, o, cal, cat, h) }
         val initial = source.first()

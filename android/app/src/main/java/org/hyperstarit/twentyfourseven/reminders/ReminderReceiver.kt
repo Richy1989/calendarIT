@@ -43,9 +43,10 @@ class ReminderReceiver : BroadcastReceiver() {
             ACTION_DONE -> {
                 NotificationManagerCompat.from(context).cancel(notificationId)
                 val taskId = intent.getStringExtra(EXTRA_ITEM) ?: return
+                val accountId = intent.getStringExtra(EXTRA_ACCOUNT) ?: return
                 val pending = goAsync()
                 scope.launch {
-                    try { changes.setTaskDone(taskId, true) } finally { pending.finish() }
+                    try { changes.setTaskDone(accountId, taskId, true) } finally { pending.finish() }
                 }
             }
         }
@@ -99,6 +100,7 @@ class ReminderReceiver : BroadcastReceiver() {
         const val EXTRA_KEY = "key"
         const val EXTRA_KIND = "kind"
         const val EXTRA_ITEM = "item"
+        const val EXTRA_ACCOUNT = "account"
         const val EXTRA_TITLE = "title"
         const val EXTRA_BEGINS = "begins"
         const val EXTRA_ALL_DAY = "allDay"
@@ -113,6 +115,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 .putExtra(EXTRA_KEY, r.key)
                 .putExtra(EXTRA_KIND, r.kind.name)
                 .putExtra(EXTRA_ITEM, r.itemId)
+                .putExtra(EXTRA_ACCOUNT, r.accountId)
                 .putExtra(EXTRA_TITLE, r.title)
                 .putExtra(EXTRA_BEGINS, r.begins)
                 .putExtra(EXTRA_ALL_DAY, r.allDay)

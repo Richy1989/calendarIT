@@ -1,5 +1,6 @@
 package org.hyperstarit.twentyfourseven.ui.tasks
 
+import org.hyperstarit.twentyfourseven.data.db.scopedKey
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -88,22 +89,22 @@ data class TasksState(val open: List<TaskTree> = emptyList(), val done: List<Tas
 class TasksViewModel @Inject constructor(db: AppDatabase, private val changes: LocalChanges) : ViewModel() {
     val state = combine(db.tasks().observeLive(), db.calendars().observeAll()) { rows, calendars ->
         val writable = calendars.filter { !it.readOnly }
-        val all = rows.map { it.data }.filter { t -> calendars.any { it.id == t.calendarId } }
-        val children = all.filter { it.parentId != null }.groupBy { it.parentId }
+        val all = rows.map { it.data }.filter { t -> calendars.any { it.accountId == t.accountId && it.id == t.calendarId } }
+        val children = all.filter { it.parentId != null }.groupBy { scopedKey(it.accountId, it.parentId!!) }
         val order = compareBy<TaskData>({ it.due == null }, { it.due }, { it.sortOrder }, { it.title.lowercase() })
         TasksState(
             open = all.filter { it.parentId == null && it.status in OPEN }.sortedWith(order)
-                .map { TaskTree(it, children[it.id].orEmpty().sortedWith(compareBy({ it.status !in OPEN }, { it.sortOrder }, { it.title }))) },
+                .map { TaskTree(it, children[scopedKey(it.accountId, it.id)].orEmpty().sortedWith(compareBy({ it.status !in OPEN }, { it.sortOrder }, { it.title }))) },
             done = all.filter { it.parentId == null && it.status !in OPEN }.sortedByDescending { it.completedAt ?: 0 },
             calendars = writable,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TasksState())
 
-    fun toggle(t: TaskData) = viewModelScope.launch { changes.setTaskDone(t.id, t.status in OPEN) }
+    fun toggle(t: TaskData) = viewModelScope.launch { changes.setTaskDone(t.accountId, t.id, t.status in OPEN) }
 
     fun save(t: TaskData) = viewModelScope.launch { if (t.version == null && t.id.isEmpty()) changes.createTask(t) else changes.updateTask(t) }
 
-    fun delete(t: TaskData) = viewModelScope.launch { changes.deleteTask(t.id) }
+    fun delete(t: TaskData) = viewModelScope.launch { changes.deleteTask(t.accountId, t.id) }
 }
 
 /** The tasks of every account, grouped by when they're due, then the done ones. */
@@ -152,7 +153,7 @@ fun TasksScreen(bottomBar: @Composable () -> Unit, viewModel: TasksViewModel = h
                     item(key = "g$group") {
                         SectionLabel("$label · ${trees.size}", Modifier.padding(start = 8.dp, top = 16.dp, bottom = 8.dp), color = if (group == 0) c.dangerInk else c.textFaint)
                     }
-                    items(trees, key = { it.task.id }) { tree ->
+                    items(trees, key = { scopedKey(it.task.accountId, it.task.id) }) { tree ->
                         TaskCard(tree, state.calendars, formats, onToggle = viewModel::toggle, onOpen = { editing = it })
                     }
                 }
@@ -167,17 +168,17 @@ fun TasksScreen(bottomBar: @Composable () -> Unit, viewModel: TasksViewModel = h
                         Icon(Glyphs.chevronDown, if (showDone) "Hide done" else "Show done", tint = c.textFaint, modifier = Modifier.size(18.dp).rotate(if (showDone) 180f else 0f))
                     }
                 }
-                if (showDone) items(state.done, key = { "d" + it.id }) { TaskCard(TaskTree(it, emptyList()), state.calendars, formats, viewModel::toggle) { t -> editing = t } }
+                if (showDone) items(state.done, key = { "d" + scopedKey(it.accountId, it.id) }) { TaskCard(TaskTree(it, emptyList()), state.calendars, formats, viewModel::toggle) { t -> editing = t } }
             }
         }
     }
     editing?.let { task ->
         TaskEditor(
             task, state.calendars, formats,
-            subtasks = state.open.firstOrNull { it.task.id == task.id }?.subtasks.orEmpty(),
+            subtasks = state.open.firstOrNull { it.task.accountId == task.accountId && it.task.id == task.id }?.subtasks.orEmpty(),
             onSave = { viewModel.save(it); editing = null },
             onDelete = { viewModel.delete(task); editing = null },
-            onAddSubtask = { title -> viewModel.save(blankTask(state.calendars.first { it.id == task.calendarId }, task.id).copy(title = title)) },
+            onAddSubtask = { title -> viewModel.save(blankTask(state.calendars.first { it.accountId == task.accountId && it.id == task.calendarId }, task.id).copy(title = title)) },
             onToggle = viewModel::toggle,
             onClose = { editing = null },
         )
@@ -225,7 +226,7 @@ private fun TaskCard(tree: TaskTree, calendars: List<CalendarEntity>, formats: F
     val c = Brand.colors
     val t = tree.task
     val done = t.status !in OPEN
-    val ring = parseColor(calendars.firstOrNull { it.id == t.calendarId }?.color) ?: c.hairlineStrong
+    val ring = parseColor(calendars.firstOrNull { it.accountId == t.accountId && it.id == t.calendarId }?.color) ?: c.hairlineStrong
     Column(
         Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(16.dp)).background(c.surface)
             .border(1.dp, c.hairline, RoundedCornerShape(16.dp)),
@@ -289,7 +290,8 @@ private fun TaskEditor(
     var title by remember { mutableStateOf(initial.title) }
     var notes by remember { mutableStateOf(initial.notes.orEmpty()) }
     var priority by remember { mutableStateOf(initial.priority) }
-    var calendarId by remember { mutableStateOf(initial.calendarId) }
+    // Calendar ids repeat across accounts: the picker works with scoped keys.
+    var calendarKey by remember { mutableStateOf(scopedKey(initial.accountId, initial.calendarId)) }
     var dueDate by remember { mutableStateOf(initial.due?.let { if (initial.dueAllDay) Recurrence.dateOf(it) else Instant.ofEpochMilli(it).atZone(formats.zone).toLocalDate() }) }
     var dueTime by remember { mutableStateOf(initial.due?.takeIf { !initial.dueAllDay }?.let { Instant.ofEpochMilli(it).atZone(formats.zone).toLocalTime().withSecond(0).withNano(0) }) }
     var newSubtask by remember { mutableStateOf("") }
@@ -303,9 +305,9 @@ private fun TaskEditor(
             dueTime == null -> Recurrence.dayMillis(date)
             else -> date.atTime(dueTime).atZone(formats.zone).toInstant().toEpochMilli()
         }
-        val calendar = calendars.firstOrNull { it.id == calendarId }
+        val calendar = calendars.firstOrNull { scopedKey(it.accountId, it.id) == calendarKey }
         return initial.copy(
-            title = title.trim(), notes = notes.ifBlank { null }, priority = priority, calendarId = calendarId,
+            title = title.trim(), notes = notes.ifBlank { null }, priority = priority, calendarId = calendar?.id ?: initial.calendarId,
             accountId = calendar?.accountId ?: initial.accountId, due = due, dueAllDay = date != null && dueTime == null,
             timeZone = if (date != null && dueTime != null) formats.zone.id else initial.timeZone,
         )
@@ -340,8 +342,9 @@ private fun TaskEditor(
                 FormRow(Glyphs.calendar) {
                     LabeledLine("Calendar") {
                         ChoiceChip(
-                            calendars.firstOrNull { it.id == calendarId }?.name ?: "—", calendars.map { it.id to it.name }, { calendarId = it },
-                            dots = calendars.associate { it.id to (parseColor(it.color) ?: c.accent) },
+                            calendars.firstOrNull { scopedKey(it.accountId, it.id) == calendarKey }?.name ?: "—",
+                            calendars.map { scopedKey(it.accountId, it.id) to it.name }, { calendarKey = it },
+                            dots = calendars.associate { scopedKey(it.accountId, it.id) to (parseColor(it.color) ?: c.accent) },
                         )
                     }
                 }

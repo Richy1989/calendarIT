@@ -1,5 +1,6 @@
 package org.hyperstarit.twentyfourseven.ui.calendar
 
+import org.hyperstarit.twentyfourseven.calendar.byKey
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -87,6 +88,7 @@ class CalendarViewModel @Inject constructor(
         fun hides(o: Occurrence): Boolean {
             val series = occurrence.seriesId
             return when {
+                o.accountId != occurrence.accountId -> false
                 series == null -> o.eventId == occurrence.eventId
                 scope == org.hyperstarit.twentyfourseven.ui.editor.Scope.ONE -> o.key == occurrence.key
                 scope == org.hyperstarit.twentyfourseven.ui.editor.Scope.FOLLOWING -> o.seriesId == series && (o.recurrenceId ?: 0) >= occurrence.recurrenceId!!
@@ -99,8 +101,8 @@ class CalendarViewModel @Inject constructor(
 
     val shown = combine(stored, window, pendingDelete) { s, range, pending ->
         val list = Occurrences.build(
-            s.events.map { it.data }, s.overrides.map { it.data }, s.calendars.associateBy { it.id },
-            s.categories.associateBy { it.id }, s.hidden, range, zone,
+            s.events.map { it.data }, s.overrides.map { it.data }, s.calendars.byKey(),
+            s.categories.byKey(), s.hidden, range, zone,
         ).filterNot { pending?.hides(it) == true }
         Shown(range, Occurrences.byDate(list, range, zone))
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -157,17 +159,17 @@ class CalendarViewModel @Inject constructor(
     }
 
     fun respond(o: Occurrence, status: String) {
-        viewModelScope.launch { changes.respond(o.seriesId ?: o.eventId, status) }
+        viewModelScope.launch { changes.respond(o.accountId, o.seriesId ?: o.eventId, status) }
     }
 
     private suspend fun perform(p: PendingDelete) {
         val o = p.occurrence
         val series = o.seriesId
         when {
-            series == null -> changes.deleteEvent(o.eventId)
-            p.scope == org.hyperstarit.twentyfourseven.ui.editor.Scope.ONE -> changes.deleteOccurrence(series, o.recurrenceId!!)
-            p.scope == org.hyperstarit.twentyfourseven.ui.editor.Scope.FOLLOWING -> changes.deleteFollowing(series, o.recurrenceId!!)
-            else -> changes.deleteEvent(series)
+            series == null -> changes.deleteEvent(o.accountId, o.eventId)
+            p.scope == org.hyperstarit.twentyfourseven.ui.editor.Scope.ONE -> changes.deleteOccurrence(o.accountId, series, o.recurrenceId!!)
+            p.scope == org.hyperstarit.twentyfourseven.ui.editor.Scope.FOLLOWING -> changes.deleteFollowing(o.accountId, series, o.recurrenceId!!)
+            else -> changes.deleteEvent(o.accountId, series)
         }
     }
 

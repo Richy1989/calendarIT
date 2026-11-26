@@ -79,34 +79,34 @@ interface CategoryDao {
 interface EventDao {
     /** Every event as the user sees it: the server's copy, or the pending edit where there is one. */
     @Query(
-        "SELECT * FROM events WHERE id NOT IN (SELECT id FROM event_edits) " +
+        "SELECT * FROM events e WHERE NOT EXISTS " +
+            "(SELECT 1 FROM event_edits x WHERE x.accountId = e.accountId AND x.id = e.id) " +
             "UNION ALL SELECT * FROM event_edits WHERE localDeleted = 0",
     )
     fun observeLive(): Flow<List<EventEntity>>
 
     @Query(
-        "SELECT * FROM events WHERE id = :id AND id NOT IN (SELECT id FROM event_edits) " +
-            "UNION ALL SELECT * FROM event_edits WHERE id = :id AND localDeleted = 0",
+        "SELECT * FROM events WHERE accountId = :accountId AND id = :id AND NOT EXISTS " +
+            "(SELECT 1 FROM event_edits x WHERE x.accountId = :accountId AND x.id = :id) " +
+            "UNION ALL SELECT * FROM event_edits WHERE accountId = :accountId AND id = :id AND localDeleted = 0",
     )
-    suspend fun live(id: String): EventEntity?
+    suspend fun live(accountId: String, id: String): EventEntity?
 
     /** Edited occurrences as the user sees them: an edited series brings all of its own. */
     @Query(
-        "SELECT * FROM overrides WHERE seriesId NOT IN (SELECT id FROM event_edits) " +
+        "SELECT * FROM overrides o WHERE NOT EXISTS " +
+            "(SELECT 1 FROM event_edits x WHERE x.accountId = o.accountId AND x.id = o.seriesId) " +
             "UNION ALL SELECT * FROM override_edits WHERE localDeleted = 0",
     )
     fun observeLiveOverrides(): Flow<List<OverrideEntity>>
 
-    @Query("SELECT * FROM overrides WHERE seriesId = :seriesId")
-    suspend fun serverOverrides(seriesId: String): List<OverrideEntity>
+    @Query("SELECT * FROM overrides WHERE accountId = :accountId AND seriesId = :seriesId")
+    suspend fun serverOverrides(accountId: String, seriesId: String): List<OverrideEntity>
 
-    @Query("SELECT * FROM events WHERE id = :id")
-    suspend fun server(id: String): EventEntity?
+    @Query("SELECT * FROM events WHERE accountId = :accountId AND id = :id")
+    suspend fun server(accountId: String, id: String): EventEntity?
 
-    @Query("SELECT COUNT(*) FROM events WHERE calendarId = :calendarId")
-    suspend fun countInCalendar(calendarId: String): Int
-
-    @Query("SELECT calendarId AS calendarId, COUNT(*) AS count FROM events GROUP BY calendarId")
+    @Query("SELECT accountId AS accountId, calendarId AS calendarId, COUNT(*) AS count FROM events GROUP BY accountId, calendarId")
     fun observeCounts(): Flow<List<CalendarCount>>
 
     @Upsert
@@ -115,100 +115,120 @@ interface EventDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOverrides(overrides: List<OverrideEntity>)
 
-    @Query("DELETE FROM overrides WHERE seriesId IN (:seriesIds)")
-    suspend fun deleteOverridesOf(seriesIds: List<String>)
+    @Query("DELETE FROM overrides WHERE accountId = :accountId AND seriesId IN (:seriesIds)")
+    suspend fun deleteOverridesOf(accountId: String, seriesIds: List<String>)
 
-    @Query("DELETE FROM events WHERE id IN (:ids)")
-    suspend fun deleteServer(ids: List<String>)
+    @Query("DELETE FROM events WHERE accountId = :accountId AND id IN (:ids)")
+    suspend fun deleteServer(accountId: String, ids: List<String>)
 
     @Query("SELECT id FROM events WHERE accountId = :accountId")
     suspend fun serverIds(accountId: String): List<String>
 
-    @Query("SELECT id FROM events WHERE calendarId NOT IN (SELECT id FROM calendars) AND accountId = :accountId")
+    @Query(
+        "SELECT id FROM events e WHERE accountId = :accountId AND NOT EXISTS " +
+            "(SELECT 1 FROM calendars c WHERE c.accountId = e.accountId AND c.id = e.calendarId)",
+    )
     suspend fun orphans(accountId: String): List<String>
 
     @Query("DELETE FROM events WHERE accountId = :accountId")
     suspend fun deleteAccount(accountId: String)
 
-    @Query("DELETE FROM overrides WHERE seriesId NOT IN (SELECT id FROM events)")
-    suspend fun deleteOrphanOverrides()
+    @Query("DELETE FROM overrides WHERE accountId = :accountId")
+    suspend fun deleteAccountOverrides(accountId: String)
 
     // ---- pending edits
 
-    @Query("SELECT * FROM event_edits WHERE id = :id")
-    suspend fun edit(id: String): EventEdit?
+    @Query("SELECT * FROM event_edits WHERE accountId = :accountId AND id = :id")
+    suspend fun edit(accountId: String, id: String): EventEdit?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putEdit(edit: EventEdit)
 
-    @Query("SELECT * FROM override_edits WHERE seriesId = :seriesId")
-    suspend fun overrideEdits(seriesId: String): List<OverrideEdit>
+    @Query("SELECT * FROM override_edits WHERE accountId = :accountId AND seriesId = :seriesId")
+    suspend fun overrideEdits(accountId: String, seriesId: String): List<OverrideEdit>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putOverrideEdits(edits: List<OverrideEdit>)
 
-    @Query("DELETE FROM override_edits WHERE seriesId = :seriesId")
-    suspend fun deleteOverrideEdits(seriesId: String)
+    @Query("DELETE FROM override_edits WHERE accountId = :accountId AND seriesId = :seriesId")
+    suspend fun deleteOverrideEdits(accountId: String, seriesId: String)
 
-    @Query("DELETE FROM event_edits WHERE id = :id")
-    suspend fun deleteEdit(id: String)
+    @Query("DELETE FROM event_edits WHERE accountId = :accountId AND id = :id")
+    suspend fun deleteEdit(accountId: String, id: String)
 
     /** Edits nothing is waiting to send any more: the server's copy (pulled since) takes over. */
-    @Query("DELETE FROM event_edits WHERE id NOT IN (SELECT entityId FROM outbox WHERE entityKind = 'event')")
-    suspend fun dropSettledEdits()
+    @Query(
+        "DELETE FROM event_edits WHERE accountId = :accountId AND NOT EXISTS (SELECT 1 FROM outbox o " +
+            "WHERE o.accountId = event_edits.accountId AND o.entityKind = 'event' AND o.entityId = event_edits.id)",
+    )
+    suspend fun dropSettledEdits(accountId: String)
 
-    @Query("DELETE FROM override_edits WHERE seriesId NOT IN (SELECT id FROM event_edits)")
-    suspend fun dropSettledOverrideEdits()
+    @Query(
+        "DELETE FROM override_edits WHERE accountId = :accountId AND NOT EXISTS (SELECT 1 FROM event_edits x " +
+            "WHERE x.accountId = override_edits.accountId AND x.id = override_edits.seriesId)",
+    )
+    suspend fun dropSettledOverrideEdits(accountId: String)
 
     @Query("DELETE FROM event_edits WHERE accountId = :accountId")
     suspend fun deleteAccountEdits(accountId: String)
+
+    @Query("DELETE FROM override_edits WHERE accountId = :accountId")
+    suspend fun deleteAccountOverrideEdits(accountId: String)
 }
 
-data class CalendarCount(val calendarId: String, val count: Int)
+data class CalendarCount(val accountId: String, val calendarId: String, val count: Int)
 
 @Dao
 interface TaskDao {
     @Query(
-        "SELECT * FROM tasks WHERE id NOT IN (SELECT id FROM task_edits) " +
+        "SELECT * FROM tasks t WHERE NOT EXISTS " +
+            "(SELECT 1 FROM task_edits x WHERE x.accountId = t.accountId AND x.id = t.id) " +
             "UNION ALL SELECT * FROM task_edits WHERE localDeleted = 0",
     )
     fun observeLive(): Flow<List<TaskEntity>>
 
     @Query(
-        "SELECT * FROM tasks WHERE id = :id AND id NOT IN (SELECT id FROM task_edits) " +
-            "UNION ALL SELECT * FROM task_edits WHERE id = :id AND localDeleted = 0",
+        "SELECT * FROM tasks WHERE accountId = :accountId AND id = :id AND NOT EXISTS " +
+            "(SELECT 1 FROM task_edits x WHERE x.accountId = :accountId AND x.id = :id) " +
+            "UNION ALL SELECT * FROM task_edits WHERE accountId = :accountId AND id = :id AND localDeleted = 0",
     )
-    suspend fun live(id: String): TaskEntity?
+    suspend fun live(accountId: String, id: String): TaskEntity?
 
-    @Query("SELECT * FROM tasks WHERE id = :id")
-    suspend fun server(id: String): TaskEntity?
+    @Query("SELECT * FROM tasks WHERE accountId = :accountId AND id = :id")
+    suspend fun server(accountId: String, id: String): TaskEntity?
 
     @Upsert
     suspend fun upsert(tasks: List<TaskEntity>)
 
-    @Query("DELETE FROM tasks WHERE id IN (:ids)")
-    suspend fun deleteServer(ids: List<String>)
+    @Query("DELETE FROM tasks WHERE accountId = :accountId AND id IN (:ids)")
+    suspend fun deleteServer(accountId: String, ids: List<String>)
 
     @Query("SELECT id FROM tasks WHERE accountId = :accountId")
     suspend fun serverIds(accountId: String): List<String>
 
-    @Query("SELECT id FROM tasks WHERE calendarId NOT IN (SELECT id FROM calendars) AND accountId = :accountId")
+    @Query(
+        "SELECT id FROM tasks t WHERE accountId = :accountId AND NOT EXISTS " +
+            "(SELECT 1 FROM calendars c WHERE c.accountId = t.accountId AND c.id = t.calendarId)",
+    )
     suspend fun orphans(accountId: String): List<String>
 
     @Query("DELETE FROM tasks WHERE accountId = :accountId")
     suspend fun deleteAccount(accountId: String)
 
-    @Query("SELECT * FROM task_edits WHERE id = :id")
-    suspend fun edit(id: String): TaskEdit?
+    @Query("SELECT * FROM task_edits WHERE accountId = :accountId AND id = :id")
+    suspend fun edit(accountId: String, id: String): TaskEdit?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putEdit(edit: TaskEdit)
 
-    @Query("DELETE FROM task_edits WHERE id = :id")
-    suspend fun deleteEdit(id: String)
+    @Query("DELETE FROM task_edits WHERE accountId = :accountId AND id = :id")
+    suspend fun deleteEdit(accountId: String, id: String)
 
-    @Query("DELETE FROM task_edits WHERE id NOT IN (SELECT entityId FROM outbox WHERE entityKind = 'task')")
-    suspend fun dropSettledEdits()
+    @Query(
+        "DELETE FROM task_edits WHERE accountId = :accountId AND NOT EXISTS (SELECT 1 FROM outbox o " +
+            "WHERE o.accountId = task_edits.accountId AND o.entityKind = 'task' AND o.entityId = task_edits.id)",
+    )
+    suspend fun dropSettledEdits(accountId: String)
 
     @Query("DELETE FROM task_edits WHERE accountId = :accountId")
     suspend fun deleteAccountEdits(accountId: String)
@@ -219,8 +239,8 @@ interface OutboxDao {
     @Query("SELECT * FROM outbox WHERE accountId = :accountId ORDER BY seq")
     suspend fun forAccount(accountId: String): List<OutboxEntity>
 
-    @Query("SELECT * FROM outbox WHERE entityId = :entityId ORDER BY seq")
-    suspend fun forEntity(entityId: String): List<OutboxEntity>
+    @Query("SELECT * FROM outbox WHERE accountId = :accountId AND entityId = :entityId ORDER BY seq")
+    suspend fun forEntity(accountId: String, entityId: String): List<OutboxEntity>
 
     @Query("SELECT COUNT(*) FROM outbox")
     fun observePending(): Flow<Int>
@@ -234,8 +254,8 @@ interface OutboxDao {
     @Query("DELETE FROM outbox WHERE seq IN (:seqs)")
     suspend fun delete(seqs: List<Long>)
 
-    @Query("UPDATE outbox SET sending = 0")
-    suspend fun clearSending()
+    @Query("UPDATE outbox SET sending = 0 WHERE accountId = :accountId")
+    suspend fun clearSending(accountId: String)
 
     @Query("DELETE FROM outbox WHERE accountId = :accountId")
     suspend fun deleteAccount(accountId: String)
@@ -275,11 +295,11 @@ abstract class AccountDataDao {
     ) {
         outbox.deleteAccount(accountId)
         notices.deleteAccount(accountId)
+        events.deleteAccountOverrideEdits(accountId)
         events.deleteAccountEdits(accountId)
-        events.dropSettledOverrideEdits()
         tasks.deleteAccountEdits(accountId)
+        events.deleteAccountOverrides(accountId)
         events.deleteAccount(accountId)
-        events.deleteOrphanOverrides()
         tasks.deleteAccount(accountId)
         categories.deleteAccount(accountId)
         calendars.deleteAccount(accountId)

@@ -139,16 +139,16 @@ class SystemCalendar(
                 when {
                     // A read-only (subscribed) calendar can't be changed: the next export puts it back.
                     calendar.readOnly -> if (syncId == null || deleted) delete(uri, rowId)
-                    seriesId != null -> importException(row, seriesId, deleted, syncId, uri, rowId)
+                    seriesId != null -> importException(account, row, seriesId, deleted, syncId, uri, rowId)
                     deleted -> {
-                        if (syncId != null) changes.deleteEvent(syncId)
+                        if (syncId != null) changes.deleteEvent(account.id, syncId)
                         delete(uri, rowId)
                     }
                     syncId == null -> {
                         val id = changes.createEvent(newEvent(account, calendar, ProviderMapping.incoming(row)))
                         resolver.update(ContentUris(uri, rowId), ContentValues().apply { put(Events._SYNC_ID, id) }, null, null)
                     }
-                    else -> importEdit(syncId, calendar, ProviderMapping.incoming(row), calendars, byRow, row)
+                    else -> importEdit(account, syncId, calendar, ProviderMapping.incoming(row), calendars, byRow, row)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Couldn't take in a change from the system calendar", e)
@@ -156,17 +156,17 @@ class SystemCalendar(
         }
     }
 
-    private suspend fun importException(row: Map<String, Any?>, seriesId: String, deleted: Boolean, syncId: String?, uri: Uri, rowId: Long) {
+    private suspend fun importException(account: AccountEntity, row: Map<String, Any?>, seriesId: String, deleted: Boolean, syncId: String?, uri: Uri, rowId: Long) {
         val instance = (row[Events.ORIGINAL_INSTANCE_TIME] as? Number)?.toLong() ?: return
         val canceled = (row[Events.STATUS] as? Number)?.toInt() == Events.STATUS_CANCELED
-        val series = db.events().live(seriesId)?.data ?: return
+        val series = db.events().live(account.id, seriesId)?.data ?: return
         when {
             deleted -> Unit // an edited occurrence taken back: 24seven's own state is written again
-            canceled -> changes.deleteOccurrence(seriesId, instance)
+            canceled -> changes.deleteOccurrence(account.id, seriesId, instance)
             else -> {
                 val inc = ProviderMapping.incoming(row)
                 changes.editOccurrence(
-                    seriesId, instance,
+                    account.id, seriesId, instance,
                     series.copy(
                         title = inc.title, description = inc.description, location = inc.location, start = inc.start, end = inc.end,
                         allDay = inc.allDay, timeZone = inc.timeZone ?: series.timeZone, recurrence = null,
@@ -179,23 +179,23 @@ class SystemCalendar(
     }
 
     private suspend fun importEdit(
-        syncId: String, calendar: CalendarEntity, inc: ProviderMapping.Incoming, calendars: Map<String, CalendarEntity>,
+        account: AccountEntity, syncId: String, calendar: CalendarEntity, inc: ProviderMapping.Incoming, calendars: Map<String, CalendarEntity>,
         byRow: Map<Long, String>, row: Map<String, Any?>,
     ) {
-        val current = db.events().live(syncId)?.data ?: return
-        val overrides = (db.events().overrideEdits(syncId).filter { !it.localDeleted }.map { it.data }
-            .ifEmpty { db.events().serverOverrides(syncId).map { it.data } }).map { it.recurrenceId }.toSet()
+        val current = db.events().live(account.id, syncId)?.data ?: return
+        val overrides = (db.events().overrideEdits(account.id, syncId).filter { !it.localDeleted }.map { it.data }
+            .ifEmpty { db.events().serverOverrides(account.id, syncId).map { it.data } }).map { it.recurrenceId }.toSet()
         // Occurrences deleted in the other app arrive as new EXDATEs.
         if (current.recurrence != null && inc.rule == current.recurrence) {
             val known = current.exDates.toSet()
-            inc.exDates.filter { it !in known && it !in overrides }.forEach { changes.deleteOccurrence(syncId, it) }
+            inc.exDates.filter { it !in known && it !in overrides }.forEach { changes.deleteOccurrence(account.id, syncId, it) }
         }
         val movedTo = byRow[(row[Events.CALENDAR_ID] as Number).toLong()]?.takeIf { it in calendars } ?: calendar.id
         val edited = current.copy(
             calendarId = movedTo, title = inc.title, description = inc.description, location = inc.location,
             start = inc.start, end = inc.end, allDay = inc.allDay, timeZone = inc.timeZone ?: current.timeZone, recurrence = inc.rule,
         )
-        val after = db.events().live(syncId)?.data ?: return
+        val after = db.events().live(account.id, syncId)?.data ?: return
         if (edited.copy(exDates = after.exDates, version = after.version) != after) {
             changes.updateEvent(edited.copy(exDates = after.exDates, version = after.version))
         }
@@ -240,10 +240,11 @@ class SystemCalendar(
 
         val providerIds = providerCalendars(android)
         if (providerIds.isEmpty()) return
-        val categories = db.categories().observeAll().first().associateBy { it.id }
+        val categories = db.categories().observeAll().first().filter { it.accountId == account.id }.associateBy { it.id }
         val byId = calendars.associateBy { it.id }
-        val events = db.events().observeLive().first().map { it.data }.filter { it.calendarId in providerIds }
-        val overridesBySeries = db.events().observeLiveOverrides().first().map { it.data }.groupBy { it.seriesId }
+        val events = db.events().observeLive().first().map { it.data }.filter { it.accountId == account.id && it.calendarId in providerIds }
+        val overridesBySeries = db.events().observeLiveOverrides().first().map { it.data }
+            .filter { it.accountId == account.id }.groupBy { it.seriesId }
 
         // What should be there: masters first, so their exceptions find them.
         val desired = LinkedHashMap<String, ContentValues>()

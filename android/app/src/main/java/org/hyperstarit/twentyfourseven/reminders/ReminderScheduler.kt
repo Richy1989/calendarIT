@@ -1,5 +1,6 @@
 package org.hyperstarit.twentyfourseven.reminders
 
+import org.hyperstarit.twentyfourseven.calendar.byKey
 import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.PendingIntent
@@ -53,12 +54,12 @@ class ReminderScheduler(
     private suspend fun plan(now: Long): List<PlannedReminder> {
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(clock.withZone(zone))
-        val calendars = db.calendars().observeAll().first().associateBy { it.id }
+        val calendars = db.calendars().observeAll().first().byKey()
         val occurrences = Occurrences.build(
             db.events().observeLive().first().map { it.data },
             db.events().observeLiveOverrides().first().map { it.data },
             calendars,
-            db.categories().observeAll().first().associateBy { it.id },
+            db.categories().observeAll().first().byKey(),
             hiddenCalendars = emptySet(), // hiding a calendar from view doesn't silence it, as on the web
             range = DateRange(today.minusDays(2), today.plusDays(HORIZON_DAYS + 2)),
             zone = zone,

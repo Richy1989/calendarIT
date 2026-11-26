@@ -70,30 +70,31 @@ class LocalChanges(
      */
     suspend fun updateEvent(event: EventData) {
         db.withTransaction {
-            val current = db.events().live(event.id)?.data ?: return@withTransaction
+            val a = event.accountId
+            val current = db.events().live(a, event.id)?.data ?: return@withTransaction
             val moved = event.recurrence != current.recurrence || event.start != current.start ||
                 event.allDay != current.allDay || (!event.allDay && event.timeZone != current.timeZone)
-            val firstEdit = db.events().edit(event.id) == null
+            val firstEdit = db.events().edit(a, event.id) == null
             db.events().putEdit(EventEdit(event.copy(version = current.version, exDates = if (moved) emptyList() else current.exDates)))
             when {
                 moved || event.recurrence == null -> {
-                    db.events().deleteOverrideEdits(event.id)
+                    db.events().deleteOverrideEdits(a, event.id)
                     // An empty prediction must still hide the server's overrides: mark them gone.
-                    db.events().putOverrideEdits(db.events().serverOverrides(event.id).map { OverrideEdit(it.data, localDeleted = true) })
+                    db.events().putOverrideEdits(db.events().serverOverrides(a, event.id).map { OverrideEdit(it.data, localDeleted = true) })
                 }
                 // The series' edited occurrences stay as they are while the edit waits.
-                firstEdit -> db.events().putOverrideEdits(db.events().serverOverrides(event.id).map { OverrideEdit(it.data) })
+                firstEdit -> db.events().putOverrideEdits(db.events().serverOverrides(a, event.id).map { OverrideEdit(it.data) })
             }
             enqueue(event.accountId, Ops.EVENT_UPDATE, EntityKind.EVENT, event.id, event.saveRequest(includeAttendees = false))
         }
         onQueued()
     }
 
-    suspend fun deleteEvent(id: String) {
+    suspend fun deleteEvent(accountId: String, id: String) {
         db.withTransaction {
-            val current = db.events().live(id) ?: return@withTransaction
+            val current = db.events().live(accountId, id) ?: return@withTransaction
             db.events().putEdit(EventEdit(current.data, localDeleted = true))
-            enqueue(current.data.accountId, Ops.EVENT_DELETE, EntityKind.EVENT, id, null)
+            enqueue(accountId, Ops.EVENT_DELETE, EntityKind.EVENT, id, null)
         }
         onQueued()
     }
@@ -101,29 +102,29 @@ class LocalChanges(
     // ---------------------------------------------------------------- one occurrence, and the ones after
 
     /** The series as the user sees it now: its pending edit (with its predicted overrides) or the server's copy. */
-    private suspend fun series(seriesId: String): SeriesEdits.Series? {
-        val event = db.events().live(seriesId)?.data ?: return null
-        val overrides = if (db.events().edit(seriesId) != null) {
-            db.events().overrideEdits(seriesId).filter { !it.localDeleted }.map { it.data }
+    private suspend fun series(accountId: String, seriesId: String): SeriesEdits.Series? {
+        val event = db.events().live(accountId, seriesId)?.data ?: return null
+        val overrides = if (db.events().edit(accountId, seriesId) != null) {
+            db.events().overrideEdits(accountId, seriesId).filter { !it.localDeleted }.map { it.data }
         } else {
-            db.events().serverOverrides(seriesId).map { it.data }
+            db.events().serverOverrides(accountId, seriesId).map { it.data }
         }
         return SeriesEdits.Series(event, overrides)
     }
 
     private suspend fun putSeries(s: SeriesEdits.Series) {
         db.events().putEdit(EventEdit(s.event))
-        db.events().deleteOverrideEdits(s.event.id)
+        db.events().deleteOverrideEdits(s.event.accountId, s.event.id)
         db.events().putOverrideEdits(s.overrides.map { OverrideEdit(it) })
     }
 
     /** "Only this event": [edited] holds the occurrence's new details (rule, calendar and guests stay the series'). */
-    suspend fun editOccurrence(seriesId: String, recurrenceId: Long, edited: EventData) {
+    suspend fun editOccurrence(accountId: String, seriesId: String, recurrenceId: Long, edited: EventData) {
         db.withTransaction {
-            val s = series(seriesId) ?: return@withTransaction
+            val s = series(accountId, seriesId) ?: return@withTransaction
             val existing = s.overrides.firstOrNull { SeriesEdits.truncate(it.recurrenceId) == SeriesEdits.truncate(recurrenceId) }
             val row = org.hyperstarit.twentyfourseven.data.db.OverrideData(
-                id = existing?.id ?: "local:$seriesId@$recurrenceId", seriesId = seriesId, recurrenceId = recurrenceId,
+                id = existing?.id ?: "local:$seriesId@$recurrenceId", accountId = accountId, seriesId = seriesId, recurrenceId = recurrenceId,
                 title = edited.title, description = edited.description, location = edited.location, categoryId = edited.categoryId,
                 start = edited.start, end = edited.end, allDay = edited.allDay, timeZone = edited.timeZone ?: s.event.timeZone,
                 reminders = edited.reminders,
@@ -134,9 +135,9 @@ class LocalChanges(
         onQueued()
     }
 
-    suspend fun deleteOccurrence(seriesId: String, recurrenceId: Long) {
+    suspend fun deleteOccurrence(accountId: String, seriesId: String, recurrenceId: Long) {
         db.withTransaction {
-            val s = series(seriesId) ?: return@withTransaction
+            val s = series(accountId, seriesId) ?: return@withTransaction
             putSeries(SeriesEdits.deleteOccurrence(s, recurrenceId))
             enqueue(s.event.accountId, Ops.OCCURRENCE_DELETE, EntityKind.EVENT, seriesId, null, iso(recurrenceId))
         }
@@ -147,10 +148,10 @@ class LocalChanges(
      * "This and following": the series ends before the occurrence and [next] starts a new one there
      * (under a new id). On the first occurrence that is a change of the whole series.
      */
-    suspend fun editFollowing(seriesId: String, recurrenceId: Long, next: EventData): String {
+    suspend fun editFollowing(accountId: String, seriesId: String, recurrenceId: Long, next: EventData): String {
         var newId = seriesId
         db.withTransaction {
-            val s = series(seriesId) ?: return@withTransaction
+            val s = series(accountId, seriesId) ?: return@withTransaction
             val id = UUID.randomUUID().toString()
             val split = SeriesEdits.split(s, recurrenceId, next.copy(id = id, accountId = s.event.accountId))
             if (split == null) {
@@ -164,14 +165,14 @@ class LocalChanges(
             enqueue(s.event.accountId, Ops.FOLLOWING_UPDATE, EntityKind.EVENT, seriesId, data, iso(recurrenceId))
             newId = id
         }
-        if (newId == seriesId) updateEvent(next.copy(id = seriesId)) else onQueued()
+        if (newId == seriesId) updateEvent(next.copy(id = seriesId, accountId = accountId)) else onQueued()
         return newId
     }
 
-    suspend fun deleteFollowing(seriesId: String, recurrenceId: Long) {
+    suspend fun deleteFollowing(accountId: String, seriesId: String, recurrenceId: Long) {
         var whole = false
         db.withTransaction {
-            val s = series(seriesId) ?: return@withTransaction
+            val s = series(accountId, seriesId) ?: return@withTransaction
             val kept = SeriesEdits.deleteFollowing(s, recurrenceId)
             if (kept == null) {
                 whole = true
@@ -180,13 +181,13 @@ class LocalChanges(
             putSeries(kept)
             enqueue(s.event.accountId, Ops.FOLLOWING_DELETE, EntityKind.EVENT, seriesId, null, iso(recurrenceId))
         }
-        if (whole) deleteEvent(seriesId) else onQueued()
+        if (whole) deleteEvent(accountId, seriesId) else onQueued()
     }
 
     /** Answers an invitation: "Accepted", "Tentative" or "Declined". */
-    suspend fun respond(eventId: String, status: String) {
+    suspend fun respond(accountId: String, eventId: String, status: String) {
         db.withTransaction {
-            val s = series(eventId) ?: return@withTransaction
+            val s = series(accountId, eventId) ?: return@withTransaction
             putSeries(s.copy(event = s.event.copy(invitationStatus = status)))
             enqueue(
                 s.event.accountId, Ops.EVENT_RSVP, EntityKind.EVENT, eventId,
@@ -211,16 +212,16 @@ class LocalChanges(
 
     suspend fun updateTask(task: TaskData) {
         db.withTransaction {
-            val current = db.tasks().live(task.id) ?: return@withTransaction
+            val current = db.tasks().live(task.accountId, task.id) ?: return@withTransaction
             db.tasks().putEdit(TaskEdit(task.copy(version = current.data.version)))
             enqueue(task.accountId, Ops.TASK_UPDATE, EntityKind.TASK, task.id, task.saveRequest())
         }
         onQueued()
     }
 
-    suspend fun setTaskDone(id: String, done: Boolean) {
+    suspend fun setTaskDone(accountId: String, id: String, done: Boolean) {
         db.withTransaction {
-            val current = db.tasks().live(id) ?: return@withTransaction
+            val current = db.tasks().live(accountId, id) ?: return@withTransaction
             val status = if (done) "Completed" else "NeedsAction"
             val now = clock.millis()
             db.tasks().putEdit(TaskEdit(current.data.copy(status = status, completedAt = if (done) now else null)))
@@ -228,7 +229,7 @@ class LocalChanges(
             // predictions have no change of their own queued: the next pull brings the server's.)
             if (done) {
                 db.tasks().observeLive().first().map { it.data }
-                    .filter { it.parentId == id && it.status in setOf("NeedsAction", "InProcess") }
+                    .filter { it.accountId == accountId && it.parentId == id && it.status in setOf("NeedsAction", "InProcess") }
                     .forEach { db.tasks().putEdit(TaskEdit(it.copy(status = "Completed", completedAt = now))) }
             }
             enqueue(current.data.accountId, Ops.TASK_DONE, EntityKind.TASK, id, doneRequest(done))
@@ -236,9 +237,9 @@ class LocalChanges(
         onQueued()
     }
 
-    suspend fun deleteTask(id: String) {
+    suspend fun deleteTask(accountId: String, id: String) {
         db.withTransaction {
-            val current = db.tasks().live(id) ?: return@withTransaction
+            val current = db.tasks().live(accountId, id) ?: return@withTransaction
             db.tasks().putEdit(TaskEdit(current.data, localDeleted = true))
             enqueue(current.data.accountId, Ops.TASK_DELETE, EntityKind.TASK, id, null)
         }
@@ -254,8 +255,8 @@ class LocalChanges(
             val op = notice.op ?: return@withTransaction
             val data = notice.data?.let { kotlinx.serialization.json.Json.parseToJsonElement(it) as JsonObject }
             val exists = when (notice.entityKind) {
-                EntityKind.EVENT -> db.events().server(notice.entityId) != null
-                else -> db.tasks().server(notice.entityId) != null
+                EntityKind.EVENT -> db.events().server(notice.accountId, notice.entityId) != null
+                else -> db.tasks().server(notice.accountId, notice.entityId) != null
             }
             if (exists) enqueue(notice.accountId, op, notice.entityKind, notice.entityId, data)
             db.notices().delete(noticeId)
@@ -269,7 +270,7 @@ class LocalChanges(
 
     /** Must run inside a transaction. */
     private suspend fun enqueue(accountId: String, op: String, kind: String, entityId: String, data: JsonObject?, occurrence: String? = null) {
-        val queued = db.outbox().forEntity(entityId)
+        val queued = db.outbox().forEntity(accountId, entityId)
         val waiting = queued.filter { !it.sending }
         val last = waiting.lastOrNull()
 
@@ -290,7 +291,7 @@ class LocalChanges(
                 // Deleting what the server never saw: nothing to tell it.
                 op in Ops.deletes && waiting.first().op in Ops.creates && queued.none { it.sending } -> {
                     db.outbox().delete(waiting.map { it.seq })
-                    dropEdit(kind, entityId)
+                    dropEdit(accountId, kind, entityId)
                     return
                 }
             }
@@ -301,8 +302,8 @@ class LocalChanges(
         val base = when {
             op in Ops.creates -> null
             queued.isNotEmpty() -> queued.first().baseVersion
-            kind == EntityKind.EVENT -> db.events().server(entityId)?.data?.version
-            else -> db.tasks().server(entityId)?.data?.version
+            kind == EntityKind.EVENT -> db.events().server(accountId, entityId)?.data?.version
+            else -> db.tasks().server(accountId, entityId)?.data?.version
         }
         db.outbox().insert(
             OutboxEntity(
@@ -313,12 +314,12 @@ class LocalChanges(
     }
 
     /** A thing created and deleted before the server saw it leaves no trace. */
-    private suspend fun dropEdit(kind: String, entityId: String) {
+    private suspend fun dropEdit(accountId: String, kind: String, entityId: String) {
         if (kind == EntityKind.EVENT) {
-            db.events().deleteEdit(entityId)
-            db.events().deleteOverrideEdits(entityId)
+            db.events().deleteEdit(accountId, entityId)
+            db.events().deleteOverrideEdits(accountId, entityId)
         } else {
-            db.tasks().deleteEdit(entityId)
+            db.tasks().deleteEdit(accountId, entityId)
         }
     }
 

@@ -6,6 +6,7 @@ import org.hyperstarit.twentyfourseven.calendar.Occurrence
 import org.hyperstarit.twentyfourseven.calendar.Recurrence
 import org.hyperstarit.twentyfourseven.data.db.CalendarEntity
 import org.hyperstarit.twentyfourseven.data.db.TaskData
+import org.hyperstarit.twentyfourseven.data.db.scopedKey
 
 /** One reminder to ring on this phone. */
 data class PlannedReminder(
@@ -42,6 +43,7 @@ object ReminderPlanner {
     fun plan(
         occurrences: List<Occurrence>,
         tasks: List<TaskData>,
+        /** Keyed by [scopedKey]. */
         calendars: Map<String, CalendarEntity>,
         from: Long,
         to: Long,
@@ -50,7 +52,7 @@ object ReminderPlanner {
         val result = ArrayList<PlannedReminder>()
         for (o in occurrences) {
             val begins = if (o.allDay) {
-                Recurrence.dateOf(o.start).atStartOfDay(zoneOf(o.timeZone) ?: zoneOf(calendars[o.calendarId]?.timeZone) ?: zone).toInstant().toEpochMilli()
+                Recurrence.dateOf(o.start).atStartOfDay(zoneOf(o.timeZone) ?: zoneOf(calendars[scopedKey(o.accountId, o.calendarId)]?.timeZone) ?: zone).toInstant().toEpochMilli()
             } else {
                 o.start
             }
@@ -70,7 +72,7 @@ object ReminderPlanner {
             val due = t.due ?: continue
             val begins = if (t.dueAllDay) {
                 Recurrence.dateOf(due).atTime(LocalTime.of(9, 0))
-                    .atZone(zoneOf(t.timeZone) ?: zoneOf(calendars[t.calendarId]?.timeZone) ?: zone).toInstant().toEpochMilli()
+                    .atZone(zoneOf(t.timeZone) ?: zoneOf(calendars[scopedKey(t.accountId, t.calendarId)]?.timeZone) ?: zone).toInstant().toEpochMilli()
             } else {
                 due
             }

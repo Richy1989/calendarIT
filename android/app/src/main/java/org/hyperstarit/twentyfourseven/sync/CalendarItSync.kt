@@ -33,9 +33,9 @@ class CalendarItSync(
         push(account)
         pull(account)
         db.withTransaction {
-            db.events().dropSettledEdits()
-            db.events().dropSettledOverrideEdits()
-            db.tasks().dropSettledEdits()
+            db.events().dropSettledEdits(account.id)
+            db.events().dropSettledOverrideEdits(account.id)
+            db.tasks().dropSettledEdits(account.id)
         }
     }
 
@@ -44,7 +44,7 @@ class CalendarItSync(
     private suspend fun push(account: AccountEntity) {
         val auth = accounts.auth(account)
         val api = accounts.api(account.certificatePin)
-        db.outbox().clearSending() // a sync that died half-way left its flags behind
+        db.outbox().clearSending(account.id) // a sync that died half-way left its flags behind
         while (true) {
             val now = clock.millis()
             // In order, up to the first change that waits for a retry: later ones may depend on it.
@@ -54,11 +54,11 @@ class CalendarItSync(
             val response = try {
                 auth.authorized { server, token -> api.push(server, token, batch.map { it.wire() }) }
             } catch (e: Exception) {
-                db.outbox().clearSending()
+                db.outbox().clearSending(account.id)
                 throw e
             }
             val failed = db.withTransaction { settle(account, batch, response.results) }
-            db.outbox().clearSending()
+            db.outbox().clearSending(account.id)
             if (failed) return // the server had trouble: the rest waits for the retry
         }
     }
@@ -111,7 +111,7 @@ class CalendarItSync(
         }
         // Changes still queued for something the server just took are now made on its new version.
         for ((entityId, version) in versions) {
-            val queued = db.outbox().forEntity(entityId)
+            val queued = db.outbox().forEntity(account.id, entityId)
             if (queued.isNotEmpty()) db.outbox().update(queued.map { it.copy(baseVersion = version) })
         }
         return failed
@@ -119,11 +119,12 @@ class CalendarItSync(
 
     /** Drops every queued change for [op]'s thing and tells the user why. */
     private suspend fun abandon(account: AccountEntity, op: OutboxEntity, kind: String, message: String, keepForRetry: Boolean) {
-        val queued = db.outbox().forEntity(op.entityId)
+        val queued = db.outbox().forEntity(account.id, op.entityId)
         db.outbox().delete(queued.map { it.seq })
+        val a = account.id
         val title = when (op.entityKind) {
-            EntityKind.EVENT -> (db.events().edit(op.entityId)?.data ?: db.events().server(op.entityId)?.data)?.title
-            else -> (db.tasks().edit(op.entityId)?.data ?: db.tasks().server(op.entityId)?.data)?.title
+            EntityKind.EVENT -> (db.events().edit(a, op.entityId)?.data ?: db.events().server(a, op.entityId)?.data)?.title
+            else -> (db.tasks().edit(a, op.entityId)?.data ?: db.tasks().server(a, op.entityId)?.data)?.title
         } ?: "An item"
         // "Apply mine anyway" re-sends the last whole edit; a refused delete can be sent again as it is.
         val retry = if (keepForRetry) queued.lastOrNull { it.op !in Ops.creates } else null
@@ -163,10 +164,10 @@ class CalendarItSync(
                 // A full listing is everything there is: what it didn't name is gone.
                 val goneEvents = db.events().serverIds(account.id).filterNot { it in seenEvents }
                 goneEvents.chunked(CHUNK).forEach {
-                    db.events().deleteServer(it)
-                    db.events().deleteOverridesOf(it)
+                    db.events().deleteServer(account.id, it)
+                    db.events().deleteOverridesOf(account.id, it)
                 }
-                db.tasks().serverIds(account.id).filterNot { it in seenTasks }.chunked(CHUNK).forEach { db.tasks().deleteServer(it) }
+                db.tasks().serverIds(account.id).filterNot { it in seenTasks }.chunked(CHUNK).forEach { db.tasks().deleteServer(account.id, it) }
             }
             db.accounts().setSynced(account.id, cursor, clock.millis())
         }
@@ -177,24 +178,24 @@ class CalendarItSync(
         db.calendars().upsert(page.calendars.mapIndexed { i, c -> c.row(accountId, i) })
         db.calendars().deleteOthers(accountId, page.calendars.map { it.id })
         db.events().orphans(accountId).chunked(CHUNK).forEach {
-            db.events().deleteServer(it)
-            db.events().deleteOverridesOf(it)
+            db.events().deleteServer(accountId, it)
+            db.events().deleteOverridesOf(accountId, it)
         }
-        db.tasks().orphans(accountId).chunked(CHUNK).forEach { db.tasks().deleteServer(it) }
+        db.tasks().orphans(accountId).chunked(CHUNK).forEach { db.tasks().deleteServer(accountId, it) }
         db.categories().upsert(page.categories.map { it.row(accountId) })
         db.categories().deleteOthers(accountId, page.categories.map { it.id })
 
         if (page.events.isNotEmpty()) {
             db.events().upsert(page.events.map { EventEntity(it.row(accountId)) })
-            page.events.map { it.id }.chunked(CHUNK).forEach { db.events().deleteOverridesOf(it) }
-            db.events().insertOverrides(page.events.flatMap { e -> e.overrideRows().map { OverrideEntity(it) } })
+            page.events.map { it.id }.chunked(CHUNK).forEach { db.events().deleteOverridesOf(accountId, it) }
+            db.events().insertOverrides(page.events.flatMap { e -> e.overrideRows(accountId).map { OverrideEntity(it) } })
         }
         if (page.tasks.isNotEmpty()) db.tasks().upsert(page.tasks.map { TaskEntity(it.row(accountId)) })
         page.deleted.events.chunked(CHUNK).forEach {
-            db.events().deleteServer(it)
-            db.events().deleteOverridesOf(it)
+            db.events().deleteServer(accountId, it)
+            db.events().deleteOverridesOf(accountId, it)
         }
-        page.deleted.tasks.chunked(CHUNK).forEach { db.tasks().deleteServer(it) }
+        page.deleted.tasks.chunked(CHUNK).forEach { db.tasks().deleteServer(accountId, it) }
     }
 
     companion object {

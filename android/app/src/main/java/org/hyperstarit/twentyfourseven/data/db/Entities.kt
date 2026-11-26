@@ -14,6 +14,10 @@ import kotlinx.serialization.Serializable
 // (written only by sync) and the device's pending edits (written by the user, until the server
 // has taken them). The *_live views show an edit where there is one — so a pull never overwrites
 // what the user just did, and a refused change simply falls back to the server's copy.
+//
+// Remote ids are only unique on their own server: two servers restored from one backup hand out the
+// same ones. Every synced row is therefore keyed by (accountId, id), and every lookup, join and
+// delete names the account.
 
 object AccountKind {
     const val CALENDARIT = "calendarit"
@@ -41,9 +45,9 @@ data class AccountEntity(
     val createdAt: Long,
 )
 
-@Entity(tableName = "calendars", indices = [Index("accountId")])
+@Entity(tableName = "calendars", primaryKeys = ["accountId", "id"])
 data class CalendarEntity(
-    @PrimaryKey val id: String,
+    val id: String,
     val accountId: String,
     val name: String,
     val color: String?,
@@ -55,9 +59,9 @@ data class CalendarEntity(
     val version: String,
 )
 
-@Entity(tableName = "categories", indices = [Index("accountId")])
+@Entity(tableName = "categories", primaryKeys = ["accountId", "id"])
 data class CategoryEntity(
-    @PrimaryKey val id: String,
+    val id: String,
     val accountId: String,
     val name: String,
     val color: String,
@@ -95,15 +99,16 @@ data class EventData(
     val version: String?,
 )
 
-@Entity(tableName = "events", primaryKeys = ["id"], indices = [Index("accountId"), Index("calendarId")])
+@Entity(tableName = "events", primaryKeys = ["accountId", "id"], indices = [Index("accountId", "calendarId")])
 data class EventEntity(@Embedded val data: EventData, @ColumnInfo(name = "localDeleted") val localDeleted: Boolean = false)
 
-@Entity(tableName = "event_edits", primaryKeys = ["id"], indices = [Index("accountId")])
+@Entity(tableName = "event_edits", primaryKeys = ["accountId", "id"])
 data class EventEdit(@Embedded val data: EventData, @ColumnInfo(name = "localDeleted") val localDeleted: Boolean = false)
 
 /** An edited occurrence: it replaces the one its series' rule puts at [recurrenceId]. */
 data class OverrideData(
     val id: String,
+    val accountId: String,
     val seriesId: String,
     val recurrenceId: Long,
     val title: String,
@@ -117,11 +122,11 @@ data class OverrideData(
     val reminders: List<Reminder>,
 )
 
-@Entity(tableName = "overrides", primaryKeys = ["id"], indices = [Index("seriesId")])
+@Entity(tableName = "overrides", primaryKeys = ["accountId", "id"], indices = [Index("accountId", "seriesId")])
 data class OverrideEntity(@Embedded val data: OverrideData, @ColumnInfo(name = "localDeleted") val localDeleted: Boolean = false)
 
 /** An edited series' overrides as the device predicts them (all of them, while its edit is pending). */
-@Entity(tableName = "override_edits", primaryKeys = ["id"], indices = [Index("seriesId")])
+@Entity(tableName = "override_edits", primaryKeys = ["accountId", "id"], indices = [Index("accountId", "seriesId")])
 data class OverrideEdit(@Embedded val data: OverrideData, @ColumnInfo(name = "localDeleted") val localDeleted: Boolean = false)
 
 data class TaskData(
@@ -142,14 +147,14 @@ data class TaskData(
     val version: String?,
 )
 
-@Entity(tableName = "tasks", primaryKeys = ["id"], indices = [Index("accountId"), Index("calendarId")])
+@Entity(tableName = "tasks", primaryKeys = ["accountId", "id"], indices = [Index("accountId", "calendarId")])
 data class TaskEntity(@Embedded val data: TaskData, @ColumnInfo(name = "localDeleted") val localDeleted: Boolean = false)
 
-@Entity(tableName = "task_edits", primaryKeys = ["id"], indices = [Index("accountId")])
+@Entity(tableName = "task_edits", primaryKeys = ["accountId", "id"])
 data class TaskEdit(@Embedded val data: TaskData, @ColumnInfo(name = "localDeleted") val localDeleted: Boolean = false)
 
 /** A change made on the device, waiting to be sent — in [seq] order, per account. */
-@Entity(tableName = "outbox", indices = [Index("accountId"), Index("entityId")])
+@Entity(tableName = "outbox", indices = [Index("accountId", "entityId")])
 data class OutboxEntity(
     @PrimaryKey(autoGenerate = true) val seq: Long = 0,
     val accountId: String,
@@ -188,3 +193,6 @@ data class NoticeEntity(
     val data: String?,
     val createdAt: Long,
 )
+
+/** A remote id made unique on the device: for maps that hold more than one account's rows. */
+fun scopedKey(accountId: String, id: String): String = "$accountId\u0000$id"

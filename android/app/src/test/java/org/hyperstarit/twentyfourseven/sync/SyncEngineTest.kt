@@ -109,7 +109,7 @@ class SyncEngineTest {
     fun anEdit_ShowsAtOnce_IsSentOnTheServersVersion_AndMakesWayForItsCopy() = runBlocking {
         fake.pages = mutableListOf(FakeServer.page(events = listOf(FakeServer.event("e1", "Standup", version = "10"))))
         runner.syncAll()
-        val current = db.events().live("e1")!!.data
+        val current = db.events().live(account.id, "e1")!!.data
 
         changes.updateEvent(current.copy(title = "Standup (phone)"))
         assertEquals(listOf("Standup (phone)"), liveTitles()) // before any sync
@@ -122,14 +122,14 @@ class SyncEngineTest {
         assertEquals("event.update", sent["op"]!!.jsonPrimitive.content)
         assertEquals("10", sent["baseVersion"]!!.jsonPrimitive.content)
         assertEquals("Standup (phone)", sent["data"]!!.jsonObject["title"]!!.jsonPrimitive.content)
-        assertNull(db.events().edit("e1")) // settled: the server's copy shows
-        assertEquals("11", db.events().live("e1")!!.data.version)
+        assertNull(db.events().edit(account.id, "e1")) // settled: the server's copy shows
+        assertEquals("11", db.events().live(account.id, "e1")!!.data.version)
     }
 
     @Test
     fun queuedChanges_Fold_WhereTheResultIsTheSame() = runBlocking {
         runner.syncAll()
-        val draft = db.events().live("none")
+        val draft = db.events().live(account.id, "none")
         assertNull(draft)
         val base = org.hyperstarit.twentyfourseven.data.db.EventData(
             id = "", accountId = account.id, calendarId = FakeServer.CAL, title = "Draft", description = null, location = null,
@@ -143,16 +143,16 @@ class SyncEngineTest {
         assertTrue(queue.single().data!!.contains("Draft, renamed"))
 
         val gone = changes.createEvent(base.copy(title = "Never mind"))
-        changes.deleteEvent(gone)
+        changes.deleteEvent(account.id, gone)
         assertEquals(1, db.outbox().forAccount(account.id).size) // nothing to tell the server
-        assertNull(db.events().edit(gone))
+        assertNull(db.events().edit(account.id, gone))
     }
 
     @Test
     fun aConflict_KeepsTheServersVersion_AndOffersToApplyMineAgain() = runBlocking {
         fake.pages = mutableListOf(FakeServer.page(events = listOf(FakeServer.event("e1", "Standup", version = "10"))))
         runner.syncAll()
-        changes.updateEvent(db.events().live("e1")!!.data.copy(title = "Mine"))
+        changes.updateEvent(db.events().live(account.id, "e1")!!.data.copy(title = "Mine"))
         fake.pushAnswer = { op -> """{"opId":"${op["opId"]!!.jsonPrimitive.content}","status":"conflict"}""" }
         fake.pages = mutableListOf(FakeServer.page(events = listOf(FakeServer.event("e1", "Theirs", version = "12")), cursor = "c2"))
 
@@ -174,8 +174,8 @@ class SyncEngineTest {
     fun theVersionsInAnAnswer_BecomeTheBaseOfWhatIsStillQueued() = runBlocking {
         fake.pages = mutableListOf(FakeServer.page(tasks = listOf(FakeServer.task("t1", "Milk", version = "20"))))
         runner.syncAll()
-        changes.setTaskDone("t1", true)
-        changes.updateTask(db.tasks().live("t1")!!.data.copy(title = "Oat milk"))
+        changes.setTaskDone(account.id, "t1", true)
+        changes.updateTask(db.tasks().live(account.id, "t1")!!.data.copy(title = "Oat milk"))
         // The first push answers only the first change (and the task's new version); the second
         // stays queued and must then go out on that version.
         var calls = 0

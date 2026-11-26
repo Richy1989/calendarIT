@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         EventEntity::class, EventEdit::class, OverrideEntity::class, OverrideEdit::class,
         TaskEntity::class, TaskEdit::class, OutboxEntity::class, NoticeEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -41,6 +41,13 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("DROP TABLE IF EXISTS calendars")
                 db.execSQL("DROP TABLE IF EXISTS categories")
                 V2_SCHEMA.forEach(db::execSQL)
+            }
+        }
+
+        /** Every synced row gets the account in its key (see [MIGRATION_2_3_SQL]). */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_2_3_SQL.forEach(db::execSQL)
             }
         }
     }
