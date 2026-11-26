@@ -339,8 +339,12 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   (SizeMode.Exact: rows per cell computed from the widget's height), ‹ › and the month name
   (back to today) via action callbacks in Glance state, a tapped day opens the app on it
   (`MainActivity.EXTRA_DATE` → `RootViewModel.openDate`). Reads the local copy; redrawn after
-  every sync and local change (`MonthWidget.refresh`) and hourly. Drawer "Add month widget to home
-  screen" uses the system pin dialog. Glance composables can't read `Locale.getDefault()` (lint):
+  every sync and local change (`MonthWidget.refresh`) and hourly. Settings → Widgets
+  (`WidgetSettingsScreen`) is one panel per `WidgetKind`: add to home screen (system pin dialog),
+  background opacity, lines between days and today's fill (theme colour or a picked one, 0 % = not
+  drawn), written on Save to `WidgetPrefs` (SharedPreferences `widgets`, keys `<kind>.<setting>`).
+  The look is read inside the composition and `refresh` bumps a state revision, so a running
+  widget session redraws with it; the data is collected live, not read once. Glance composables can't read `Locale.getDefault()` (lint):
   take it from the context in `provideGlance` and pass it down.
 - **Design** (`ui/theme`): the web's look, ported — `Palette` holds the `index.css` tokens
   (Corner Store — the default — /Midnight/Daylight/Graphite; Settings → Appearance, "Match phone" =

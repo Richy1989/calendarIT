@@ -13,7 +13,14 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import org.hyperstarit.twentyfourseven.ui.theme.AppearancePrefs
+import org.hyperstarit.twentyfourseven.ui.theme.Palette
+import org.hyperstarit.twentyfourseven.ui.theme.ThemeChoice
 import org.hyperstarit.twentyfourseven.ui.theme.colorScheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import androidx.glance.LocalSize
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.clickable
@@ -77,7 +84,17 @@ class MonthWidget : GlanceAppWidget() {
     interface Deps {
         fun db(): AppDatabase
         fun prefs(): CalendarPrefs
+        fun widgetPrefs(): WidgetPrefs
     }
+
+    /** What the widget draws from: the phone's copy of the calendars, kept live while the widget's session runs. */
+    private data class Source(
+        val events: List<org.hyperstarit.twentyfourseven.data.db.EventData>,
+        val overrides: List<org.hyperstarit.twentyfourseven.data.db.OverrideData>,
+        val calendars: Map<String, org.hyperstarit.twentyfourseven.data.db.CalendarEntity>,
+        val categories: Map<String, org.hyperstarit.twentyfourseven.data.db.CategoryEntity>,
+        val hidden: Set<String>,
+    )
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val deps = EntryPointAccessors.fromApplication(context, Deps::class.java)
@@ -85,40 +102,52 @@ class MonthWidget : GlanceAppWidget() {
         val zone = ZoneId.systemDefault()
         val locale = context.resources.configuration.locales[0]
         val firstDay = WeekFields.of(locale).firstDayOfWeek
-        val events = db.events().observeLive().first().map { it.data }
-        val overrides = db.events().observeLiveOverrides().first().map { it.data }
-        val calendars = db.calendars().observeAll().first().associateBy { it.id }
-        val categories = db.categories().observeAll().first().associateBy { it.id }
-        val hidden = deps.prefs().hidden.first()
+        val source = combine(
+            db.events().observeLive().map { list -> list.map { it.data } },
+            db.events().observeLiveOverrides().map { list -> list.map { it.data } },
+            db.calendars().observeAll().map { list -> list.associateBy { it.id } },
+            db.categories().observeAll().map { list -> list.associateBy { it.id } },
+            deps.prefs().hidden,
+        ) { e, o, cal, cat, h -> Source(e, o, cal, cat, h) }
+        val initial = source.first()
 
         provideContent {
-            val offset = currentState<Preferences>()[OFFSET] ?: 0
+            val state = currentState<Preferences>()
+            val offset = state[OFFSET] ?: 0
+            state[REVISION] // a saved look or theme bumps it, so this draws again with the new one
+            val look = deps.widgetPrefs().look(WidgetKind.MONTH)
+            val data by source.collectAsState(initial)
             val today = LocalDate.now(zone)
             val month = YearMonth.from(today).plusMonths(offset.toLong())
             val range = MonthModel.range(month, firstDay)
-            val byDate = Occurrences.byDate(Occurrences.build(events, overrides, calendars, categories, hidden, range, zone), range, zone)
+            val byDate = Occurrences.byDate(
+                Occurrences.build(data.events, data.overrides, data.calendars, data.categories, data.hidden, range, zone), range, zone,
+            )
             val size = LocalSize.current
-            val weeks = range.let { java.time.temporal.ChronoUnit.DAYS.between(it.from, it.to).toInt() / 7 }
+            val weeks = java.time.temporal.ChronoUnit.DAYS.between(range.from, range.to).toInt() / 7
             val cell = (size.height - HEADER - WEEKDAYS) / weeks
-            val perDay = (((cell - DAY_NUMBER) / LINE).toInt()).coerceIn(0, 6)
-            GlanceTheme(colors = themeColors(context)) { Month(MonthModel.build(month, firstDay, today, byDate, perDay), locale, glass(context)) }
+            val perDay = (((cell - DAY_NUMBER - 1.dp) / LINE).toInt()).coerceIn(0, 6)
+            val palettes = palettes(context)
+            GlanceTheme(colors = themeColors(palettes)) {
+                Month(MonthModel.build(month, firstDay, today, byDate, perDay), locale, glass(palettes, look.background), cellStyle(palettes, look))
+            }
         }
     }
 
     @Composable
-    private fun Month(grid: MonthGrid, locale: Locale, glass: Glass?) {
+    private fun Month(grid: MonthGrid, locale: Locale, glass: Glass?, style: CellStyle) {
         val surface = if (glass == null) GlanceModifier.fillMaxSize().background(GlanceTheme.colors.background).cornerRadius(20.dp)
         else GlanceModifier.fillMaxSize().background(glass.fill).cornerRadius(19.dp)
         // Glass: a faint light rim around a see-through fill (Glance has no blur or borders).
         if (glass != null) {
-            Box(GlanceModifier.fillMaxSize().background(glass.rim).cornerRadius(20.dp).padding(1.dp)) { MonthBody(grid, locale, surface) }
+            Box(GlanceModifier.fillMaxSize().background(glass.rim).cornerRadius(20.dp).padding(1.dp)) { MonthBody(grid, locale, surface, style) }
         } else {
-            MonthBody(grid, locale, surface)
+            MonthBody(grid, locale, surface, style)
         }
     }
 
     @Composable
-    private fun MonthBody(grid: MonthGrid, locale: Locale, surface: GlanceModifier) {
+    private fun MonthBody(grid: MonthGrid, locale: Locale, surface: GlanceModifier, style: CellStyle) {
         Column(surface.padding(4.dp)) {
             Row(GlanceModifier.fillMaxWidth().height(HEADER), verticalAlignment = Alignment.CenterVertically) {
                 Text("‹", modifier = GlanceModifier.width(40.dp).clickable(actionRunCallback<PreviousMonth>()),
@@ -137,107 +166,124 @@ class MonthWidget : GlanceAppWidget() {
                         style = TextStyle(fontSize = 10.sp, color = GlanceTheme.colors.onSurfaceVariant, textAlign = TextAlign.Center))
                 }
             }
-            grid.weeks.forEach { week ->
+            grid.weeks.forEachIndexed { row, week ->
                 Row(GlanceModifier.fillMaxWidth().defaultWeight()) {
-                    week.forEach { day -> Day(day, GlanceModifier.defaultWeight().fillMaxHeight()) }
+                    week.forEachIndexed { col, day -> Day(day, row, col, style, GlanceModifier.defaultWeight().fillMaxHeight()) }
                 }
             }
         }
     }
 
+    /** One day: a line to its left and above (not on the grid's outer edge), today's fill, the number and its chips. */
     @Composable
-    private fun Day(day: DayCell, modifier: GlanceModifier) {
+    private fun Day(day: DayCell, row: Int, col: Int, style: CellStyle, modifier: GlanceModifier) {
         val open = Intent(Intent.ACTION_VIEW).setClass(androidx.glance.LocalContext.current, MainActivity::class.java)
             .putExtra(MainActivity.EXTRA_DATE, day.date.toString())
             .setData("twentyfourseven://day/${day.date}".toUri()) // one pending intent per day
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        Column(modifier.padding(1.dp).clickable(actionStartActivity(open))) {
-            Box(
-                GlanceModifier.fillMaxWidth().height(DAY_NUMBER)
-                    .let { if (day.today) it.background(GlanceTheme.colors.primary).cornerRadius(7.dp) else it },
-                contentAlignment = Alignment.Center,
+        Row(modifier) {
+            if (col > 0 && style.border != null) Box(GlanceModifier.width(1.dp).fillMaxHeight().background(style.border)) {}
+            Column(
+                GlanceModifier.defaultWeight().fillMaxHeight()
+                    .let { if (day.today && style.today != null) it.background(style.today) else it }
+                    .clickable(actionStartActivity(open)),
             ) {
+                if (row > 0 && style.border != null) Box(GlanceModifier.fillMaxWidth().height(1.dp).background(style.border)) {}
                 Text(
                     day.date.dayOfMonth.toString(),
+                    modifier = GlanceModifier.fillMaxWidth().height(DAY_NUMBER),
                     style = TextStyle(
                         fontSize = 11.sp,
+                        textAlign = TextAlign.Center,
                         fontWeight = if (day.today) FontWeight.Bold else FontWeight.Normal,
-                        color = when {
-                            day.today -> GlanceTheme.colors.onPrimary
-                            day.inMonth -> GlanceTheme.colors.onSurface
-                            else -> GlanceTheme.colors.outline
-                        },
+                        color = if (day.inMonth) GlanceTheme.colors.onSurface else GlanceTheme.colors.outline,
                     ),
                 )
-            }
-            day.chips.forEach { chip ->
-                val color = chip.color?.let { runCatching { Color(it.toColorInt()) }.getOrNull() } ?: DEFAULT
-                Text(
-                    chip.title,
-                    maxLines = 1,
-                    modifier = GlanceModifier.fillMaxWidth().height(LINE).padding(horizontal = 2.dp)
-                        .background(ColorProvider(if (chip.allDay) color else color.copy(alpha = 0.25f))).cornerRadius(3.dp),
-                    style = TextStyle(fontSize = 9.sp, color = if (chip.allDay) ColorProvider(onColor(color)) else GlanceTheme.colors.onSurface),
-                )
-            }
-            if (day.more > 0) {
-                Text("+${day.more}", style = TextStyle(fontSize = 9.sp, color = GlanceTheme.colors.onSurfaceVariant))
+                day.chips.forEach { chip ->
+                    val color = chip.color?.let { runCatching { Color(it.toColorInt()) }.getOrNull() } ?: DEFAULT
+                    Text(
+                        chip.title,
+                        maxLines = 1,
+                        modifier = GlanceModifier.fillMaxWidth().height(LINE).padding(horizontal = 2.dp)
+                            .background(ColorProvider(if (chip.allDay) color else color.copy(alpha = 0.25f))).cornerRadius(3.dp),
+                        style = TextStyle(fontSize = 9.sp, color = if (chip.allDay) ColorProvider(onColor(color)) else GlanceTheme.colors.onSurface),
+                    )
+                }
+                if (day.more > 0) {
+                    Text("+${day.more}", modifier = GlanceModifier.padding(horizontal = 2.dp),
+                        style = TextStyle(fontSize = 9.sp, color = GlanceTheme.colors.onSurfaceVariant))
+                }
             }
         }
     }
 
     companion object {
         val OFFSET = intPreferencesKey("month_offset")
+        private val REVISION = intPreferencesKey("look_revision")
         private val HEADER = 36.dp
         private val WEEKDAYS = 16.dp
         private val DAY_NUMBER = 16.dp
         private val LINE = 13.dp
-        private val DEFAULT = org.hyperstarit.twentyfourseven.ui.theme.Palette.CornerStore.accent
+        private val DEFAULT = Palette.CornerStore.accent
 
-        /** The app's theme (Settings → Appearance); "Match phone" lets the launcher pick Daylight or Midnight. */
-        private fun themeColors(context: Context): androidx.glance.color.ColorProviders {
+        /** The app's theme (Settings → Appearance): one palette, or Daylight and Midnight for "Match phone". */
+        private fun palettes(context: Context): Palettes {
             val saved = context.getSharedPreferences("appearance", Context.MODE_PRIVATE).getString("theme", null)
-            val choice = org.hyperstarit.twentyfourseven.ui.theme.ThemeChoice.entries.firstOrNull { it.name == saved } ?: org.hyperstarit.twentyfourseven.ui.theme.AppearancePrefs.DEFAULT
-            return if (choice == org.hyperstarit.twentyfourseven.ui.theme.ThemeChoice.AUTO) {
-                androidx.glance.material3.ColorProviders(
-                    light = org.hyperstarit.twentyfourseven.ui.theme.Palette.Daylight.colorScheme(),
-                    dark = org.hyperstarit.twentyfourseven.ui.theme.Palette.Midnight.colorScheme(),
-                )
-            } else {
-                androidx.glance.material3.ColorProviders(choice.palette(true).colorScheme())
-            }
+            val choice = ThemeChoice.entries.firstOrNull { it.name == saved } ?: AppearancePrefs.DEFAULT
+            return if (choice == ThemeChoice.AUTO) Palettes(Palette.Daylight, Palette.Midnight) else Palettes(choice.palette(true), null)
         }
 
-        /** The see-through background and its rim, or null when the widget is opaque (Settings → Month widget). */
-        private fun glass(context: Context): Glass? {
-            val opacity = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
-                .getInt(org.hyperstarit.twentyfourseven.ui.theme.AppearancePrefs.WIDGET_OPACITY, 100) / 100f
+        private fun themeColors(p: Palettes): androidx.glance.color.ColorProviders =
+            if (p.night != null) androidx.glance.material3.ColorProviders(light = p.day.colorScheme(), dark = p.night.colorScheme())
+            else androidx.glance.material3.ColorProviders(p.day.colorScheme())
+
+        /** A colour taken from the theme ([pick]), or the same for day and night under "Match phone". */
+        private fun Palettes.provider(pick: (Palette) -> Color): ColorProvider =
+            if (night != null) androidx.glance.color.ColorProvider(day = pick(day), night = pick(night)) else ColorProvider(pick(day))
+
+        /** A colour the user picked (or the theme's [themed] one) at its opacity; null when fully transparent. */
+        private fun Palettes.resolve(c: WidgetColor, themed: (Palette) -> Color): ColorProvider? {
+            if (c.alpha <= 0) return null
+            val a = c.alpha / 100f
+            return provider { p -> (c.rgb?.let { Color(0xFF000000.toInt() or it) } ?: themed(p)).copy(alpha = a) }
+        }
+
+        private fun cellStyle(p: Palettes, look: WidgetLook) = CellStyle(
+            border = p.resolve(look.border) { it.colorScheme().onSurface },
+            today = p.resolve(look.today) { it.colorScheme().primary },
+        )
+
+        /** The see-through background and its rim, or null when the widget is opaque (Settings → Widgets). */
+        private fun glass(p: Palettes, background: Int): Glass? {
+            val opacity = background / 100f
             if (opacity >= 1f) return null
-            val saved = context.getSharedPreferences("appearance", Context.MODE_PRIVATE).getString("theme", null)
-            val choice = org.hyperstarit.twentyfourseven.ui.theme.ThemeChoice.entries.firstOrNull { it.name == saved } ?: org.hyperstarit.twentyfourseven.ui.theme.AppearancePrefs.DEFAULT
-            fun fill(p: org.hyperstarit.twentyfourseven.ui.theme.Palette) = p.colorScheme().background.copy(alpha = opacity)
-            fun rim(p: org.hyperstarit.twentyfourseven.ui.theme.Palette) = p.colorScheme().onSurface.copy(alpha = 0.18f)
-            return if (choice == org.hyperstarit.twentyfourseven.ui.theme.ThemeChoice.AUTO) {
-                val day = org.hyperstarit.twentyfourseven.ui.theme.Palette.Daylight
-                val night = org.hyperstarit.twentyfourseven.ui.theme.Palette.Midnight
-                Glass(
-                    androidx.glance.color.ColorProvider(day = fill(day), night = fill(night)),
-                    androidx.glance.color.ColorProvider(day = rim(day), night = rim(night)),
-                )
-            } else {
-                val p = choice.palette(true)
-                Glass(ColorProvider(fill(p)), ColorProvider(rim(p)))
-            }
+            return Glass(
+                p.provider { it.colorScheme().background.copy(alpha = opacity) },
+                p.provider { it.colorScheme().onSurface.copy(alpha = 0.18f) },
+            )
         }
 
         private fun onColor(c: Color) = if (0.299 * c.red + 0.587 * c.green + 0.114 * c.blue > 0.6) Color(0xFF1A1A1A) else Color.White
 
-        /** Redraws every month widget (after a sync or a change). */
-        suspend fun refresh(context: Context) = runCatching { MonthWidget().updateAll(context) }
+        /**
+         * Redraws every month widget (after a sync, a change, a saved look). The revision makes a
+         * running widget session read its look and theme again.
+         */
+        suspend fun refresh(context: Context) = runCatching {
+            GlanceAppWidgetManager(context).getGlanceIds(MonthWidget::class.java).forEach { id ->
+                updateAppWidgetState(context, id) { it[REVISION] = (it[REVISION] ?: 0) + 1 }
+            }
+            MonthWidget().updateAll(context)
+        }
     }
 }
 
+private class Palettes(val day: Palette, val night: Palette?)
+
 private class Glass(val fill: ColorProvider, val rim: ColorProvider)
+
+/** The lines between days and today's fill; null = not drawn. */
+private class CellStyle(val border: ColorProvider?, val today: ColorProvider?)
 
 private suspend fun shift(context: Context, id: GlanceId, by: Int?) {
     updateAppWidgetState(context, id) { prefs -> prefs[MonthWidget.OFFSET] = if (by == null) 0 else (prefs[MonthWidget.OFFSET] ?: 0) + by }

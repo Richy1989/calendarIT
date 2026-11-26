@@ -51,6 +51,7 @@ import org.hyperstarit.twentyfourseven.ui.accounts.AddAccountScreen
 import org.hyperstarit.twentyfourseven.ui.calendar.CalendarScreen
 import org.hyperstarit.twentyfourseven.ui.home.AccountsScreen
 import org.hyperstarit.twentyfourseven.ui.settings.SettingsScreen
+import org.hyperstarit.twentyfourseven.ui.settings.WidgetSettingsScreen
 import org.hyperstarit.twentyfourseven.ui.tasks.TasksScreen
 import org.hyperstarit.twentyfourseven.ui.theme.AmbientBackground
 import org.hyperstarit.twentyfourseven.ui.theme.Glyphs
@@ -70,8 +71,8 @@ class RootViewModel @Inject constructor(accounts: Accounts) : ViewModel() {
     val openDate = kotlinx.coroutines.flow.MutableStateFlow<java.time.LocalDate?>(null)
 }
 
-/** The three tabs of the bottom bar, and the two pages Settings leads to. */
-enum class Screen(val depth: Int) { CALENDAR(0), TASKS(0), SETTINGS(0), ACCOUNTS(1), ADD_ACCOUNT(2) }
+/** The three tabs of the bottom bar, and the pages Settings leads to. */
+enum class Screen(val depth: Int) { CALENDAR(0), TASKS(0), SETTINGS(0), ACCOUNTS(1), ADD_ACCOUNT(2), WIDGETS(1) }
 
 /** No account yet → the welcome and sign-in; otherwise the tabs (calendar, tasks, settings) and the account pages. */
 @Composable
@@ -105,7 +106,10 @@ fun AppRoot(viewModel: RootViewModel) {
                             bottomBar = bar, attention = attention, onAccounts = { go(Screen.ACCOUNTS) }, openDate = viewModel.openDate,
                         )
                         Screen.TASKS -> TasksScreen(bottomBar = bar)
-                        Screen.SETTINGS -> SettingsScreen(bottomBar = bar, attention = attention, onAccounts = { go(Screen.ACCOUNTS) })
+                        Screen.SETTINGS -> SettingsScreen(
+                            bottomBar = bar, attention = attention, onAccounts = { go(Screen.ACCOUNTS) }, onWidgets = { go(Screen.WIDGETS) },
+                        )
+                        Screen.WIDGETS -> WidgetSettingsScreen(onBack = { go(Screen.SETTINGS) })
                         Screen.ACCOUNTS -> AccountsScreen(onBack = { go(Screen.SETTINGS) }, onAddAccount = { go(Screen.ADD_ACCOUNT) })
                         Screen.ADD_ACCOUNT -> AddAccountScreen(onAdded = { go(Screen.CALENDAR) }, onCancel = { go(Screen.ACCOUNTS) })
                     }
