@@ -16,3 +16,7 @@
 -dontwarn org.jparsec.**
 -dontwarn org.joda.convert.**
 -dontwarn java.beans.**
+
+# Glance creates the widget's action callbacks (‹ › and the month name) by reflection from their
+# class name; its own rule keeps the classes but, under R8 full mode, not their constructors.
+-keep class * implements androidx.glance.appwidget.action.ActionCallback { <init>(); }
