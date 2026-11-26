@@ -23,6 +23,7 @@ import org.hyperstarit.twentyfourseven.ui.theme.Brand
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
@@ -42,28 +43,47 @@ import com.kizitonwose.calendar.core.DayPosition
 import com.kizitonwose.calendar.core.daysOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 private const val SHOWN_PER_DAY = 3
+private const val MONTHS_EACH_SIDE = 600L
 
 /** A month grid: each day with its first few appointments; a tap opens the day. */
 @Composable
-fun MonthView(focus: LocalDate, shown: Shown?, formats: Formats, onMonthShown: (LocalDate) -> Unit, onDay: (LocalDate) -> Unit) {
+fun MonthView(
+    focus: CalendarFocus,
+    shown: Shown?,
+    formats: Formats,
+    onMonthShown: (LocalDate, Long, ViewMode) -> Unit,
+    onDay: (LocalDate) -> Unit,
+) {
     val today = LocalDate.now(formats.zone)
-    val focusMonth = YearMonth.from(focus)
+    val focusMonth = YearMonth.from(focus.date)
+    // The calendar library recreates its scroll state when any of these inputs change.
+    val initialMonth = remember { focusMonth }
+    val startMonth = remember { initialMonth.minusMonths(MONTHS_EACH_SIDE) }
+    val endMonth = remember { initialMonth.plusMonths(MONTHS_EACH_SIDE) }
     val state = rememberCalendarState(
-        startMonth = focusMonth.minusMonths(600),
-        endMonth = focusMonth.plusMonths(600),
-        firstVisibleMonth = focusMonth,
+        startMonth = startMonth,
+        endMonth = endMonth,
+        firstVisibleMonth = initialMonth,
         firstDayOfWeek = formats.firstDayOfWeek,
     )
-    // "Today" (or a day picked elsewhere) moves the grid; swiping moves the focus.
-    LaunchedEffect(focusMonth) {
-        if (state.firstVisibleMonth.yearMonth != focusMonth) state.scrollToMonth(focusMonth)
-    }
-    val latestFocus by rememberUpdatedState(focus)
-    LaunchedEffect(state) {
-        snapshotFlow { state.firstVisibleMonth.yearMonth }.collect { month ->
-            if (month != YearMonth.from(latestFocus)) onMonthShown(month.atDay(1))
+    val latestMonth by rememberUpdatedState(focusMonth)
+    LaunchedEffect(state, focus.navigationId) {
+        // Observe after the requested move. A gesture can cancel the move and still settle.
+        coroutineScope {
+            launch {
+                if (focusMonth < state.startMonth) state.startMonth = focusMonth.minusMonths(MONTHS_EACH_SIDE)
+                if (focusMonth > state.endMonth) state.endMonth = focusMonth.plusMonths(MONTHS_EACH_SIDE)
+                state.scrollToMonth(focusMonth)
+            }
+        }
+        snapshotFlow { if (state.isScrollInProgress) null else state.firstVisibleMonth.yearMonth }.collect { month ->
+            if (month != null && month != latestMonth) {
+                onMonthShown(month.atDay(1), focus.navigationId, ViewMode.MONTH)
+            }
         }
     }
     val c = Brand.colors

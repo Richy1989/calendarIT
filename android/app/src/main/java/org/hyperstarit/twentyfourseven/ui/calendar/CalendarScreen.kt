@@ -79,7 +79,8 @@ fun CalendarScreen(
     }
     val c = Brand.colors
     val formats = rememberFormats()
-    val focus by viewModel.focus.collectAsStateWithLifecycle()
+    val calendarFocus by viewModel.focus.collectAsStateWithLifecycle()
+    val focus = calendarFocus.date
     val shown by viewModel.shown.collectAsStateWithLifecycle()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val calendars by viewModel.calendars.collectAsStateWithLifecycle()
@@ -117,7 +118,7 @@ fun CalendarScreen(
                 onClose = { scope.launch { drawer.close() } },
                 onDate = { scope.launch {
                     drawer.close()
-                    if (viewModel.mode == ViewMode.AGENDA) viewModel.openDay(it) else viewModel.focus.value = it
+                    if (viewModel.mode == ViewMode.AGENDA) viewModel.openDay(it) else viewModel.goTo(it)
                 } },
                 onNew = { scope.launch { drawer.close(); editing = EditTarget.New(focus, nextHour(focus, formats)) } },
                 onTasks = { scope.launch { drawer.close(); onTasks() } },
@@ -186,13 +187,13 @@ fun CalendarScreen(
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when (viewModel.mode) {
-                    ViewMode.MONTH -> MonthView(focus, shown, formats, onMonthShown = { viewModel.focus.value = it }, onDay = viewModel::openDay)
+                    ViewMode.MONTH -> MonthView(calendarFocus, shown, formats, viewModel::pageSettled, viewModel::openDay)
                     ViewMode.WEEK -> TimelineView(
-                        7, focus, shown, formats, onFocus = { viewModel.focus.value = it }, onDay = viewModel::openDay, onOpen = { open = it },
+                        7, calendarFocus, shown, formats, onFocus = viewModel::pageSettled, onDay = viewModel::openDay, onOpen = { open = it },
                         onCreateAt = if (canCreate) ({ date, time -> editing = EditTarget.New(date, time) }) else null,
                     )
                     ViewMode.DAY -> TimelineView(
-                        1, focus, shown, formats, onFocus = { viewModel.focus.value = it }, onDay = viewModel::openDay, onOpen = { open = it },
+                        1, calendarFocus, shown, formats, onFocus = viewModel::pageSettled, onDay = viewModel::openDay, onOpen = { open = it },
                         onCreateAt = if (canCreate) ({ date, time -> editing = EditTarget.New(date, time) }) else null,
                     )
                     ViewMode.AGENDA -> AgendaView(focus, shown, formats, onOpen = { open = it })

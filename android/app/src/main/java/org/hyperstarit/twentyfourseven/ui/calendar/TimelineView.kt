@@ -47,7 +47,9 @@ import androidx.compose.ui.unit.sp
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.hyperstarit.twentyfourseven.calendar.Occurrence
 import org.hyperstarit.twentyfourseven.calendar.TimelineLayout
 
@@ -63,10 +65,10 @@ private const val MIDDLE = PAGES / 2
 @Composable
 fun TimelineView(
     days: Int,
-    focus: LocalDate,
+    focus: CalendarFocus,
     shown: Shown?,
     formats: Formats,
-    onFocus: (LocalDate) -> Unit,
+    onFocus: (LocalDate, Long, ViewMode) -> Unit,
     onDay: (LocalDate) -> Unit,
     onOpen: (Occurrence) -> Unit,
     onCreateAt: ((LocalDate, java.time.LocalTime) -> Unit)? = null,
@@ -79,15 +81,19 @@ fun TimelineView(
     fun pageOf(date: LocalDate) = MIDDLE + Math.floorDiv(ChronoUnit.DAYS.between(anchor, date), days.toLong()).toInt()
     fun startOf(page: Int): LocalDate = anchor.plusDays((page - MIDDLE).toLong() * days)
 
-    val pager = rememberPagerState(initialPage = pageOf(focus)) { PAGES }
-    LaunchedEffect(focus) {
-        val target = pageOf(focus)
-        if (pager.currentPage != target) pager.animateScrollToPage(target)
-    }
-    val latestFocus by rememberUpdatedState(focus)
-    LaunchedEffect(pager) {
-        snapshotFlow { pager.settledPage }.collect { page ->
-            if (pageOf(latestFocus) != page) onFocus(startOf(page))
+    val pager = rememberPagerState(initialPage = pageOf(focus.date)) { PAGES }
+    val latestDate by rememberUpdatedState(focus.date)
+    val mode = if (days == 7) ViewMode.WEEK else ViewMode.DAY
+    LaunchedEffect(pager, anchor, focus.navigationId) {
+        val target = pageOf(focus.date)
+        // Keep observing the pager if a new gesture interrupts this animation.
+        coroutineScope {
+            launch { pager.animateScrollToPage(target) }
+        }
+        snapshotFlow { if (pager.isScrollInProgress) null else pager.settledPage }.collect { page ->
+            if (page != null && pageOf(latestDate) != page) {
+                onFocus(startOf(page), focus.navigationId, mode)
+            }
         }
     }
     val density = androidx.compose.ui.platform.LocalDensity.current

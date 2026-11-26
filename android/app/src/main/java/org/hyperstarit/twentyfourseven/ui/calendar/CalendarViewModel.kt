@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -36,6 +37,9 @@ data class Shown(val range: DateRange, val byDate: Map<LocalDate, List<Occurrenc
     fun on(date: LocalDate): List<Occurrence> = byDate[date].orEmpty()
 }
 
+/** A swipe updates the date, while controls also issue a new page navigation request. */
+data class CalendarFocus(val date: LocalDate, val navigationId: Long = 0)
+
 @HiltViewModel
 class CalendarViewModel @Inject constructor(
     db: AppDatabase,
@@ -55,7 +59,8 @@ class CalendarViewModel @Inject constructor(
     private val modeFlow = MutableStateFlow(ViewMode.MONTH)
 
     /** The date the views are at; the title follows it, "Today" sets it. */
-    val focus = MutableStateFlow(LocalDate.now(zone))
+    private val _focus = MutableStateFlow(CalendarFocus(LocalDate.now(zone)))
+    val focus = _focus.asStateFlow()
 
     var syncing by mutableStateOf(false)
         private set
@@ -68,8 +73,8 @@ class CalendarViewModel @Inject constructor(
 
     /** The dates expanded: a few months around the focus (more ahead for the agenda) — the same
      * window while the focus stays in one month, so paging within it costs nothing. */
-    private val window = combine(focus, modeFlow) { date, mode ->
-        val month = date.withDayOfMonth(1)
+    private val window = combine(focus, modeFlow) { focus, mode ->
+        val month = focus.date.withDayOfMonth(1)
         if (mode == ViewMode.AGENDA) DateRange(month.minusMonths(1), month.plusMonths(7))
         else DateRange(month.minusMonths(1), month.plusMonths(2))
     }.distinctUntilChanged()
@@ -125,22 +130,35 @@ class CalendarViewModel @Inject constructor(
     }
 
     fun openDay(date: LocalDate) {
-        focus.value = date
+        goTo(date)
         show(ViewMode.DAY)
     }
 
+    fun goTo(date: LocalDate) {
+        _focus.value = CalendarFocus(date, focus.value.navigationId + 1)
+    }
+
+    fun pageSettled(date: LocalDate, navigationId: Long, view: ViewMode) {
+        val current = focus.value
+        if (mode == view && current.navigationId == navigationId) {
+            _focus.value = current.copy(date = date)
+        }
+    }
+
     fun today() {
-        focus.value = LocalDate.now(zone)
+        goTo(LocalDate.now(zone))
     }
 
     /** The ‹ › arrows: a month, a week or a day back or ahead, as the view shows. */
     fun step(forward: Boolean) {
         val d = if (forward) 1L else -1L
-        focus.value = when (mode) {
-            ViewMode.MONTH -> focus.value.plusMonths(d)
-            ViewMode.WEEK, ViewMode.AGENDA -> focus.value.plusWeeks(d)
-            ViewMode.DAY -> focus.value.plusDays(d)
+        val date = focus.value.date
+        val target = when (mode) {
+            ViewMode.MONTH -> date.plusMonths(d)
+            ViewMode.WEEK, ViewMode.AGENDA -> date.plusWeeks(d)
+            ViewMode.DAY -> date.plusDays(d)
         }
+        goTo(target)
     }
 
     fun filterCalendar(key: String, only: Boolean) {
