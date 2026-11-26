@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         EventEntity::class, EventEdit::class, OverrideEntity::class, OverrideEdit::class,
         TaskEntity::class, TaskEdit::class, OutboxEntity::class, NoticeEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -31,6 +31,12 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun accountData(): AccountDataDao
 
     companion object {
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE calendars ADD COLUMN subscriptionError TEXT")
+            }
+        }
+
         /**
          * Version 1 (phase 1) held only copies of the one account's calendars and categories, read
          * from the server and never edited on the device. They gain an account here; the next sync

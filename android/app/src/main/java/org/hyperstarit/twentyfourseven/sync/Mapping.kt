@@ -32,7 +32,7 @@ private fun List<ReminderDto>.rows() = map { Reminder(it.minutesBefore, it.chann
 internal fun SyncCalendarDto.row(accountId: String, order: Int) = CalendarEntity(
     id = id, accountId = accountId, name = name, color = color, timeZone = timeZone,
     defaultCategoryId = defaultCategoryId, defaultReminders = defaultReminders.rows(),
-    readOnly = readOnly, sortOrder = order, version = version,
+    readOnly = readOnly, sortOrder = order, version = version, subscriptionError = subscriptionError,
 )
 
 internal fun SyncCategoryDto.row(accountId: String) = CategoryEntity(id, accountId, name, color, version)

@@ -85,6 +85,19 @@ class OccurrencesTest {
     }
 
     @Test
+    fun filtersUseTheEffectiveCategoryAndKeepAccountsIndependent() {
+        val first = event("inherited", "2026-11-03T08:00:00Z", null)
+        val calendars = listOf(calendar, calendar.copy(accountId = "b", defaultCategoryId = null)).byKey()
+        val events = listOf(first, first.copy(id = "work", categoryId = "work"), first.copy(accountId = "b", id = "plain"))
+        fun shown(hidden: Set<String>, cats: Set<String>) =
+            Occurrences.build(events, emptyList(), calendars, categories, hidden, week, berlin, cats).map { it.eventId }.toSet()
+        val default = org.hyperstarit.twentyfourseven.data.db.scopedKey("a", "catDefault")
+        val firstCalendar = org.hyperstarit.twentyfourseven.data.db.scopedKey("a", "cal")
+        assertEquals(setOf("work"), shown(emptySet(), setOf(default, Occurrences.UNCATEGORIZED)))
+        assertEquals(setOf("plain"), shown(setOf(firstCalendar), emptySet()))
+    }
+
+    @Test
     fun hiddenCalendars_ShowNothing() {
         val e = event("x", "2026-11-03T08:00:00Z", "2026-11-03T09:00:00Z")
         assertEquals(0, build(listOf(e), range = week, hidden = setOf("cal")).size)

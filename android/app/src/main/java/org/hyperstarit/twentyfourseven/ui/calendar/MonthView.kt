@@ -21,7 +21,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import org.hyperstarit.twentyfourseven.ui.theme.Brand
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -56,11 +58,12 @@ fun MonthView(focus: LocalDate, shown: Shown?, formats: Formats, onMonthShown: (
     )
     // "Today" (or a day picked elsewhere) moves the grid; swiping moves the focus.
     LaunchedEffect(focusMonth) {
-        if (state.firstVisibleMonth.yearMonth != focusMonth) state.animateScrollToMonth(focusMonth)
+        if (state.firstVisibleMonth.yearMonth != focusMonth) state.scrollToMonth(focusMonth)
     }
+    val latestFocus by rememberUpdatedState(focus)
     LaunchedEffect(state) {
         snapshotFlow { state.firstVisibleMonth.yearMonth }.collect { month ->
-            if (month != YearMonth.from(focus)) onMonthShown(month.atDay(1))
+            if (month != YearMonth.from(latestFocus)) onMonthShown(month.atDay(1))
         }
     }
     val c = Brand.colors

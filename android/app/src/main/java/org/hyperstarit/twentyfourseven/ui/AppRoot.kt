@@ -103,7 +103,7 @@ fun AppRoot(viewModel: RootViewModel) {
                 ) { screen ->
                     when (screen) {
                         Screen.CALENDAR -> CalendarScreen(
-                            bottomBar = bar, attention = attention, onAccounts = { go(Screen.ACCOUNTS) }, openDate = viewModel.openDate,
+                            bottomBar = bar, attention = attention, onAccounts = { go(Screen.ACCOUNTS) }, onTasks = { go(Screen.TASKS) }, openDate = viewModel.openDate,
                         )
                         Screen.TASKS -> TasksScreen(bottomBar = bar)
                         Screen.SETTINGS -> SettingsScreen(

@@ -57,6 +57,7 @@ data class CalendarEntity(
     val readOnly: Boolean,
     val sortOrder: Int,
     val version: String,
+    val subscriptionError: String? = null,
 )
 
 @Entity(tableName = "categories", primaryKeys = ["accountId", "id"])

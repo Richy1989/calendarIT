@@ -46,7 +46,10 @@ export default function App() {
   // early return, or the hook count changes between logged-out/in renders and React throws.
   const [tokens, setAuth] = useState<AuthTokens | null>(getTokens())
   // null = calendar screen; otherwise the settings page, opened on that section.
-  const [settingsSection, setSettingsSection] = useState<'general' | 'calendars' | 'categories' | null>(null)
+  const [settingsSection, setSettingsSection] = useState<'general' | 'calendars' | 'categories' | null>(() => {
+    const section = new URLSearchParams(window.location.search).get('settings')
+    return section === 'calendars' || section === 'categories' ? section : null
+  })
   // A search pick sets this; CalendarView watches it and jumps to that day. The bumping
   // counter lets picking the same date twice re-trigger the navigation.
   const [focus, setFocus] = useState<{ date: string; n: number } | null>(null)
@@ -153,7 +156,12 @@ export default function App() {
         <WeekStartProvider serverWeekStart={profile?.weekStart}>
           <SettingsPage
             initialSection={settingsSection}
-            onBack={() => setSettingsSection(null)}
+            onBack={() => {
+              setSettingsSection(null)
+              const url = new URL(window.location.href)
+              url.searchParams.delete('settings')
+              window.history.replaceState(null, '', url)
+            }}
             onLogout={logout}
           />
         </WeekStartProvider>

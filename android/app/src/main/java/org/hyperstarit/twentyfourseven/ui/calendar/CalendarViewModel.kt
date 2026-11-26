@@ -11,6 +11,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -61,6 +62,8 @@ class CalendarViewModel @Inject constructor(
 
     val accounts = db.accounts().observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList<AccountEntity>())
     val calendars = db.calendars().observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList<CalendarEntity>())
+    val categories = db.categories().observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val hiddenCategories = prefs.hiddenCategories.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
     val hidden = prefs.hidden.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     /** The dates expanded: a few months around the focus (more ahead for the agenda) — the same
@@ -99,13 +102,15 @@ class CalendarViewModel @Inject constructor(
 
     val pendingDelete = MutableStateFlow<PendingDelete?>(null)
 
-    val shown = combine(stored, window, pendingDelete) { s, range, pending ->
+    val shown = appointments(window).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun appointments(window: Flow<DateRange>) = combine(stored, window, pendingDelete, prefs.hiddenCategories) { s, range, pending, hiddenCategories ->
         val list = Occurrences.build(
             s.events.map { it.data }, s.overrides.map { it.data }, s.calendars.byKey(),
-            s.categories.byKey(), s.hidden, range, zone,
+            s.categories.byKey(), s.hidden, range, zone, hiddenCategories,
         ).filterNot { pending?.hides(it) == true }
         Shown(range, Occurrences.byDate(list, range, zone))
-    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    }.flowOn(Dispatchers.Default)
 
     init {
         viewModelScope.launch {
@@ -138,8 +143,12 @@ class CalendarViewModel @Inject constructor(
         }
     }
 
-    fun setHidden(calendarId: String, hidden: Boolean) {
-        viewModelScope.launch { prefs.setHidden(calendarId, hidden) }
+    fun filterCalendar(key: String, only: Boolean) {
+        viewModelScope.launch { prefs.updateVisibility(false, key, calendars.value.byKey().keys, only) }
+    }
+
+    fun filterCategory(key: String, only: Boolean) {
+        viewModelScope.launch { prefs.updateVisibility(true, key, categories.value.byKey().keys + Occurrences.UNCATEGORIZED, only) }
     }
 
     fun delete(o: Occurrence, scope: org.hyperstarit.twentyfourseven.ui.editor.Scope?) {

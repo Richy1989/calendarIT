@@ -55,6 +55,7 @@ data class SyncCalendarDto(
     val defaultReminders: List<ReminderDto> = emptyList(),
     val readOnly: Boolean,
     val version: String,
+    val subscriptionError: String? = null,
 )
 
 @Serializable

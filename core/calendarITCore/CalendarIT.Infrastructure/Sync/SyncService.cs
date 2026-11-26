@@ -235,7 +235,7 @@ public sealed class SyncService(
             .ToListAsync(cancellationToken))
         .Select(c => new SyncCalendarDto(
             c.Id, c.Name, c.Color, c.TimeZoneId, c.DefaultCategoryId, DefaultReminders.Parse(c.DefaultReminders),
-            ReadOnly: c.SourceUrl is not null, Version: VersionOf(c.UpdatedAt)))
+            ReadOnly: c.SourceUrl is not null, Version: VersionOf(c.UpdatedAt), SubscriptionError: c.LastFetchError))
         .ToList();
 
     private async Task<IReadOnlyList<SyncCategoryDto>> CategoriesAsync(Guid userId, CancellationToken cancellationToken) =>

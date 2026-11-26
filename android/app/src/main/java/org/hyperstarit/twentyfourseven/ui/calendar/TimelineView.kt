@@ -28,6 +28,7 @@ import org.hyperstarit.twentyfourseven.ui.theme.Display
 import org.hyperstarit.twentyfourseven.ui.theme.Brand
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -83,9 +84,10 @@ fun TimelineView(
         val target = pageOf(focus)
         if (pager.currentPage != target) pager.animateScrollToPage(target)
     }
+    val latestFocus by rememberUpdatedState(focus)
     LaunchedEffect(pager) {
         snapshotFlow { pager.settledPage }.collect { page ->
-            if (pageOf(focus) != page) onFocus(startOf(page))
+            if (pageOf(latestFocus) != page) onFocus(startOf(page))
         }
     }
     val density = androidx.compose.ui.platform.LocalDensity.current

@@ -78,6 +78,8 @@ data class DateRange(val from: LocalDate, val to: LocalDate)
  * viewer's days, all-day ones by their dates.
  */
 object Occurrences {
+    const val UNCATEGORIZED = "uncategorized"
+
     /** At most this many per build, as the server caps a range response. */
     const val MAX = 20_000
     private const val MAX_PER_SERIES = 3_000
@@ -93,12 +95,16 @@ object Occurrences {
         hiddenCalendars: Set<String>,
         range: DateRange,
         zone: ZoneId,
+        hiddenCategories: Set<String> = emptySet(),
     ): List<Occurrence> {
         val from = range.from.atStartOfDay(zone).toInstant().toEpochMilli()
         val to = range.to.atStartOfDay(zone).toInstant().toEpochMilli()
         val fromDay = Recurrence.dayMillis(range.from)
         val toDay = Recurrence.dayMillis(range.to)
-        val visible = events.filter { it.calendarId !in hiddenCalendars && scopedKey(it.accountId, it.calendarId) in calendars }
+        val visible = events.filter {
+            val key = scopedKey(it.accountId, it.calendarId)
+            key in calendars && key !in hiddenCalendars && it.calendarId !in hiddenCalendars
+        }
         val seriesById = visible.filter { it.recurrence != null }.associateBy { scopedKey(it.accountId, it.id) }
         val result = ArrayList<Occurrence>()
 
@@ -114,13 +120,17 @@ object Occurrences {
         fun add(event: EventData, key: String, start: Long, end: Long, seriesId: String?, recurrenceId: Long?, o: OverrideData? = null) {
             if (result.size >= MAX) return
             val calendar = calendars[scopedKey(event.accountId, event.calendarId)]
+            val categoryId = if (o != null) o.categoryId else event.categoryId
+            val effectiveCategory = categoryId ?: calendar?.defaultCategoryId
+            val categoryKey = effectiveCategory?.let { scopedKey(event.accountId, it) } ?: UNCATEGORIZED
+            if (categoryKey in hiddenCategories) return
             result += Occurrence(
                 key = "${event.accountId}/$key", eventId = o?.id ?: event.id, seriesId = seriesId, recurrenceId = recurrenceId,
                 accountId = event.accountId, calendarId = event.calendarId, calendarName = calendar?.name.orEmpty(),
                 title = o?.title ?: event.title, location = o?.location ?: event.location,
                 description = o?.description ?: event.description, start = start, end = end,
                 allDay = o?.allDay ?: event.allDay, timeZone = o?.timeZone ?: event.timeZone,
-                color = color(event, if (o != null) o.categoryId else event.categoryId), recurrence = event.recurrence,
+                color = color(event, categoryId), recurrence = event.recurrence,
                 reminders = o?.reminders ?: event.reminders, attendees = event.attendees,
                 invitationStatus = event.invitationStatus, organizerEmail = event.organizerEmail,
                 readOnly = calendar?.readOnly ?: true,

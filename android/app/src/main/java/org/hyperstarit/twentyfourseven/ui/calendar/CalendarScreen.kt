@@ -14,17 +14,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -46,7 +41,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -59,14 +53,10 @@ import org.hyperstarit.twentyfourseven.ui.editor.EditTarget
 import org.hyperstarit.twentyfourseven.ui.editor.EventEditor
 import org.hyperstarit.twentyfourseven.ui.editor.Scope
 import org.hyperstarit.twentyfourseven.ui.theme.Banner
-import org.hyperstarit.twentyfourseven.ui.theme.BrandMark
-import org.hyperstarit.twentyfourseven.ui.theme.CheckCircle
-import org.hyperstarit.twentyfourseven.ui.theme.ColorDot
 import org.hyperstarit.twentyfourseven.ui.theme.Glyphs
 import org.hyperstarit.twentyfourseven.ui.theme.Hairline
 import org.hyperstarit.twentyfourseven.ui.theme.Brand
 import org.hyperstarit.twentyfourseven.ui.theme.RoundIconButton
-import org.hyperstarit.twentyfourseven.ui.theme.SectionLabel
 import org.hyperstarit.twentyfourseven.ui.theme.Segmented
 import org.hyperstarit.twentyfourseven.ui.theme.TextAction
 import org.hyperstarit.twentyfourseven.ui.theme.TopBar
@@ -77,6 +67,7 @@ fun CalendarScreen(
     bottomBar: @Composable () -> Unit,
     attention: Boolean,
     onAccounts: () -> Unit,
+    onTasks: () -> Unit,
     openDate: kotlinx.coroutines.flow.MutableStateFlow<LocalDate?> = kotlinx.coroutines.flow.MutableStateFlow(null),
     viewModel: CalendarViewModel = hiltViewModel(),
 ) {
@@ -112,47 +103,20 @@ fun CalendarScreen(
     val scope = rememberCoroutineScope()
     val today = LocalDate.now(formats.zone)
 
-    ModalNavigationDrawer(
-        drawerState = drawer,
-        // Sideways swipes belong to the calendar (next month, week, day): the drawer opens with the
-        // menu button and only takes swipes while it's open, to be swiped shut.
-        gesturesEnabled = drawer.isOpen,
-        scrimColor = c.overlay.copy(alpha = 0.55f),
-        drawerContent = {
-            ModalDrawerSheet(drawerContainerColor = c.surface, drawerShape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp)) {
-                Column(Modifier.statusBarsPadding().verticalScroll(rememberScrollState()).padding(vertical = 16.dp)) {
-                    Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        BrandMark(30.dp)
-                        Text("24seven", style = MaterialTheme.typography.titleLarge, color = c.text, modifier = Modifier.padding(start = 12.dp))
-                    }
-                    Text(
-                        "Choose which calendars show.", style = MaterialTheme.typography.bodySmall, color = c.textDim,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                    )
-                    accounts.forEach { account ->
-                        SectionLabel(account.username, Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 6.dp))
-                        calendars.filter { it.accountId == account.id }.forEach { calendar ->
-                            val color = parseColor(calendar.color) ?: c.accent
-                            val visible = calendar.id !in hidden
-                            Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 8.dp).clip(RoundedCornerShape(12.dp))
-                                    .clickable(role = Role.Checkbox) { viewModel.setHidden(calendar.id, visible) }
-                                    .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                ColorDot(color, size = 12.dp)
-                                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                                    Text(calendar.name, color = if (visible) c.text else c.textFaint, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    if (calendar.readOnly) Text("Subscription · read-only", style = MaterialTheme.typography.bodySmall, color = c.textFaint)
-                                }
-                                CheckCircle(visible, { viewModel.setHidden(calendar.id, visible) }, size = 22.dp, ring = color.copy(alpha = 0.7f))
-                            }
-                        }
-                    }
-                    Hairline(Modifier.padding(horizontal = 20.dp, vertical = 16.dp))
-                    TextAction("Manage accounts", { scope.launch { drawer.close() }; onAccounts() }, Modifier.padding(horizontal = 10.dp))
-                }
-            }
+    RightCalendarDrawer(
+        state = drawer,
+        sidebar = {
+            CalendarSidebar(
+                viewModel, focus, formats, accounts, calendars, hidden,
+                onClose = { scope.launch { drawer.close() } },
+                onDate = { scope.launch {
+                    drawer.close()
+                    if (viewModel.mode == ViewMode.AGENDA) viewModel.openDay(it) else viewModel.focus.value = it
+                } },
+                onNew = { scope.launch { drawer.close(); editing = EditTarget.New(focus, nextHour(focus, formats)) } },
+                onTasks = { scope.launch { drawer.close(); onTasks() } },
+                onAccounts = { scope.launch { drawer.close(); onAccounts() } },
+            )
         },
     ) {
         Scaffold(
@@ -185,10 +149,10 @@ fun CalendarScreen(
                             ViewMode.AGENDA -> "Coming up"
                             ViewMode.MONTH -> null
                         },
-                        navigation = { RoundIconButton(Glyphs.menu, "Calendars", { scope.launch { drawer.open() } }) },
                         actions = {
                             TodayButton(today.dayOfMonth, onClick = viewModel::today)
                             RoundIconButton(Glyphs.sync, "Sync now", viewModel::syncNow)
+                            RoundIconButton(Glyphs.menu, "Open calendar sidebar", { scope.launch { drawer.open() } })
                         },
                     )
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {

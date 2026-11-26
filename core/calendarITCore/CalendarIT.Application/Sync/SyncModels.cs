@@ -35,7 +35,8 @@ public sealed record SyncCalendarDto(
     Guid? DefaultCategoryId,
     IReadOnlyList<ReminderDto> DefaultReminders,
     bool ReadOnly,
-    string Version);
+    string Version,
+    string? SubscriptionError = null);
 
 public sealed record SyncCategoryDto(Guid Id, string Name, string Color, string Version);
 
