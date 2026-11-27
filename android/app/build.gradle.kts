@@ -36,8 +36,8 @@ android {
         applicationId = "org.hyperstarit.twentyfourseven"
         minSdk = 34
         targetSdk = 37
-        versionCode = 14
-        versionName = "0.4.1"
+        versionCode = 15
+        versionName = "0.5.0"
         // Android account type for the system calendar: the app id, so debug and release builds
         // installed side by side keep their accounts apart.
         resValue("string", "account_type", "org.hyperstarit.twentyfourseven")

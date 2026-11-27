@@ -1,12 +1,27 @@
 name: Release
 
-# A git tag `vX.Y.Z` is a release: build & push the Docker image (linux/amd64, same as
-# deploy/build-and-push.ps1) and publish a GitHub Release. Pre-release tags like
-# `v0.2.0-rc1` are allowed — they push the versioned image but do NOT move `:latest`,
-# and the GitHub Release is marked as a pre-release.
+# A git tag `vX.Y.Z` releases everything — server and app share one version line (since 0.5.0):
+#   1. the full test suite (test.yml),
+#   2. side by side: the Docker image (SPA + API + nginx, linux/amd64) is built and checked, and the
+#      Android app's signed release builds are made and verified,
+#   3. only when both passed: the image is pushed (`richy1989/24seven:X.Y.Z`, + `:latest`) and one
+#      GitHub Release is published with the notes, the Docker line and the APK.
+# Pre-release tags like `v0.6.0-rc1` are allowed: they push the versioned image but do NOT move
+# `:latest`, and the release is marked as a pre-release.
 #
-# Nothing is published unless the full test suite passes for the tag (test.yml). Actions are
-# pinned to a release's commit (see test.yml); Dependabot keeps them current.
+# The tag must match versionName in android/app/build.gradle.kts (with the same suffix, if any):
+# the build file stays the one place that says what the app's version (and versionCode) is.
+#
+# Secrets (repository → Settings → Secrets and variables → Actions):
+#   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
+#   RELEASE_KEYSTORE_BASE64    the keystore file, base64 (`base64 -w0 secrets/24seven-release.p12`)
+#   RELEASE_KEYSTORE_PASSWORD  its password
+#   RELEASE_KEY_ALIAS          the key's alias (24seven)
+#   RELEASE_KEY_PASSWORD       the key's password
+# Without the signing secrets the release stops: an unsigned or differently signed APK is never
+# published.
+#
+# Actions are pinned to a release's commit (see test.yml); Dependabot keeps them current.
 on:
   push:
     tags:
@@ -20,49 +35,47 @@ jobs:
     name: Tests
     uses: ./.github/workflows/test.yml
 
-  release:
-    needs: tests
+  version:
+    name: Version
     runs-on: ubuntu-latest
-    permissions:
-      contents: write  # create the GitHub Release
+    outputs:
+      name: ${{ steps.v.outputs.name }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      # Derive the version from the tag: vX.Y.Z[-suffix] -> VERSION_NAME=X.Y.Z[-suffix].
-      # Same acceptance rule as deploy/build-and-push.ps1 — anything else would be stamped
-      # into MSBuild's $(Version) and break the publish.
-      - name: Compute version
+      # vX.Y.Z[-suffix] -> X.Y.Z[-suffix]. Same acceptance rule as deploy/build-and-push.ps1 —
+      # anything else would be stamped into MSBuild's $(Version) and break the publish.
+      - id: v
+        name: Check the tag against the app's version
         run: |
           VERSION_NAME="${GITHUB_REF_NAME#v}"
           if ! [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::Tag '$GITHUB_REF_NAME' is not a vMAJOR.MINOR.PATCH[-suffix] version tag." >&2
             exit 1
           fi
-          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
-          if [[ "$VERSION_NAME" == *-* ]]; then
-            echo "PRERELEASE=true" >> "$GITHUB_ENV"
-          else
-            echo "PRERELEASE=false" >> "$GITHUB_ENV"
+          DECLARED=$(sed -nE 's/^ *versionName = "([^"]+)".*/\1/p' android/app/build.gradle.kts | head -1)
+          if [ "$DECLARED" != "$VERSION_NAME" ]; then
+            echo "::error::Tag says $VERSION_NAME but android/app/build.gradle.kts has versionName \"$DECLARED\". Bump it (and versionCode) first." >&2
+            exit 1
           fi
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION_NAME" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
 
-      # ---- Docker image (SPA + API + nginx) to Docker Hub ----
+  image:
+    name: Docker image (build + check)
+    needs: [tests, version]
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NAME: ${{ needs.version.outputs.name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      # flavor latest=auto: `:latest` moves only for clean semver tags, never for pre-releases —
-      # mirrors the ":latest only moves on a release" policy in deploy/build-and-push.ps1.
-      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        id: meta
-        with:
-          images: richy1989/24seven
-          tags: |
-            type=semver,pattern={{version}}
       # Build the image once into the runner's Docker and check it before anything is pushed; the
-      # push below reuses this build from the cache.
+      # Publish job pushes this build from the cache.
       - name: Build the image for checking
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -127,6 +140,110 @@ jobs:
         if: failure()
         run: docker logs calendarit
 
+  android:
+    name: Android app (build, sign, verify)
+    needs: [tests, version]
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NAME: ${{ needs.version.outputs.name }}
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      # The keystore lives only in the runner's temp dir for this job; build.gradle.kts reads the
+      # RELEASE_* variables before secrets/keystore.properties.
+      - name: Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          for v in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            [ -n "${!v}" ] || { echo "::error::Secret RELEASE_$v is not set — see the header of this workflow." >&2; exit 1; }
+          done
+          keystore="$RUNNER_TEMP/release.keystore"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$keystore"
+          chmod 600 "$keystore"
+          {
+            echo "RELEASE_KEYSTORE_FILE=$keystore"
+            echo "RELEASE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "RELEASE_KEY_ALIAS=$KEY_ALIAS"
+            echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Build (foss APK, play APK + bundle)
+        run: ./gradlew --no-daemon assembleFossRelease assemblePlayRelease bundlePlayRelease
+
+      - name: Remove the keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
+
+      # Every APK must be signed, with the version the tag names; otherwise nothing is published.
+      - name: Verify signatures and versions
+        run: |
+          tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          mkdir -p ../dist
+          for flavor in foss play; do
+            apk="app/build/outputs/apk/$flavor/release/app-$flavor-release.apk"
+            "$tools/apksigner" verify --print-certs "$apk" | grep 'certificate SHA-256'
+            badging=$("$tools/aapt2" dump badging "$apk" | head -1)
+            echo "$badging"
+            grep -q "versionName='$VERSION_NAME'" <<< "$badging" || { echo "::error::$apk is not version $VERSION_NAME" >&2; exit 1; }
+          done
+          cp app/build/outputs/apk/foss/release/app-foss-release.apk "../dist/24seven-$VERSION_NAME.apk"
+          cp app/build/outputs/bundle/playRelease/app-play-release.aab "../dist/24seven-$VERSION_NAME-play.aab"
+          cd ../dist && sha256sum "24seven-$VERSION_NAME.apk" > "24seven-$VERSION_NAME.apk.sha256" && cat ./*.sha256
+
+      # The Play bundle stays a workflow artifact (uploaded to the Play Console by hand); only the
+      # APK goes on the release page.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: 24seven-${{ env.VERSION_NAME }}
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: [version, image, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # create the GitHub Release
+    env:
+      VERSION_NAME: ${{ needs.version.outputs.name }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: 24seven-${{ env.VERSION_NAME }}
+          path: dist
+
+      # ---- Docker image to Docker Hub (the checked build, from the cache) ----
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # flavor latest=auto: `:latest` moves only for clean semver tags, never for pre-releases —
+      # mirrors the ":latest only moves on a release" policy in deploy/build-and-push.ps1.
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        id: meta
+        with:
+          images: richy1989/24seven
+          tags: |
+            type=semver,pattern={{version}}
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -148,9 +265,9 @@ jobs:
           cache-to: type=gha,mode=max
 
       # ---- GitHub Release ----
-      # The release text: the hand-written notes for this tag (docs/releases/<tag>.md, committed
-      # before tagging) when there are some, then the Docker line. GitHub appends its generated
-      # notes and the "Full Changelog" link below that.
+      # The hand-written notes for this tag (docs/releases/<tag>.md, committed before tagging) when
+      # there are some, then how to get it. GitHub appends its generated notes and the "Full
+      # Changelog" link below that.
       - name: Release notes
         run: |
           notes="docs/releases/${GITHUB_REF_NAME}.md"
@@ -159,14 +276,23 @@ jobs:
               cat "$notes"
               echo
             else
-              echo "::warning::No $notes — the release gets only the Docker line and GitHub's generated notes." >&2
+              echo "::warning::No $notes — the release gets only the install lines and GitHub's generated notes." >&2
+              echo "# 24seven ${VERSION_NAME}"
+              echo
             fi
             echo "**Docker:** \`docker pull richy1989/24seven:${VERSION_NAME}\`"
             echo "Single-container image (SPA + API + nginx on :80). Mount \`/data\` to persist the"
             echo "SQLite db and uploads — see \`deploy/calendarit.unraid.xml\` for an Unraid template."
+            echo
+            echo "**Android:** download \`24seven-${VERSION_NAME}.apk\` on your phone (Android 14 or newer) and open it."
+            echo "Updates install over an earlier 24seven APK; the checksum is in \`24seven-${VERSION_NAME}.apk.sha256\`."
           } > release-notes.md
       - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
+          name: 24seven ${{ env.VERSION_NAME }}
           generate_release_notes: true
           prerelease: ${{ env.PRERELEASE == 'true' }}
           body_path: release-notes.md
+          files: |
+            dist/24seven-${{ env.VERSION_NAME }}.apk
+            dist/24seven-${{ env.VERSION_NAME }}.apk.sha256

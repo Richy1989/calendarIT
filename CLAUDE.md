@@ -469,23 +469,23 @@ localStorage for first paint and reconcile to the server profile.
   go through migrations in *both* provider assemblies; existing rows are migrated, backfilled or
   renamed, never dropped (e.g. duplicate UIDs were renamed, not deleted). Verify the upgrade on a
   database created by the previous version (SQLite and Postgres), not just a fresh one.
-- **Releasing**: write the notes first as `docs/releases/vX.Y.Z.md` (layout as in the existing
-  files: `# CalendarIT X.Y.Z`, logo, "_Changes since `vPREV`._", ✨ New Features / 🔧
-  Improvements / 🔒 Security / 🐛 Fixes / 📦 Deployment & Docs, Buy-Me-A-Coffee link; user-facing
-  wording, issue numbers in brackets), commit them to `main`, then push a plain tag
-  `git tag vX.Y.Z && git push origin vX.Y.Z`. `release.yml` first runs the full test suite
-  (`test.yml`, which also runs on every push to main and every PR), then builds the bundle image, checks its
-  log, pushes (with SBOM + provenance attestations) `richy1989/24seven:X.Y.Z` (+ `:latest` unless the tag has a `-suffix`), and creates
-  the GitHub Release from the notes file + Docker line + GitHub's changelog link. Versions are
-  `0.x` (the `v8.0.0` tag was a typo for 0.8.0; the next after 0.9.0 is 0.10.0, never 8.x).
-- **Releasing the Android app** (own version line): bump `versionName` *and* `versionCode` in
-  `android/app/build.gradle.kts`, write `docs/releases/24seven-vX.Y.Z.md` (same layout, `# 24seven
-  X.Y.Z for Android`), commit, then `git tag 24seven-vX.Y.Z && git push origin 24seven-vX.Y.Z`.
-  `android-release.yml` runs `test.yml`, refuses a tag that doesn't match `versionName`, signs
-  with the `RELEASE_KEYSTORE_BASE64` / `RELEASE_KEYSTORE_PASSWORD` / `RELEASE_KEY_ALIAS` /
-  `RELEASE_KEY_PASSWORD` repo secrets (stops if any is missing), verifies the APKs, and publishes
-  `24seven-X.Y.Z.apk` + its `.sha256` (not marked "latest": the server release stays that); the
-  Play `.aab` is only a workflow artifact. Server `v*` and app `24seven-v*` tags never trigger each other.
+- **Releasing** (one version line for server, web and app since 0.5.0; every tag releases all of
+  them): bump `versionName` *and* `versionCode` in `android/app/build.gradle.kts` to the version,
+  write the notes as `docs/releases/vX.Y.Z.md` (layout as in `v0.5.0.md`: `# 24seven X.Y.Z`, logo,
+  "_Changes since `vPREV`._", ✨ New Features / 🔧 Improvements / 🔒 Security / 🐛 Fixes / 📦
+  Deployment & Docs, Buy-Me-A-Coffee link; user-facing wording, "Android:" in front of app-only
+  lines, issue numbers in brackets), commit them to `main`, then push a plain tag
+  `git tag vX.Y.Z && git push origin vX.Y.Z`. `release.yml` runs the full test suite (`test.yml`,
+  which also runs on every push to main and every PR) and refuses a tag that doesn't match
+  `versionName`; then, side by side, builds and checks the bundle image (blank settings, an
+  operator command, the log for leaked tokens and raw escapes) and builds, signs (the
+  `RELEASE_KEYSTORE_BASE64` / `RELEASE_KEYSTORE_PASSWORD` / `RELEASE_KEY_ALIAS` /
+  `RELEASE_KEY_PASSWORD` repo secrets; stops if any is missing) and verifies the APKs. Only when
+  both passed does it push `richy1989/24seven:X.Y.Z` (+ `:latest` unless the tag has a `-suffix`;
+  SBOM + provenance) and create one GitHub Release "24seven X.Y.Z" from the notes + Docker and
+  install lines + GitHub's changelog, with `24seven-X.Y.Z.apk` + its `.sha256` attached (the Play
+  `.aab` is only a workflow artifact). Versions are `0.x`; older `vX` and `24seven-vX` releases
+  and tags were removed when the lines merged (2026-11-27), the notes in `docs/releases/` stay.
 - **Keep the About page in sync**: when a library listed there (`FRONTEND_LIBRARIES` /
   `BACKEND_LIBRARIES` in `web/src/SettingsPage.tsx`) is added, removed, replaced, or changes its
   name/license/URL, update that list in the same change.

@@ -33,7 +33,7 @@ Drag across an open hour to book it. When plans move, drag the appointment to it
 
 - **Recurring appointments.** Schedule every other Friday or the second Tuesday of each month. Reschedule a single occurrence, all future occurrences or the whole series. Each event keeps its own time zone through daylight-saving changes.
 - **Shared plans.** Invite guests, track their replies and respond to invitations from the calendar. Connect your own mail account for invitations and email reminders, or choose a browser notification for a reminder.
-- **Your other calendars.** Toggle Work and Personal independently, subscribe to a holiday feed, or import and export `.ics` files. CalDAV lets other clients sync appointments and tasks with your server.
+- **Your other calendars.** Toggle Work and Personal independently, subscribe to a holiday feed, or import and export `.ics` files (appointments and tasks). CalDAV lets other clients sync appointments and tasks with your server.
 
 ## Android app
 
@@ -47,7 +47,7 @@ After the first sync, the native app keeps a copy of your events and tasks on th
   </tr>
 </table>
 
-1. On **Android 14 or newer**, download the signed APK and open it on your phone. [Android release and checksum](https://github.com/Richy1989/24seven/releases/tag/24seven-v0.4.0)
+1. On **Android 14 or newer**, download the signed APK and open it on your phone. [Latest release and checksum](https://github.com/Richy1989/24seven/releases/latest)
 2. Choose **24seven server**, enter your server's HTTPS address, and sign in with the same account you use on the web. The Docker build below includes the mobile sync API. The `v0.10.0` server predates it.
 
    No 24seven server? Choose **CalDAV server** instead and sign in to Nextcloud, Radicale, Baïkal, iCloud (`caldav.icloud.com` with an app-specific password) or any other CalDAV server. Events, tasks, reminders, the phone's calendar and the widget work the same way. These accounts sync every 15 minutes and after each change, without instant updates, and their categories come from the events' own `CATEGORIES`.

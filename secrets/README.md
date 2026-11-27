@@ -29,7 +29,7 @@ Check that nothing secret is tracked: `git status --ignored secrets/` lists them
 `RELEASE_KEYSTORE_FILE` (absolute path), `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`,
 `RELEASE_KEY_PASSWORD` take precedence over the file.
 
-The GitHub release pipeline (`.github/workflows/android-release.yml`, on a `24seven-vX.Y.Z` tag)
+The GitHub release pipeline (`.github/workflows/release.yml`, on a `vX.Y.Z` tag)
 needs four repository secrets (Settings → Secrets and variables → Actions):
 
 | Secret | Value |
