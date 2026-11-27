@@ -27,7 +27,7 @@ export async function exportEventIcs(id: string): Promise<string> {
  *  a default category for its events). */
 export type ImportTarget = { calendarId?: string; newCalendarName?: string; newCalendarCategoryId?: string | null }
 
-/** Uploads an .ics document; returns how many events were imported / skipped. */
+/** Uploads an .ics document; returns how many events and tasks were imported / skipped. */
 export async function importIcs(ics: string, target?: ImportTarget): Promise<ImportResult> {
   const params = new URLSearchParams()
   if (target?.newCalendarName) {

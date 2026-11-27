@@ -78,6 +78,19 @@ public sealed class QuotaTests : IDisposable
     }
 
     [Fact]
+    public async Task AnImportWithTooManyTasks_IsRefusedWhole()
+    {
+        var io = new CalendarIoService(_db, TimeProvider.System, _quotas);
+        var todos = string.Concat(Enumerable.Range(0, 3).Select(i => $"BEGIN:VTODO\r\nUID:t{i}@test\r\nSUMMARY:T{i}\r\nEND:VTODO\r\n"));
+        var ics = $"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//EN\r\n{todos}END:VCALENDAR\r\n";
+
+        await Assert.ThrowsAsync<QuotaExceededException>(() => io.ImportAsync(_userId, ics, newCalendarName: "Imported"));
+
+        Assert.Equal(0, await _db.Tasks.CountAsync());
+        Assert.Equal(1, await _db.Calendars.CountAsync());
+    }
+
+    [Fact]
     public async Task Calendars_Tasks_AndCategories_HaveLimitsToo()
     {
         var calendars = new CalendarService(_db, TimeProvider.System, _quotas);

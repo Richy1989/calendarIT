@@ -7,15 +7,17 @@ using Microsoft.EntityFrameworkCore;
 using Calendar = CalendarIT.Domain.Calendar;
 using ICalCalendar = Ical.Net.Calendar;
 using ICalEvent = Ical.Net.CalendarComponents.CalendarEvent;
+using Todo = Ical.Net.CalendarComponents.Todo;
 
 namespace CalendarIT.Infrastructure.Calendars;
 
-/// <summary>iCalendar (.ics) import/export using Ical.Net, mapping to our event model.</summary>
+/// <summary>iCalendar (.ics) import/export using Ical.Net: events as VEVENTs and tasks as VTODOs,
+/// side by side in one VCALENDAR (RFC 5545 allows any mix of components).</summary>
 public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider, QuotaOptions? quotaOptions = null) : ICalendarIoService
 {
     private readonly QuotaOptions quotas = quotaOptions ?? QuotaOptions.Default;
 
-    /// <summary>Events one import may create. A personal calendar's whole history fits; a file
+    /// <summary>Events and tasks one import may create. A personal calendar's whole history fits; a file
     /// far beyond it is a mistake or an attack, and is refused before anything is written.</summary>
     private const int MaxImportEvents = 50_000;
 
@@ -33,6 +35,16 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
             .OrderBy(e => e.StartUtc)
             .ToListAsync(cancellationToken);
 
+        var tasks = db.Tasks.AsNoTracking().Where(t => t.Calendar!.OwnerUserId == userId);
+        if (calendarIds is { Count: > 0 })
+        {
+            tasks = tasks.Where(t => calendarIds.Contains(t.CalendarId));
+        }
+        // Top tasks before subtasks, so an importer reading in order meets a parent first.
+        var todos = await tasks
+            .OrderBy(t => t.ParentId != null).ThenBy(t => t.SortOrder).ThenBy(t => t.CreatedAt)
+            .ToListAsync(cancellationToken);
+
         var cal = new ICalCalendar { ProductId = "-//CalendarIT//EN" };
         foreach (var e in events)
         {
@@ -40,6 +52,10 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
             {
                 cal.Events.Add(ve);
             }
+        }
+        foreach (var t in todos)
+        {
+            cal.Todos.Add(TaskICalMapper.ToTodo(t));
         }
         return new CalendarSerializer().SerializeToString(cal)!;
     }
@@ -88,16 +104,21 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
         {
             return new ImportResult(0, 0);
         }
-        if (parsed.Events.Count > MaxImportEvents)
+        if (parsed.Events.Count + parsed.Todos.Count > MaxImportEvents)
         {
-            throw new InvalidInputException($"That file holds more than {MaxImportEvents:N0} events — split it and import the parts.");
+            throw new InvalidInputException($"That file holds more than {MaxImportEvents:N0} events and tasks — split it and import the parts.");
         }
 
+        // A UID names one resource — an event or a task, never both — so both kinds count as known.
         var existingUids = await db.Events
             .Where(e => e.Calendar!.OwnerUserId == userId && e.SeriesMasterId == null)
             .Select(e => e.Uid)
             .ToListAsync(cancellationToken);
-        var known = new HashSet<string>(existingUids, StringComparer.OrdinalIgnoreCase);
+        var existingTaskUids = await db.Tasks
+            .Where(t => t.Calendar!.OwnerUserId == userId)
+            .Select(t => t.Uid)
+            .ToListAsync(cancellationToken);
+        var known = new HashSet<string>(existingUids.Concat(existingTaskUids), StringComparer.OrdinalIgnoreCase);
 
         // One resource per UID: a series' master and its overrides arrive as separate VEVENTs.
         // A VEVENT without a UID is its own event. Sorted out before anything is written, so a
@@ -117,7 +138,22 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
             }
             accepted.Add((uid, primary, master is null ? [] : overrides));
         }
+        var acceptedTodos = new List<(string Uid, Todo Todo)>();
+        foreach (var vt in parsed.Todos)
+        {
+            var uid = string.IsNullOrWhiteSpace(vt.Uid) ? $"{Guid.NewGuid():N}@calendarit" : vt.Uid.Trim();
+            if (uid.Length > ICalEventMapper.MaxUidLength || !known.Add(uid))
+            {
+                skipped++;
+                continue;
+            }
+            acceptedTodos.Add((uid, vt));
+        }
         await Quotas.EnsureEventsAsync(db, quotas, userId, accepted.Sum(a => 1 + a.Overrides.Count), cancellationToken);
+        if (acceptedTodos.Count > 0)
+        {
+            await Quotas.EnsureTasksAsync(db, quotas, userId, acceptedTodos.Count, cancellationToken);
+        }
 
         var calendar = await ResolveTargetCalendarAsync(userId, calendarId, newCalendarName, newCalendarCategoryId, cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -137,9 +173,85 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
                 replaceAlarms: true, inheritedCategoryId: calendar.DefaultCategoryId);
             imported++;
         }
+        if (acceptedTodos.Count > 0)
+        {
+            await ImportTasksAsync(acceptedTodos, calendar.Id, now, cancellationToken);
+            imported += acceptedTodos.Count;
+        }
 
         await db.SaveChangesAsync(cancellationToken);
         return new ImportResult(imported, skipped);
+    }
+
+    /// <summary>
+    /// Stages the file's VTODOs as new tasks in <paramref name="calendarId"/> and links subtasks by
+    /// RELATED-TO — to a task in the file or one already in the calendar, in either direction —
+    /// one level deep, like <see cref="TaskWriter"/> (deeper trees hang off their top task, loops
+    /// stay unlinked). Done in memory: staged tasks aren't in the database yet for a query to find.
+    /// </summary>
+    private async Task ImportTasksAsync(
+        List<(string Uid, Todo Todo)> todos, Guid calendarId, DateTime now, CancellationToken cancellationToken)
+    {
+        var order = await db.Tasks.Where(t => t.CalendarId == calendarId)
+            .MaxAsync(t => (int?)t.SortOrder, cancellationToken) ?? 0;
+        var byUid = new Dictionary<string, TaskItem>(StringComparer.Ordinal);
+        foreach (var (uid, vt) in todos)
+        {
+            var task = new TaskItem { Id = Guid.NewGuid(), CalendarId = calendarId, Uid = uid, CreatedAt = now, SortOrder = ++order };
+            TaskICalMapper.Apply(vt, task, now);
+            db.Tasks.Add(task);
+            byUid[uid] = task;
+        }
+
+        var uids = byUid.Keys.ToList();
+        var parentUids = byUid.Values.Select(t => t.RelatedToUid).OfType<string>().Distinct().ToList();
+        var existingParents = await db.Tasks
+            .Where(t => t.CalendarId == calendarId && parentUids.Contains(t.Uid))
+            .ToDictionaryAsync(t => t.Uid, StringComparer.Ordinal, cancellationToken);
+
+        Guid TopOf(TaskItem task)
+        {
+            var seen = new HashSet<TaskItem>();
+            var current = task;
+            while (seen.Add(current) && current.RelatedToUid is { } parentUid)
+            {
+                if (byUid.TryGetValue(parentUid, out var parent))
+                {
+                    current = parent;
+                    continue;
+                }
+                if (existingParents.TryGetValue(parentUid, out var existing))
+                {
+                    return existing.ParentId ?? existing.Id;
+                }
+                break;
+            }
+            return current.Id;
+        }
+
+        foreach (var task in byUid.Values)
+        {
+            var top = TopOf(task);
+            task.ParentId = top == task.Id ? null : top;
+        }
+
+        // Subtasks already in the calendar that were waiting for one of these: link them now
+        // (unless they have subtasks of their own — one level deep).
+        var waiting = await db.Tasks
+            .Where(t => t.CalendarId == calendarId && t.ParentId == null && t.RelatedToUid != null && uids.Contains(t.RelatedToUid))
+            .Where(t => !db.Tasks.Any(c => c.ParentId == t.Id))
+            .ToListAsync(cancellationToken);
+        foreach (var child in waiting)
+        {
+            var parent = byUid[child.RelatedToUid!];
+            var top = parent.ParentId ?? parent.Id;
+            if (top == child.Id)
+            {
+                continue; // the imported task hangs off this one already: a loop
+            }
+            child.ParentId = top;
+            child.UpdatedAt = now;
+        }
     }
 
     private static IQueryable<CalendarEvent> WithSeries(IQueryable<CalendarEvent> events) =>

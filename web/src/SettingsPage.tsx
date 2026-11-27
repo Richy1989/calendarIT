@@ -509,7 +509,7 @@ function GeneralSection() {
 
     <div className="settings-card">
       <h2>Import &amp; export</h2>
-      <p className="settings-sub">Move your calendar in and out as standard iCalendar (.ics).</p>
+      <p className="settings-sub">Move your appointments and tasks in and out as standard iCalendar (.ics).</p>
       <div className="data-actions">
         <button type="button" className="btn-ghost" onClick={handleExport}>
           Export .ics

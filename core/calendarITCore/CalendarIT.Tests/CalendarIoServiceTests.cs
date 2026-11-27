@@ -188,4 +188,84 @@ public sealed class CalendarIoServiceTests : IDisposable
         Assert.Equal(stored.StartUtc, ve.Start!.AsUtc);
         Assert.Equal(stored.EndUtc, ve.End!.AsUtc);
     }
+
+    private static string Todo(string uid, string title, string? related = null) =>
+        $"BEGIN:VTODO\r\nUID:{uid}\r\nSUMMARY:{title}\r\n"
+        + (related is null ? "" : $"RELATED-TO:{related}\r\n")
+        + "END:VTODO";
+
+    [Fact]
+    public async Task Import_Todos_BecomeTasks_WithSubtasksLinkedInEitherOrder()
+    {
+        // The subtask comes first, and a grandchild is flattened onto the top task.
+        var ics = Ics(string.Join("\r\n",
+            Todo("child@test", "Child", related: "parent@test"),
+            Todo("parent@test", "Parent"),
+            Todo("grandchild@test", "Grandchild", related: "child@test"),
+            "BEGIN:VEVENT\r\nUID:ev@test\r\nSUMMARY:Event\r\nDTSTART:20260801T090000Z\r\nEND:VEVENT"));
+
+        var result = await _service.ImportAsync(_userId, ics);
+
+        Assert.Equal(4, result.Imported);
+        var tasks = await _db.Tasks.ToDictionaryAsync(t => t.Uid);
+        Assert.Equal(3, tasks.Count);
+        Assert.Null(tasks["parent@test"].ParentId);
+        Assert.Equal(tasks["parent@test"].Id, tasks["child@test"].ParentId);
+        Assert.Equal(tasks["parent@test"].Id, tasks["grandchild@test"].ParentId);
+        Assert.Single(_db.Events);
+    }
+
+    [Fact]
+    public async Task Import_TodoWhoseUidIsAlreadyAnEventOrTask_IsSkipped()
+    {
+        await _service.ImportAsync(_userId, Ics("BEGIN:VEVENT\r\nUID:taken@test\r\nSUMMARY:Event\r\nDTSTART:20260801T090000Z\r\nEND:VEVENT"));
+        await _service.ImportAsync(_userId, Ics(Todo("task@test", "Task")));
+
+        var result = await _service.ImportAsync(_userId, Ics(Todo("taken@test", "Clash") + "\r\n" + Todo("task@test", "Again")));
+
+        Assert.Equal(0, result.Imported);
+        Assert.Equal(2, result.Skipped);
+        Assert.Single(_db.Tasks);
+    }
+
+    [Fact]
+    public async Task Import_SubtaskOfATaskAlreadyThere_IsLinked_AndAWaitingSubtaskToo()
+    {
+        await _service.ImportAsync(_userId, Ics(Todo("old-parent@test", "Old parent") + "\r\n" + Todo("early@test", "Early child", related: "new-parent@test")));
+
+        await _service.ImportAsync(_userId, Ics(Todo("new-child@test", "New child", related: "old-parent@test") + "\r\n" + Todo("new-parent@test", "New parent")));
+
+        var tasks = await _db.Tasks.AsNoTracking().ToDictionaryAsync(t => t.Uid);
+        Assert.Equal(tasks["old-parent@test"].Id, tasks["new-child@test"].ParentId);
+        Assert.Equal(tasks["new-parent@test"].Id, tasks["early@test"].ParentId);
+    }
+
+    [Fact]
+    public async Task Import_TodosThatNameEachOther_StayUnlinked()
+    {
+        await _service.ImportAsync(_userId, Ics(Todo("a@test", "A", related: "b@test") + "\r\n" + Todo("b@test", "B", related: "a@test")));
+
+        Assert.All(_db.Tasks, t => Assert.Null(t.ParentId));
+    }
+
+    [Fact]
+    public async Task Export_IncludesTasks_OfTheChosenCalendars_ParentsFirst_AndRoundTrips()
+    {
+        await _service.ImportAsync(_userId, Ics(Todo("sub@test", "Sub", related: "top@test") + "\r\n" + Todo("top@test", "Top")), newCalendarName: "A");
+        await _service.ImportAsync(_userId, Ics(Todo("other@test", "Other")), newCalendarName: "B");
+        var calA = _db.Calendars.Single(c => c.Name == "A");
+
+        var exported = Calendar.Load(await _service.ExportAsync(_userId, [calA.Id]))!;
+
+        Assert.Equal(["top@test", "sub@test"], exported.Todos.Select(t => t.Uid));
+        Assert.Equal("top@test", Assert.Single(exported.Todos[1].RelatedComponents));
+
+        // Into a fresh account it comes back with the same shape.
+        var otherUser = Guid.NewGuid();
+        _db.Users.Add(new ApplicationUser { Id = otherUser, UserName = "other", NormalizedUserName = "OTHER" });
+        await _db.SaveChangesAsync();
+        await _service.ImportAsync(otherUser, new Ical.Net.Serialization.CalendarSerializer().SerializeToString(exported)!);
+        var copies = await _db.Tasks.Where(t => t.Calendar!.OwnerUserId == otherUser).ToDictionaryAsync(t => t.Uid);
+        Assert.Equal(copies["top@test"].Id, copies["sub@test"].ParentId);
+    }
 }
