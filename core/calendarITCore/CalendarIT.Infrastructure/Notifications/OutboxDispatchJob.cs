@@ -34,6 +34,9 @@ public sealed class OutboxDispatchJob(
     /// <summary>Attempts before a message is given up on.</summary>
     public const int MaxAttempts = 8;
 
+    /// <summary>What the operator runs to confirm an account without mail.</summary>
+    public const string EmailConfirmationHint = "dotnet calendarITCore.dll confirm-email <email>";
+
     public async Task Execute(IJobExecutionContext context)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -41,15 +44,19 @@ public sealed class OutboxDispatchJob(
             scope.ServiceProvider.GetRequiredService<AppDbContext>(),
             scope.ServiceProvider.GetRequiredService<MailAccountService>(),
             scope.ServiceProvider.GetRequiredService<MailConnectionOptions>(),
-            context.CancellationToken);
+            context.CancellationToken,
+            system: scope.ServiceProvider.GetService<SystemMailOptions>());
     }
 
     /// <summary>One pass. Separate from <see cref="Execute"/> so it can be tested without Quartz.</summary>
     public async Task RunAsync(
         AppDbContext db, MailAccountService accounts, MailConnectionOptions options, CancellationToken cancellationToken = default,
-        Func<MailAccount, string, CancellationToken, Task<IMailSession>>? connect = null)
+        Func<MailAccount, string, CancellationToken, Task<IMailSession>>? connect = null,
+        SystemMailOptions? system = null)
     {
-        connect ??= async (account, password, ct) => new SmtpSession(await MailConnections.OpenSmtpAsync(account, password, options, ct));
+        // The system account is the operator's own server: its host isn't held to the users' policy.
+        connect ??= async (account, password, ct) => new SmtpSession(await MailConnections.OpenSmtpAsync(
+            account, password, account.UserId == Guid.Empty ? SystemMailOptions.Connection : options, ct));
         var now = timeProvider.GetUtcNow().UtcDateTime;
 
         var due = await db.OutboxMessages
@@ -58,11 +65,12 @@ public sealed class OutboxDispatchJob(
             .Take(BatchSize)
             .ToListAsync(cancellationToken);
 
-        foreach (var batch in due.GroupBy(m => m.UserId))
+        // System mail goes out in one session of its own, ahead of the users' batches.
+        foreach (var batch in due.GroupBy(m => m.ViaSystem ? Guid.Empty : m.UserId).OrderBy(b => b.Key != Guid.Empty))
         {
             try
             {
-                await SendBatchAsync(db, accounts, batch.Key, [.. batch], now, connect, cancellationToken);
+                await SendBatchAsync(db, accounts, batch.Key, [.. batch], now, connect, system, cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -75,8 +83,11 @@ public sealed class OutboxDispatchJob(
 
     private async Task SendBatchAsync(
         AppDbContext db, MailAccountService accounts, Guid userId, List<OutboxMessage> messages, DateTime now,
-        Func<MailAccount, string, CancellationToken, Task<IMailSession>> connect, CancellationToken cancellationToken)
+        Func<MailAccount, string, CancellationToken, Task<IMailSession>> connect, SystemMailOptions? system,
+        CancellationToken cancellationToken)
     {
+        // userId is Guid.Empty for the batch of system mail (see RunAsync).
+        var viaSystem = userId == Guid.Empty;
         var live = new List<OutboxMessage>();
         foreach (var m in messages)
         {
@@ -98,12 +109,16 @@ public sealed class OutboxDispatchJob(
             return;
         }
 
-        var loaded = await accounts.GetWithPasswordAsync(userId, cancellationToken);
+        var loaded = viaSystem
+            ? system is { IsConfigured: true } ? (Account: system.ToAccount(), Password: system.Password ?? string.Empty) : default((MailAccount Account, string Password)?)
+            : await accounts.GetWithPasswordAsync(userId, cancellationToken);
         if (loaded is null)
         {
             foreach (var m in live)
             {
-                GiveUp(db, m, "No mail account is connected, or its stored password can't be read.");
+                GiveUp(db, m, viaSystem
+                    ? "The server's own mail account (SMTP_*) is no longer configured."
+                    : "No mail account is connected, or its stored password can't be read.");
             }
             return;
         }
@@ -117,7 +132,7 @@ public sealed class OutboxDispatchJob(
         {
             // Couldn't connect or log in: everything for this user waits for the next attempt.
             var reason = MailConnections.Describe(ex);
-            logger.LogWarning(ex, "Outbox: couldn't open the mail account of user {UserId}: {Reason}", userId, reason);
+            logger.LogWarning(ex, "Outbox: couldn't open the mail account of {Sender}: {Reason}", SenderOf(userId), reason);
             foreach (var m in live)
             {
                 Retry(db, m, now, reason);
@@ -146,7 +161,7 @@ public sealed class OutboxDispatchJob(
                 {
                     // The session is in an unknown state: this and the rest wait for the next attempt.
                     var reason = MailConnections.Describe(ex);
-                    logger.LogWarning(ex, "Outbox: sending failed for user {UserId}: {Reason}", userId, reason);
+                    logger.LogWarning(ex, "Outbox: sending failed for {Sender}: {Reason}", SenderOf(userId), reason);
                     foreach (var rest in live.Skip(i))
                     {
                         Retry(db, rest, now, reason);
@@ -165,13 +180,19 @@ public sealed class OutboxDispatchJob(
         }
     }
 
+    private static string SenderOf(Guid userId) => userId == Guid.Empty ? "the system account (SMTP_*)" : $"user {userId}";
+
+    /// <summary>Mail whose body is a live credential (a reset or confirmation link): deleted once
+    /// delivered or given up on, never kept for Settings.</summary>
+    private static bool CarriesToken(OutboxKind kind) => kind is OutboxKind.PasswordReset or OutboxKind.EmailConfirmation;
+
     private void MarkSent(AppDbContext db, OutboxMessage m, DateTime now)
     {
-        if (m.Kind == OutboxKind.PasswordReset)
+        if (CarriesToken(m.Kind))
         {
-            // The body holds a live reset token; once delivered there's no reason to keep it.
+            // The body holds a live token; once delivered there's no reason to keep it.
             db.OutboxMessages.Remove(m);
-            logger.LogInformation("Sent a password-reset link to user {UserId}", m.UserId);
+            logger.LogInformation("Sent a {Kind} link to user {UserId}", m.Kind == OutboxKind.PasswordReset ? "password-reset" : "confirmation", m.UserId);
             return;
         }
         m.Status = OutboxStatus.Sent;
@@ -214,6 +235,15 @@ public sealed class OutboxDispatchJob(
             logger.LogWarning(
                 "[password-reset:no-mail] the reset mail for user {UserId} could not be sent ({Reason}). " +
                 "To issue a link by hand, run: " + PasswordResetMailer.ResetCommandHint,
+                m.UserId, reason);
+            db.OutboxMessages.Remove(m);
+            return;
+        }
+        if (m.Kind == OutboxKind.EmailConfirmation)
+        {
+            logger.LogWarning(
+                "[email-confirmation:no-mail] the confirmation mail for user {UserId} could not be sent ({Reason}). " +
+                "The user can ask for a new one, or confirm the account by hand: " + EmailConfirmationHint,
                 m.UserId, reason);
             db.OutboxMessages.Remove(m);
             return;

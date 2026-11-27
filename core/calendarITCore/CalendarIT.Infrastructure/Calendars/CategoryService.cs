@@ -6,8 +6,10 @@ using Microsoft.EntityFrameworkCore;
 namespace CalendarIT.Infrastructure.Calendars;
 
 /// <summary>EF Core-backed <see cref="ICategoryService"/>. All queries are scoped by owner.</summary>
-public sealed class CategoryService(AppDbContext db, TimeProvider timeProvider) : ICategoryService
+public sealed class CategoryService(AppDbContext db, TimeProvider timeProvider, QuotaOptions? quotaOptions = null) : ICategoryService
 {
+    private readonly QuotaOptions quotas = quotaOptions ?? QuotaOptions.Default;
+
     public async Task<IReadOnlyList<CategoryDto>> ListAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -38,6 +40,7 @@ public sealed class CategoryService(AppDbContext db, TimeProvider timeProvider) 
         {
             return new CategorySaveOutcome(CategorySaveStatus.DuplicateName, null);
         }
+        await Quotas.EnsureCategoriesAsync(db, quotas, userId, cancellationToken);
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var entity = new Category

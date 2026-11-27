@@ -11,8 +11,10 @@ using ICalEvent = Ical.Net.CalendarComponents.CalendarEvent;
 namespace CalendarIT.Infrastructure.Calendars;
 
 /// <summary>iCalendar (.ics) import/export using Ical.Net, mapping to our event model.</summary>
-public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider) : ICalendarIoService
+public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider, QuotaOptions? quotaOptions = null) : ICalendarIoService
 {
+    private readonly QuotaOptions quotas = quotaOptions ?? QuotaOptions.Default;
+
     /// <summary>Events one import may create. A personal calendar's whole history fits; a file
     /// far beyond it is a mistake or an attack, and is refused before anything is written.</summary>
     private const int MaxImportEvents = 50_000;
@@ -91,26 +93,19 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
             throw new InvalidInputException($"That file holds more than {MaxImportEvents:N0} events — split it and import the parts.");
         }
 
-        var calendar = await ResolveTargetCalendarAsync(userId, calendarId, newCalendarName, newCalendarCategoryId, cancellationToken);
-
         var existingUids = await db.Events
             .Where(e => e.Calendar!.OwnerUserId == userId && e.SeriesMasterId == null)
             .Select(e => e.Uid)
             .ToListAsync(cancellationToken);
         var known = new HashSet<string>(existingUids, StringComparer.OrdinalIgnoreCase);
 
-        var now = timeProvider.GetUtcNow().UtcDateTime;
-        var categories = await db.Categories
-            .Where(c => c.OwnerUserId == userId)
-            .ToListAsync(cancellationToken);
-        var writer = new SeriesWriter(db);
-        int imported = 0, skipped = 0;
-
         // One resource per UID: a series' master and its overrides arrive as separate VEVENTs.
-        // A VEVENT without a UID is its own event.
-        var groups = parsed.Events
-            .GroupBy(ve => string.IsNullOrWhiteSpace(ve.Uid) ? $"{Guid.NewGuid():N}@calendarit" : ve.Uid);
-        foreach (var group in groups)
+        // A VEVENT without a UID is its own event. Sorted out before anything is written, so a
+        // file over the account's quota is refused whole and leaves no new calendar behind.
+        int imported = 0, skipped = 0;
+        var accepted = new List<(string Uid, ICalEvent Primary, IReadOnlyList<ICalEvent> Overrides)>();
+        foreach (var group in parsed.Events
+            .GroupBy(ve => string.IsNullOrWhiteSpace(ve.Uid) ? $"{Guid.NewGuid():N}@calendarit" : ve.Uid))
         {
             var (master, overrides) = SeriesWriter.Split(group);
             var primary = master ?? overrides.FirstOrDefault();
@@ -120,13 +115,25 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
                 skipped++;
                 continue;
             }
+            accepted.Add((uid, primary, master is null ? [] : overrides));
+        }
+        await Quotas.EnsureEventsAsync(db, quotas, userId, accepted.Sum(a => 1 + a.Overrides.Count), cancellationToken);
 
+        var calendar = await ResolveTargetCalendarAsync(userId, calendarId, newCalendarName, newCalendarCategoryId, cancellationToken);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var categories = await db.Categories
+            .Where(c => c.OwnerUserId == userId)
+            .ToListAsync(cancellationToken);
+        var writer = new SeriesWriter(db);
+
+        foreach (var (uid, primary, overrides) in accepted)
+        {
             // A CATEGORIES name the user doesn't have yet becomes a new category, colored
             // from the incoming COLOR when present — so imports keep their grouping.
             EnsureCategoryExists(primary, userId, categories, now);
             // A file of overrides without their master is kept as a one-off. Events without a
             // category of their own take the calendar's default, if it has one.
-            writer.Write(null, primary, master is null ? [] : overrides, calendar.Id, uid, now, categories,
+            writer.Write(null, primary, overrides, calendar.Id, uid, now, categories,
                 replaceAlarms: true, inheritedCategoryId: calendar.DefaultCategoryId);
             imported++;
         }
@@ -150,6 +157,7 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
     {
         var name = ICalEventMapper.ReadCategoryName(ve);
         if (string.IsNullOrWhiteSpace(name) || name.Length > 100
+            || categories.Count >= quotas.Categories // at the limit: the event just goes uncategorized
             || categories.Any(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
             return;
@@ -176,6 +184,7 @@ public sealed class CalendarIoService(AppDbContext db, TimeProvider timeProvider
     {
         if (!string.IsNullOrWhiteSpace(newCalendarName))
         {
+            await Quotas.EnsureCalendarsAsync(db, quotas, userId, cancellationToken);
             var now = timeProvider.GetUtcNow().UtcDateTime;
             var name = newCalendarName.Trim();
             if (newCalendarCategoryId is { } categoryId

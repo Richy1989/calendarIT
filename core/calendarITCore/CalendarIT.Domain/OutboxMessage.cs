@@ -7,6 +7,8 @@ public enum OutboxKind
     Reply,
     Reminder,
     PasswordReset,
+    EmailConfirmation,
+    AdminNotice,
 }
 
 public enum OutboxStatus
@@ -29,8 +31,14 @@ public class OutboxMessage
 {
     public Guid Id { get; set; }
 
-    /// <summary>The user whose connected mail account sends this message.</summary>
+    /// <summary>The user whose connected mail account sends this message — or, with
+    /// <see cref="ViaSystem"/>, the user it is about.</summary>
     public Guid UserId { get; set; }
+
+    /// <summary>Sent through the operator's system mail account (<c>SMTP_*</c>) instead of the
+    /// user's own: account mail (email confirmation, password reset) that must reach the address
+    /// without passing through a server the user picked.</summary>
+    public bool ViaSystem { get; set; }
 
     public OutboxKind Kind { get; set; }
 

@@ -20,6 +20,7 @@ import { REMINDER_OFFSETS } from './lib/eventForm'
 import { createCategory, deleteCategory, listCategories, updateCategory, type CategoryDto } from './api/categories'
 import { deleteMailAccount, getMailAccount, saveMailAccount, testMailAccount } from './api/mailAccount'
 import { changePassword } from './api/password'
+import { activateAccount, listPendingAccounts, removePendingAccount } from './api/admin'
 import { useClock } from './clock'
 import { useWeekStart, type WeekStartPref } from './weekStart'
 import { COLOR_PRESETS, THEMES, useAppearance, type ThemeId } from './lib/appearance'
@@ -300,6 +301,59 @@ function NotificationsCard() {
   )
 }
 
+/** The admin's list of sign-ups waiting for activation: activate, or remove ones nobody knows. */
+function PendingAccountsCard() {
+  const queryClient = useQueryClient()
+  const { data: accounts = [], isLoading } = useQuery({ queryKey: ['pending-accounts'], queryFn: listPendingAccounts })
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ['pending-accounts'] })
+    void queryClient.invalidateQueries({ queryKey: ['profile'] }) // the badge's count
+  }
+  const activate = useMutation({ mutationFn: activateAccount, onSuccess: refresh })
+  const remove = useMutation({ mutationFn: removePendingAccount, onSuccess: refresh })
+  const busy = activate.isPending || remove.isPending
+  const error = activate.error ?? remove.error
+
+  return (
+    <div className="settings-card">
+      <h2>New accounts</h2>
+      <p className="settings-sub">
+        People who signed up and wait for you to activate them. Until then they can't sign in. Remove anyone you don't
+        know.
+      </p>
+      {!isLoading && accounts.length === 0 && <p className="field-hint">Nobody is waiting.</p>}
+      {accounts.length > 0 && (
+        <div className="settings-rows">
+          {accounts.map((a) => (
+            <div className="settings-row" key={a.id}>
+              <span className="settings-row-label">
+                {a.createdAt ? `Since ${new Date(a.createdAt).toLocaleDateString()}` : 'Waiting'}
+              </span>
+              <span className="settings-row-value">{a.email}</span>
+              <span className="settings-row-actions">
+                <button type="button" className="btn-primary" disabled={busy} onClick={() => activate.mutate(a.id)}>
+                  Activate
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={busy}
+                  onClick={() => {
+                    if (window.confirm(`Remove the account ${a.email}? It was never activated.`)) remove.mutate(a.id)
+                  }}
+                >
+                  Remove
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {error && <p className="error">{(error as Error).message}</p>}
+    </div>
+  )
+}
+
 function GeneralSection() {
   const queryClient = useQueryClient()
   const { hour12, setHour12 } = useClock()
@@ -461,6 +515,8 @@ function GeneralSection() {
         </div>
       </div>
     </div>
+
+    {profile?.isAdmin && <PendingAccountsCard />}
 
     <AppearanceCard />
 

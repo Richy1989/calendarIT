@@ -43,4 +43,7 @@ public sealed class ApplicationUser : IdentityUser<Guid>
 
     /// <summary>The user's highlight color, "#rrggbb", over the theme's. Null = the theme's own.</summary>
     public string? HighlightColor { get; set; }
+
+    /// <summary>When the account signed up (UTC). Null for accounts from before it was recorded.</summary>
+    public DateTime? CreatedAtUtc { get; set; }
 }

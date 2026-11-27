@@ -68,8 +68,40 @@ public sealed class ResetPasswordRequest
     public string NewPassword { get; init; } = string.Empty;
 }
 
-/// <summary>What the sign-in screen needs to know before anyone has signed in.</summary>
-public sealed record AuthConfig(bool RegistrationEnabled);
+/// <summary>Payload for confirming an email address from the link in the confirmation mail.</summary>
+public sealed class ConfirmEmailRequest
+{
+    [Required, EmailAddress, MaxLength(256)]
+    public string Email { get; init; } = string.Empty;
+
+    [Required, MaxLength(2048)]
+    public string Token { get; init; } = string.Empty;
+}
+
+/// <summary>How a new account gets activated before it can sign in.</summary>
+public static class AccountActivation
+{
+    /// <summary>By the link mailed to its address (the server has a mail account of its own).</summary>
+    public const string Email = "email";
+
+    /// <summary>By the server's admin (Settings → Accounts, or the confirm-email command).</summary>
+    public const string Admin = "admin";
+}
+
+/// <summary>The answer to a sign-up that still needs activation (202): how it will happen.</summary>
+public sealed record RegistrationPending(string Activation);
+
+/// <summary>Payload for asking for the activation mail again (anonymous: the account can't sign in yet).</summary>
+public sealed class ResendActivationRequest
+{
+    [Required, EmailAddress, MaxLength(256)]
+    public string Email { get; init; } = string.Empty;
+}
+
+/// <summary>What the sign-in screen needs to know before anyone has signed in.
+/// <paramref name="EmailConfirmationAvailable"/>: the server can mail confirmation links
+/// (a system mail account and PUBLIC_BASE_URL are configured).</summary>
+public sealed record AuthConfig(bool RegistrationEnabled, bool EmailConfirmationAvailable = false);
 
 /// <summary>Outcome of an operation that changes a password rather than issuing tokens.</summary>
 public sealed record PasswordResult(bool Succeeded, IReadOnlyList<string> Errors)
@@ -87,9 +119,16 @@ public sealed record AuthTokens(
     DateTimeOffset RefreshTokenExpiresAt);
 
 /// <summary>Outcome of an auth operation: either a token pair or a list of errors.</summary>
-public sealed record AuthResult(bool Succeeded, AuthTokens? Tokens, IReadOnlyList<string> Errors)
+public sealed record AuthResult(bool Succeeded, AuthTokens? Tokens, IReadOnlyList<string> Errors, string? Activation = null)
 {
     public static AuthResult Success(AuthTokens tokens) => new(true, tokens, []);
+
+    /// <summary>Signed up, but not signed in: the account waits for activation
+    /// (<see cref="AccountActivation"/>: by the emailed link, or by the admin).</summary>
+    public static AuthResult Pending(string activation) => new(true, null, [], activation);
+
+    /// <summary>The right password for an account that isn't activated yet.</summary>
+    public static AuthResult NotActivated(string message) => new(false, null, [message], "pending");
 
     public static AuthResult Failure(params string[] errors) => new(false, null, errors);
 }

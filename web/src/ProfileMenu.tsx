@@ -7,11 +7,14 @@ import { useEffect, useState } from 'react'
 export default function ProfileMenu({
   email,
   avatarUrl,
+  pendingAccounts = 0,
   onOpenSettings,
   onLogout,
 }: {
   email?: string | null
   avatarUrl?: string | null
+  /** For the admin: accounts waiting for activation (a badge, and a hint on Settings). */
+  pendingAccounts?: number
   onOpenSettings: () => void
   onLogout: () => void
 }) {
@@ -30,12 +33,17 @@ export default function ProfileMenu({
       <button
         className="avatar-btn"
         onClick={() => setOpen((o) => !o)}
-        aria-label="Account menu"
+        aria-label={pendingAccounts > 0 ? `Account menu, ${pendingAccounts} new accounts waiting` : 'Account menu'}
         aria-haspopup="menu"
         aria-expanded={open}
       >
         {avatarUrl ? <img src={avatarUrl} alt="" /> : <span className="avatar-fallback">{initial}</span>}
       </button>
+      {pendingAccounts > 0 && (
+        <span className="profile-badge" aria-hidden="true">
+          {pendingAccounts > 9 ? '9+' : pendingAccounts}
+        </span>
+      )}
 
       {open && (
         <>
@@ -44,6 +52,11 @@ export default function ProfileMenu({
             {email && <div className="profile-menu-email">{email}</div>}
             <button className="ctx-item" role="menuitem" onClick={() => { setOpen(false); onOpenSettings() }}>
               Settings
+              {pendingAccounts > 0 && (
+                <span className="profile-menu-hint">
+                  {pendingAccounts === 1 ? '1 new account waiting' : `${pendingAccounts} new accounts waiting`}
+                </span>
+              )}
             </button>
             <button className="ctx-item" role="menuitem" onClick={() => { setOpen(false); onLogout() }}>
               Log out

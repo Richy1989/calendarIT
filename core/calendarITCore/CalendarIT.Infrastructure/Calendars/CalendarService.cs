@@ -7,8 +7,10 @@ using Calendar = CalendarIT.Domain.Calendar;
 namespace CalendarIT.Infrastructure.Calendars;
 
 /// <summary>EF Core-backed <see cref="ICalendarService"/>. All queries are scoped by owner.</summary>
-public sealed class CalendarService(AppDbContext db, TimeProvider timeProvider) : ICalendarService
+public sealed class CalendarService(AppDbContext db, TimeProvider timeProvider, QuotaOptions? quotaOptions = null) : ICalendarService
 {
+    private readonly QuotaOptions quotas = quotaOptions ?? QuotaOptions.Default;
+
     public async Task<IReadOnlyList<CalendarDto>> ListAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var calendars = await db.Calendars.AsNoTracking()
@@ -159,6 +161,7 @@ public sealed class CalendarService(AppDbContext db, TimeProvider timeProvider) 
     private async Task<Calendar> CreateEntityAsync(
         Guid userId, string name, Guid? defaultCategoryId, CancellationToken cancellationToken, Guid? id = null)
     {
+        await Quotas.EnsureCalendarsAsync(db, quotas, userId, cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var entity = new Calendar
         {

@@ -7,10 +7,14 @@ namespace CalendarIT.Application.Profile;
 /// <paramref name="WeekStart"/> is the day grids start on, "sunday" or "monday"
 /// (null = use locale default). <paramref name="Theme"/>, <paramref name="AccentColor"/> and
 /// <paramref name="HighlightColor"/> are the app's look (null = the default theme, its own colors).
+/// <paramref name="EmailConfirmed"/>: the user proved they read <paramref name="Email"/>.
+/// <paramref name="IsAdmin"/>: the server's admin, who activates new accounts;
+/// <paramref name="PendingAccounts"/>: how many wait for that (0 for everyone else).
 /// </summary>
 public sealed record ProfileDto(
     string? Email, string? AvatarDataUrl, string? DefaultView, bool? Use24HourClock, string? WeekStart,
-    string? Theme = null, string? AccentColor = null, string? HighlightColor = null);
+    string? Theme = null, string? AccentColor = null, string? HighlightColor = null, bool EmailConfirmed = false,
+    bool IsAdmin = false, int PendingAccounts = 0);
 
 /// <summary>Payload for remembering the user's chosen calendar view.</summary>
 public sealed record UpdateViewRequest(string View);

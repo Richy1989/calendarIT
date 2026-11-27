@@ -5,8 +5,9 @@ import { authHeaders } from '../auth/session'
 // happened before) quietly desynchronises it from the server, which is worse than a small
 // hand-written module — this one is typed here and has no generated counterpart to drift from.
 
-/** Config the sign-in screen needs before anyone has signed in. */
-export type AuthConfig = { registrationEnabled: boolean }
+/** Config the sign-in screen needs before anyone has signed in. `emailConfirmationAvailable`:
+ *  the server can mail confirmation links (it has a mail account of its own). */
+export type AuthConfig = { registrationEnabled: boolean; emailConfirmationAvailable?: boolean }
 
 async function fail(response: Response, fallback: string): Promise<never> {
   // The API reports problems as { errors: string[] }; show the first, which is the actionable one.
@@ -31,6 +32,38 @@ export async function getAuthConfig(): Promise<AuthConfig> {
     return (await response.json()) as AuthConfig
   } catch {
     return { registrationEnabled: true }
+  }
+}
+
+/** Confirms the address from the link in the confirmation mail. Works signed in or out. */
+export async function confirmEmail(email: string, token: string): Promise<void> {
+  const response = await fetch('/api/auth/confirm-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, token }),
+  })
+  if (!response.ok) {
+    await fail(response, 'Could not confirm the email address.')
+  }
+}
+
+/** Mails a new activation link to an account waiting for activation. Nobody is signed in, so it
+ *  resolves the same way whether or not the address has such an account. */
+export async function resendActivation(email: string): Promise<void> {
+  const response = await fetch('/api/auth/confirm-email/resend', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+  if (!response.ok) {
+    let message = 'Could not send the activation email.'
+    try {
+      const body = (await response.json()) as { detail?: unknown }
+      if (typeof body.detail === 'string') message = body.detail
+    } catch {
+      // keep the fallback
+    }
+    throw new Error(message)
   }
 }
 

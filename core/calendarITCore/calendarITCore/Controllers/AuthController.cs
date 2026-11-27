@@ -15,9 +15,12 @@ public sealed class AuthController(IAuthService authService, IConfiguration conf
     /// <summary>How many sessions a revoke call signed out.</summary>
     public sealed record RevokedSessions(int Count);
 
+    /// <summary>Signs up: 200 with tokens for the first account on the server (it activates
+    /// itself), else 202 — the account waits for activation and can't sign in yet.</summary>
     [HttpPost("register")]
     [AllowAnonymous]
     [ProducesResponseType<AuthTokens>(StatusCodes.Status200OK)]
+    [ProducesResponseType<RegistrationPending>(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Register(RegisterRequest request, CancellationToken cancellationToken)
     {
@@ -32,7 +35,10 @@ public sealed class AuthController(IAuthService authService, IConfiguration conf
     public async Task<IActionResult> Login(LoginRequest request, CancellationToken cancellationToken)
     {
         var result = await authService.LoginAsync(request, Client(), cancellationToken);
-        return result.Succeeded ? Ok(result.Tokens) : Unauthorized(new { errors = result.Errors });
+        // activationRequired: the password was right, the account just isn't activated yet.
+        return result.Succeeded
+            ? Ok(result.Tokens)
+            : Unauthorized(new { errors = result.Errors, activationRequired = result.Activation is not null });
     }
 
     [HttpPost("refresh")]
@@ -127,6 +133,36 @@ public sealed class AuthController(IAuthService authService, IConfiguration conf
         return result.Succeeded ? NoContent() : BadRequest(new { errors = result.Errors });
     }
 
+    /// <summary>Confirms the email address from the link in the confirmation mail.</summary>
+    [HttpPost("confirm-email")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ConfirmEmail(
+        ConfirmEmailRequest request, [FromServices] IEmailConfirmations confirmations, CancellationToken cancellationToken)
+        => await confirmations.ConfirmAsync(request, cancellationToken)
+            ? NoContent()
+            : BadRequest(new { errors = new[] { "This activation link is no longer valid. Ask for a new one on the sign-in screen." } });
+
+    /// <summary>Mails a new activation link to an account waiting for activation. Anonymous (it
+    /// can't sign in yet), so it answers 202 whatever the address — and sends nothing for an
+    /// unknown or active one, or when one went out moments ago.</summary>
+    [HttpPost("confirm-email/resend")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ResendConfirmation(
+        ResendActivationRequest request, [FromServices] IEmailConfirmations confirmations, CancellationToken cancellationToken)
+    {
+        if (!confirmations.Available)
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict,
+                detail: "This server can't send activation emails. Ask its admin to activate your account.");
+        }
+        await confirmations.SendToAddressAsync(request.Email, cancellationToken);
+        return Accepted();
+    }
+
     /// <summary>
     /// The origin to build the reset link from: PUBLIC_BASE_URL, or null when it isn't set.
     ///
@@ -145,6 +181,10 @@ public sealed class AuthController(IAuthService authService, IConfiguration conf
     private AuthClient Client() =>
         new(Request.Headers.UserAgent.ToString(), HttpContext.Connection.RemoteIpAddress?.ToString());
 
-    private IActionResult ToResponse(AuthResult result) =>
-        result.Succeeded ? Ok(result.Tokens) : BadRequest(new { errors = result.Errors });
+    private IActionResult ToResponse(AuthResult result) => result switch
+    {
+        { Succeeded: true, Tokens: { } tokens } => Ok(tokens),
+        { Succeeded: true, Activation: { } activation } => Accepted(new RegistrationPending(activation)),
+        _ => BadRequest(new { errors = result.Errors }),
+    };
 }

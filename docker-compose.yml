@@ -72,10 +72,29 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}            # optional
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}          # optional
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@calendarit.local}   # optional
-      # No SMTP settings: email (invitations + reminders) is sent through each user's own
-      # mail account, connected in-app under Settings → Email. MAIL_HOST_POLICY limits where
-      # those mail servers may point: private (default: internet + LAN), public, or any.
-      MAIL_HOST_POLICY: ${MAIL_HOST_POLICY:-private}   # optional (default private)
+      # Email (invitations + reminders) is sent through each user's own mail account,
+      # connected in-app under Settings → Email. MAIL_HOST_POLICY limits where those mail
+      # servers may point: private (internet + LAN), public, or any.
+      # Unset: public while sign-up is open (a stranger's mail server mustn't be your LAN),
+      # private once DISABLE_REGISTRATION=true.
+      MAIL_HOST_POLICY: ${MAIL_HOST_POLICY:-}   # optional
+      # optional. The server's own mail account, for account mail only: activation links for
+      # new sign-ups (needs PUBLIC_BASE_URL) and password resets. Without it, the admin (the
+      # first account) activates new accounts in Settings, or you run
+      # `dotnet calendarITCore.dll activate-account <email>`.
+      SMTP_HOST: ${SMTP_HOST:-}                          # optional
+      SMTP_PORT: ${SMTP_PORT:-587}                       # optional (default 587; 465 = TLS on connect)
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-}                    # optional (default: true for port 465)
+      SMTP_USERNAME: ${SMTP_USERNAME:-}                  # optional (empty = relay without login)
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}                  # optional
+      SMTP_FROM: ${SMTP_FROM:-}                          # optional, e.g. "24seven <noreply@example.com>"
+      # optional (default 1200). Requests per account (per IP before sign-in) per minute,
+      # beyond the auth limit above; 0 = off. QUOTA_EVENTS / _TASKS / _CALENDARS /
+      # _SUBSCRIPTIONS / _CATEGORIES cap what one account stores (see .env.example).
+      API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-1200}
+      # optional. Networks your proxy connects from (e.g. 172.16.0.0/12): only they are believed
+      # about the client address. Unset = any direct peer (fine while only the proxy reaches us).
+      FORWARDED_TRUSTED_NETWORKS: ${FORWARDED_TRUSTED_NETWORKS:-}
       # The app runs as this unprivileged user; on start it takes ownership of /appdata.
       # PUID: ${PUID:-1654}                             # optional (default 1654)
       # PGID: ${PGID:-1654}                             # optional (default 1654)

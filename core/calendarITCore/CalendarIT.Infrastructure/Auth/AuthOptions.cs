@@ -9,4 +9,10 @@ public sealed class AuthOptions
     /// family server this should usually be turned on once everyone has an account.
     /// </summary>
     public bool DisableRegistration { get; init; }
+
+    /// <summary>
+    /// The address users type (<c>PUBLIC_BASE_URL</c>), the only origin links in account mail are
+    /// built from — never the request's Host, which is a header anyone can set.
+    /// </summary>
+    public string? PublicBaseUrl { get; init; }
 }

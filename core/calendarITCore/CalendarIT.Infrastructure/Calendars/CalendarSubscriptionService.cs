@@ -24,8 +24,11 @@ public sealed class CalendarSubscriptionService(
     AppDbContext db,
     TimeProvider timeProvider,
     CalendarFeedFetcher fetcher,
-    ILogger<CalendarSubscriptionService> logger) : ICalendarSubscriptionService
+    ILogger<CalendarSubscriptionService> logger,
+    QuotaOptions? quotaOptions = null) : ICalendarSubscriptionService
 {
+    private readonly QuotaOptions quotas = quotaOptions ?? QuotaOptions.Default;
+
     /// <summary>Events kept per subscription; a feed with more is refused, not truncated.</summary>
     public const int MaxEvents = 20_000;
 
@@ -37,6 +40,7 @@ public sealed class CalendarSubscriptionService(
         var url = CalendarFeedFetcher.Normalize(request.Url)
             ?? throw new InvalidInputException("That isn't a web address of a calendar (https://… or webcal://…) on the public internet.");
         var refresh = CheckedRefresh(request.RefreshMinutes);
+        await Quotas.EnsureSubscriptionsAsync(db, quotas, userId, cancellationToken);
         if (request.DefaultCategoryId is { } categoryId
             && !await db.Categories.AnyAsync(c => c.Id == categoryId && c.OwnerUserId == userId, cancellationToken))
         {

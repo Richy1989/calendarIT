@@ -9,8 +9,11 @@ namespace CalendarIT.Infrastructure.Calendars;
 
 /// <summary>EF Core-backed <see cref="IEventService"/>. All queries are scoped by owner.</summary>
 public sealed class EventService(
-    AppDbContext db, TimeProvider timeProvider, IInvitationMailer mailer, IInternalInvitationDelivery delivery) : IEventService
+    AppDbContext db, TimeProvider timeProvider, IInvitationMailer mailer, IInternalInvitationDelivery delivery,
+    QuotaOptions? quotaOptions = null) : IEventService
 {
+    private readonly QuotaOptions quotas = quotaOptions ?? QuotaOptions.Default;
+
     public async Task<IReadOnlyList<EventDto>> GetEventsAsync(
         Guid userId, DateTimeOffset? from, DateTimeOffset? to, CancellationToken cancellationToken = default)
     {
@@ -197,6 +200,7 @@ public sealed class EventService(
     {
         var calendarId = await ResolveCalendarIdAsync(userId, request.CalendarId, cancellationToken);
         await EnsureWritableAsync(calendarId, cancellationToken);
+        await Quotas.EnsureEventsAsync(db, quotas, userId, 1, cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
 
         var entity = new CalendarEvent
@@ -339,6 +343,8 @@ public sealed class EventService(
         var now = timeProvider.GetUtcNow().UtcDateTime;
         if (row is null)
         {
+            // Every edited occurrence is a row of its own, and a series has no end of occurrences.
+            await Quotas.EnsureEventsAsync(db, quotas, userId, 1, cancellationToken);
             row = new CalendarEvent
             {
                 Id = Guid.NewGuid(),
@@ -517,6 +523,7 @@ public sealed class EventService(
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var masterRule = master.RRule!;
+        await Quotas.EnsureEventsAsync(db, quotas, userId, 1, cancellationToken);
 
         var next = new CalendarEvent
         {

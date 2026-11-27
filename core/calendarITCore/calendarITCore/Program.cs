@@ -25,9 +25,18 @@ builder.AddSerilogLogging();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    // The proxy runs outside our network boundary, so its address can't be pinned here.
     options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
+    // FORWARDED_TRUSTED_NETWORKS (comma-separated CIDRs, e.g. "172.16.0.0/12"): only a proxy in
+    // one of them is believed. Unset, any direct peer is — fine while nothing but the proxy can
+    // reach the app's port, but if anything else can, it can claim any client address it likes.
+    foreach (var cidr in (builder.Configuration["FORWARDED_TRUSTED_NETWORKS"] ?? "")
+        .Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        options.KnownIPNetworks.Add(System.Net.IPNetwork.TryParse(cidr, out var network)
+            ? network
+            : throw new InvalidOperationException($"FORWARDED_TRUSTED_NETWORKS: '{cidr}' isn't a network like 10.0.0.0/8."));
+    }
     // ...but only the configured number of hops is honoured. Unlimited forwarding let any
     // client invent its own X-Forwarded-For, which would both falsify the logged IP and hand
     // out a free bypass of the per-IP auth rate limit below. Default 1 = the reverse proxy
@@ -41,6 +50,28 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    // Everything else: a generous per-account budget (per IP before sign-in), so one account —
+    // and with open sign-up anyone can have one — can't keep the server busy with searches,
+    // imports and expansions for everybody. A bucket, so a phone's first sync can burst.
+    // API_RATE_LIMIT_PER_MINUTE=0 turns it off.
+    var perMinute = builder.Configuration.GetValue("API_RATE_LIMIT_PER_MINUTE", 1200);
+    if (perMinute > 0)
+    {
+        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+            context.Request.Path.StartsWithSegments("/health") || context.Request.Path.StartsWithSegments("/ready")
+                ? RateLimitPartition.GetNoLimiter("probes")
+                : RateLimitPartition.GetTokenBucketLimiter(
+                    context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value is { } user
+                        ? "user:" + user
+                        : "ip:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                    _ => new TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = perMinute,
+                        TokensPerPeriod = Math.Max(1, perMinute / 60),
+                        ReplenishmentPeriod = TimeSpan.FromSeconds(1),
+                        QueueLimit = 0,
+                    }));
+    }
     options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions
@@ -113,6 +144,8 @@ if (app.Configuration.GetValue("APPLY_MIGRATIONS", true))
     }
     // One-time data upgrade: per-event colors → categories (no-op once assigned).
     await app.Services.BackfillCategoriesAsync();
+    // A server from before the admin role gets one (its oldest account); no-op once there is one.
+    await CalendarIT.Infrastructure.Auth.AdminRole.EnsureOneAsync(app.Services);
 }
 
 app.UseForwardedHeaders();        // behind nginx/Traefik — must come first
@@ -137,9 +170,10 @@ if (app.Environment.IsDevelopment())
 
 // NOTE: no UseHttpsRedirection — TLS is terminated by the reverse proxy; app serves HTTP.
 
-app.UseRateLimiter();
-
+// After authentication, so the global limit can count per account (the auth endpoints' own
+// policy still counts per IP).
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();

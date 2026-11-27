@@ -477,6 +477,9 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("ViaSystem")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Status", "NextAttemptAtUtc");
@@ -704,6 +707,9 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
 
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("DefaultCalendarView")

@@ -113,6 +113,10 @@ public sealed class CalDavBasicAuthHandler(
         {
             await userManager.ResetAccessFailedCountAsync(user);
         }
+        if (!user.EmailConfirmed)
+        {
+            return AuthenticateResult.Fail("This account isn't activated yet."); // and never cached
+        }
 
         var userName = user.UserName ?? email;
         credentials.Store(email, password, new CalDavCredentialCache.CachedPrincipal(user.Id, userName));

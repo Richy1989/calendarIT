@@ -1,6 +1,7 @@
 using CalendarIT.Infrastructure;
 using CalendarIT.Infrastructure.Auth;
 using CalendarIT.Infrastructure.Identity;
+using CalendarIT.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 
 namespace calendarITCore;
@@ -13,13 +14,25 @@ public static class AdminCommands
 {
     public const string ResetPasswordLink = "reset-password-link";
 
-    public static bool IsCommand(string[] args) => args.Length > 0 && args[0] == ResetPasswordLink;
+    /// <summary>Activates an account (confirms its address) — for servers without a system mail
+    /// account, or a user whose activation mail doesn't arrive. The admin can do the same in
+    /// Settings → Accounts.</summary>
+    public const string ConfirmEmail = "confirm-email";
+
+    /// <summary>The same as <see cref="ConfirmEmail"/>, by the name the web app uses.</summary>
+    public const string ActivateAccount = "activate-account";
+
+    /// <summary>Makes an account the server's admin (who activates new accounts) — and activates it.</summary>
+    public const string MakeAdmin = "make-admin";
+
+    public static bool IsCommand(string[] args) =>
+        args.Length > 0 && args[0] is ResetPasswordLink or ConfirmEmail or ActivateAccount or MakeAdmin;
 
     public static async Task<int> RunAsync(string[] args, TextWriter output, TextWriter error)
     {
         if (args.Length != 2 || string.IsNullOrWhiteSpace(args[1]))
         {
-            await error.WriteLineAsync($"Usage: dotnet calendarITCore.dll {ResetPasswordLink} <email>");
+            await error.WriteLineAsync($"Usage: dotnet calendarITCore.dll {args[0]} <email>");
             return 2;
         }
 
@@ -36,6 +49,31 @@ public static class AdminCommands
         {
             await error.WriteLineAsync("No account has that email address.");
             return 1;
+        }
+
+        if (args[0] == MakeAdmin)
+        {
+            user.EmailConfirmed = true;
+            await users.UpdateAsync(user);
+            await AdminRole.GrantAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), user.Id);
+            await output.WriteLineAsync($"{user.Email} is active and an admin: it can activate new accounts in Settings → Accounts.");
+            return 0;
+        }
+
+        if (args[0] is ConfirmEmail or ActivateAccount)
+        {
+            if (!user.EmailConfirmed)
+            {
+                user.EmailConfirmed = true;
+                var updated = await users.UpdateAsync(user);
+                if (!updated.Succeeded)
+                {
+                    await error.WriteLineAsync(string.Join(" ", updated.Errors.Select(e => e.Description)));
+                    return 1;
+                }
+            }
+            await output.WriteLineAsync($"{user.Email} is activated: it can sign in now.");
+            return 0;
         }
 
         var configured = app.Configuration["PUBLIC_BASE_URL"];

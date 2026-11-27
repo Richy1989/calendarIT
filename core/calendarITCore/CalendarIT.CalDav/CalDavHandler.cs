@@ -25,8 +25,13 @@ namespace CalendarIT.CalDav;
 ///   /dav/calendars/           → home; children are the user's calendars
 ///   /dav/calendars/{id}/      → one calendar; children are {uid}.ics event resources
 /// </summary>
-public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
+public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider, QuotaOptions? quotaOptions = null)
 {
+    private readonly QuotaOptions quotas = quotaOptions ?? QuotaOptions.Default;
+
+    /// <summary>RFC 4918's answer to a write the account has no room for.</summary>
+    private const int InsufficientStorage = 507;
+
     private static readonly XNamespace D = "DAV:";
     private static readonly XNamespace C = "urn:ietf:params:xml:ns:caldav";
     private static readonly XNamespace CS = "http://calendarserver.org/ns/";
@@ -405,6 +410,18 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
             return Results.StatusCode(StatusCodes.Status409Conflict); // that name is a task, not an event
         }
 
+        if (existing is null)
+        {
+            try
+            {
+                await Quotas.EnsureEventsAsync(db, quotas, cal.OwnerUserId, 1 + overrideVes.Count, ctx.RequestAborted);
+            }
+            catch (QuotaExceededException)
+            {
+                return Results.StatusCode(InsufficientStorage);
+            }
+        }
+
         // For category resolution: an incoming CATEGORIES/COLOR is matched against the
         // user's categories (by name, else nearest color) inside the mapper.
         var categories = await db.Categories.AsNoTracking()
@@ -478,6 +495,17 @@ public sealed class CalDavHandler(AppDbContext db, TimeProvider timeProvider)
         if (existing is null && await db.Events.AnyAsync(e => e.CalendarId == cal.Id && e.Uid == uid && e.SeriesMasterId == null, ctx.RequestAborted))
         {
             return Results.StatusCode(StatusCodes.Status409Conflict); // that name is an event, not a task
+        }
+        if (existing is null)
+        {
+            try
+            {
+                await Quotas.EnsureTasksAsync(db, quotas, cal.OwnerUserId, 1, ctx.RequestAborted);
+            }
+            catch (QuotaExceededException)
+            {
+                return Results.StatusCode(InsufficientStorage);
+            }
         }
 
         var task = await new TaskWriter(db).WriteAsync(existing, todo, cal.Id, uid, timeProvider.GetUtcNow().UtcDateTime, ctx.RequestAborted);

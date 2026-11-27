@@ -15,9 +15,10 @@ public interface IPasswordResetMailer
 }
 
 /// <summary>
-/// Queues the reset mail for the user's <em>own</em> connected account.
+/// Queues the reset mail for the operator's system account (<see cref="SystemMailOptions"/>) when
+/// one is configured, else for the user's <em>own</em> connected account.
 ///
-/// This app has no global SMTP relay by design — all mail goes out through per-user accounts —
+/// Without a system account all mail goes out through per-user accounts —
 /// which is awkward here, because the one person who can't act is the user themselves. It works
 /// anyway: their mailbox credential is stored (encrypted) on the server, so we can send as them
 /// without them being signed in, and <see cref="Domain.MailAccount.FromAddress"/> exists so the
@@ -59,7 +60,10 @@ public sealed class PasswordResetMailer(
                 """,
         };
 
-        if (await outbox.QueueAsync(userId, message, OutboxKind.PasswordReset, cancellationToken))
+        // The operator's system account when there is one: it reaches the address without passing
+        // through a server the account's owner picked. Otherwise the user's own account.
+        if (await outbox.QueueSystemAsync(userId, message, OutboxKind.PasswordReset, cancellationToken)
+            || await outbox.QueueAsync(userId, message, OutboxKind.PasswordReset, cancellationToken))
         {
             return;
         }

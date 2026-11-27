@@ -206,8 +206,10 @@ CalDAV logins.
 ### Background jobs (Quartz.NET)
 
 - `ReminderDispatchJob` — recurrence-expanded, timezone-correct, idempotent via `NotificationLog`.
-  Email reminders go **through the owner's own connected mail account**, not a global relay —
-  there are no `SMTP_*` env vars. Per-reminder failures are isolated (logged, never abort the
+  Email reminders go **through the owner's own connected mail account**, not a global relay.
+  The optional `SMTP_*` system account (`SystemMailOptions`) carries account mail only —
+  activation links (only ever through it: a user's own SMTP server could read the code)
+  and password resets (preferred over the user's account); `OutboxMessage.ViaSystem` rows. Per-reminder failures are isolated (logged, never abort the
   run). WebPush reminders are VAPID-signed (`WebPushSender`); keys come from `VAPID_*` env or
   are auto-generated and persisted (`VapidKeyStore`, `vapid.json`). Browsers
   without a push service fall back to polling `GET /api/reminders/due` (`web/src/push/localReminders.ts`).
@@ -231,7 +233,21 @@ Inbound iMIP messages are verified against the sender (`ImipMime.IsFromClaimedSe
 an unverified REPLY/CANCEL is ignored, so nobody can answer for a guest or delete your events; an
 unverified REQUEST (a forwarded invite) is delivered, but only ever as pending (NeedsAction).
 UIDs are caller-supplied, so internal invite copies are matched by a server-stamped
-`SourceOrganizerUserId`, never UID alone. Password-reset links come
+`SourceOrganizerUserId`, never UID alone. Sign-up takes any address, so an account signs in
+(login, refresh, CalDAV) only with `EmailConfirmed` = activated: the server's first account
+activates itself and gets the `Admin` role (`AdminRole`, always checked in the DB, never from the
+token); later sign-ups get a 202 and are activated by the mailed link (`EmailConfirmations`, via
+the system account only) or by the admin (`AccountAdmin`, `/api/admin/pending-accounts`,
+Settings → New accounts), or the `activate-account`/`make-admin` commands. Accounts from before
+the migration were backfilled active, and start-up makes the oldest the admin if none is.
+Internal invite copies also go only to activated accounts. Sign-ups notify the admins
+(`AdminSignupNotifier`: `OutboxKind.AdminNotice` via the system account, else the admin's own,
+one per admin per 15 min listing everyone waiting; `ProfileDto.PendingAccounts` drives the
+web badge). With sign-up open, `MAIL_HOST_POLICY` defaults to `public` (else `private`); every
+account has quotas (`Quotas`/`QuotaOptions`, `QUOTA_*`: own events incl. overrides — received
+invitations don't count — tasks, calendars, subscriptions, categories; 400 from the API, 507
+from CalDAV) and a global per-user token-bucket rate limit (`API_RATE_LIMIT_PER_MINUTE`; the
+limiter runs after authentication so it can key on the user). Password-reset links come
 only from `PUBLIC_BASE_URL` (never the request Host) to avoid an enumeration/token-exfil oracle,
 and are never logged: without a working mail account the operator runs
 `dotnet calendarITCore.dll reset-password-link <email>` (`AdminCommands`, prints to the terminal).

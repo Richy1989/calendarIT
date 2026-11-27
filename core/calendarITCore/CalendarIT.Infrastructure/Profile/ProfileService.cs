@@ -29,7 +29,7 @@ public sealed class ProfileService(AppDbContext db) : IProfileService
             .Select(u => new
             {
                 u.Email, u.AvatarData, u.AvatarContentType, u.DefaultCalendarView, u.Use24HourClock, u.WeekStart,
-                u.Theme, u.AccentColor, u.HighlightColor,
+                u.Theme, u.AccentColor, u.HighlightColor, u.EmailConfirmed,
             })
             .SingleOrDefaultAsync(cancellationToken);
         if (user is null)
@@ -37,12 +37,14 @@ public sealed class ProfileService(AppDbContext db) : IProfileService
             return null;
         }
 
+        var isAdmin = await Auth.AdminRole.IsAdminAsync(db, userId, cancellationToken);
         string? dataUrl = user.AvatarData is { Length: > 0 } bytes && !string.IsNullOrEmpty(user.AvatarContentType)
             ? $"data:{user.AvatarContentType};base64,{Convert.ToBase64String(bytes)}"
             : null;
 
         return new ProfileDto(user.Email, dataUrl, user.DefaultCalendarView, user.Use24HourClock, user.WeekStart,
-            user.Theme, user.AccentColor, user.HighlightColor);
+            user.Theme, user.AccentColor, user.HighlightColor, user.EmailConfirmed,
+            isAdmin, isAdmin ? await db.Users.CountAsync(u => !u.EmailConfirmed, cancellationToken) : 0);
     }
 
     public async Task<bool> SetAppearanceAsync(

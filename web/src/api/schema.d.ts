@@ -216,6 +216,168 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/pending-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PendingAccountDto"][];
+                        "application/json": components["schemas"]["PendingAccountDto"][];
+                        "text/json": components["schemas"]["PendingAccountDto"][];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/pending-accounts/{id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/pending-accounts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/register": {
         parameters: {
             query?: never;
@@ -249,6 +411,17 @@ export interface paths {
                         "text/plain": components["schemas"]["AuthTokens"];
                         "application/json": components["schemas"]["AuthTokens"];
                         "text/json": components["schemas"]["AuthTokens"];
+                    };
+                };
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["RegistrationPending"];
+                        "application/json": components["schemas"]["RegistrationPending"];
+                        "text/json": components["schemas"]["RegistrationPending"];
                     };
                 };
                 /** @description Bad Request */
@@ -733,6 +906,106 @@ export interface paths {
                 };
                 /** @description Bad Request */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/confirm-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ConfirmEmailRequest"];
+                    "text/json": components["schemas"]["ConfirmEmailRequest"];
+                    "application/*+json": components["schemas"]["ConfirmEmailRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/confirm-email/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ResendActivationRequest"];
+                    "text/json": components["schemas"]["ResendActivationRequest"];
+                    "application/*+json": components["schemas"]["ResendActivationRequest"];
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Conflict */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1340,6 +1613,129 @@ export interface paths {
                 };
                 /** @description Conflict */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DeviceDto"][];
+                        "application/json": components["schemas"]["DeviceDto"][];
+                        "text/json": components["schemas"]["DeviceDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RegisterDeviceRequest"];
+                    "text/json": components["schemas"]["RegisterDeviceRequest"];
+                    "application/*+json": components["schemas"]["RegisterDeviceRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DeviceDto"];
+                        "application/json": components["schemas"]["DeviceDto"];
+                        "text/json": components["schemas"]["DeviceDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2836,6 +3232,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    cursor?: string;
+                    limit?: number | string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SyncPullResponse"];
+                        "application/json": components["schemas"]["SyncPullResponse"];
+                        "text/json": components["schemas"]["SyncPullResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SyncPushRequest"];
+                    "text/json": components["schemas"]["SyncPushRequest"];
+                    "application/*+json": components["schemas"]["SyncPushRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["SyncPushResponse"];
+                        "application/json": components["schemas"]["SyncPushResponse"];
+                        "text/json": components["schemas"]["SyncPushResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["ProblemDetails"];
+                        "application/json": components["schemas"]["ProblemDetails"];
+                        "text/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks": {
         parameters: {
             query?: never;
@@ -3115,6 +3589,8 @@ export interface components {
         };
         AuthConfig: {
             registrationEnabled: boolean;
+            /** @default false */
+            emailConfirmationAvailable: boolean;
         };
         AuthTokens: {
             accessToken: string;
@@ -3156,6 +3632,28 @@ export interface components {
         ChangePasswordRequest: {
             currentPassword: string;
             newPassword: string;
+        };
+        ConfirmEmailRequest: {
+            email: string;
+            token: string;
+        };
+        DeviceDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            platform: string;
+            appVersion: null | string;
+            pushKind: null | string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastSeenAt: string;
+        };
+        DevicePushInput: {
+            kind: string;
+            endpoint: string;
+            p256dh?: null | string;
+            auth?: null | string;
         };
         DueReminderDto: {
             /** Format: uuid */
@@ -3223,6 +3721,7 @@ export interface components {
             /** Format: int32 */
             skipped: number | string;
         };
+        JsonElement: unknown;
         LoginRequest: {
             email: string;
             password: string;
@@ -3268,6 +3767,13 @@ export interface components {
             sentAt: null | string;
             canRetry: boolean;
         };
+        PendingAccountDto: {
+            /** Format: uuid */
+            id: string;
+            email: string;
+            /** Format: date-time */
+            createdAt: null | string;
+        };
         ProblemDetails: {
             type?: null | string;
             title?: null | string;
@@ -3285,6 +3791,15 @@ export interface components {
             theme?: null | string;
             accentColor?: null | string;
             highlightColor?: null | string;
+            /** @default false */
+            emailConfirmed: boolean;
+            /** @default false */
+            isAdmin: boolean;
+            /**
+             * Format: int32
+             * @default 0
+             */
+            pendingAccounts: number | string;
         };
         PushSubscriptionInput: {
             endpoint: string;
@@ -3300,9 +3815,18 @@ export interface components {
         RefreshTokenRequest: {
             refreshToken: string;
         };
+        RegisterDeviceRequest: {
+            name: string;
+            platform: string;
+            appVersion?: null | string;
+            push?: null | components["schemas"]["DevicePushInput"];
+        };
         RegisterRequest: {
             email: string;
             password: string;
+        };
+        RegistrationPending: {
+            activation: string;
         };
         ReminderDto: {
             /** Format: int32 */
@@ -3313,6 +3837,9 @@ export interface components {
             /** Format: int32 */
             minutesBefore?: number | string;
             channel: string;
+        };
+        ResendActivationRequest: {
+            email: string;
         };
         ResetPasswordRequest: {
             email: string;
@@ -3327,15 +3854,21 @@ export interface components {
             status: string;
         };
         SaveCalendarRequest: {
+            /** Format: uuid */
+            id?: null | string;
             name: string;
             /** Format: uuid */
             defaultCategoryId?: null | string;
         };
         SaveCategoryRequest: {
+            /** Format: uuid */
+            id?: null | string;
             name: string;
             color: string;
         };
         SaveEventRequest: {
+            /** Format: uuid */
+            id?: null | string;
             title: string;
             description?: null | string;
             location?: null | string;
@@ -3370,6 +3903,8 @@ export interface components {
             password?: null | string;
         };
         SaveTaskRequest: {
+            /** Format: uuid */
+            id?: null | string;
             /** Format: uuid */
             calendarId?: null | string;
             title: string;
@@ -3424,6 +3959,132 @@ export interface components {
             refreshMinutes?: number | string;
             /** Format: uuid */
             defaultCategoryId?: null | string;
+        };
+        SyncCalendarDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            color: null | string;
+            timeZone: null | string;
+            /** Format: uuid */
+            defaultCategoryId: null | string;
+            defaultReminders: components["schemas"]["ReminderDto"][];
+            readOnly: boolean;
+            version: string;
+            subscriptionError?: null | string;
+        };
+        SyncCategoryDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            color: string;
+            version: string;
+        };
+        SyncDeletions: {
+            events: string[];
+            tasks: string[];
+        };
+        SyncOccurrenceDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            recurrenceId: string;
+            title: string;
+            description: null | string;
+            location: null | string;
+            /** Format: uuid */
+            categoryId: null | string;
+            /** Format: date-time */
+            start: string;
+            /** Format: date-time */
+            end: null | string;
+            allDay: boolean;
+            timeZone: null | string;
+            reminders: components["schemas"]["ReminderDto"][];
+        };
+        SyncOp: {
+            opId: string;
+            op: string;
+            /** Format: uuid */
+            id?: string;
+            baseVersion?: null | string;
+            /** Format: date-time */
+            occurrence?: null | string;
+            data?: null | components["schemas"]["JsonElement"];
+        };
+        SyncOpResult: {
+            opId: string;
+            status: string;
+            error?: null | string;
+            versions?: null | {
+                [key: string]: string;
+            };
+        };
+        SyncPullResponse: {
+            /** Format: int32 */
+            protocol: number | string;
+            reset: boolean;
+            cursor: string;
+            hasMore: boolean;
+            calendars: components["schemas"]["SyncCalendarDto"][];
+            categories: components["schemas"]["SyncCategoryDto"][];
+            events: components["schemas"]["SyncSeriesDto"][];
+            tasks: components["schemas"]["SyncTaskDto"][];
+            deleted: components["schemas"]["SyncDeletions"];
+        };
+        SyncPushRequest: {
+            ops: components["schemas"]["SyncOp"][];
+        };
+        SyncPushResponse: {
+            results: components["schemas"]["SyncOpResult"][];
+        };
+        SyncSeriesDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            calendarId: string;
+            title: string;
+            description: null | string;
+            location: null | string;
+            /** Format: uuid */
+            categoryId: null | string;
+            color: null | string;
+            /** Format: date-time */
+            start: string;
+            /** Format: date-time */
+            end: null | string;
+            allDay: boolean;
+            timeZone: null | string;
+            recurrence: null | string;
+            exDates: string[];
+            reminders: components["schemas"]["ReminderDto"][];
+            attendees: components["schemas"]["AttendeeDto"][];
+            invitationStatus: null | string;
+            organizerEmail: null | string;
+            overrides: components["schemas"]["SyncOccurrenceDto"][];
+            version: string;
+        };
+        SyncTaskDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            calendarId: string;
+            title: string;
+            notes: null | string;
+            /** Format: date-time */
+            due: null | string;
+            dueAllDay: boolean;
+            timeZone: null | string;
+            status: string;
+            /** Format: date-time */
+            completedAt: null | string;
+            priority: null | string;
+            /** Format: uuid */
+            parentId: null | string;
+            /** Format: int32 */
+            sortOrder: number | string;
+            reminders: components["schemas"]["ReminderDto"][];
+            version: string;
         };
         TaskDto: {
             /** Format: uuid */

@@ -410,4 +410,42 @@ public sealed class OutboxTests : IDisposable
         Assert.False(result.Ok);
         Assert.Equal("SMTP: That server address isn't allowed on this instance.", result.Error);
     }
+
+    private static readonly SystemMailOptions SystemMail = new()
+    {
+        Host = "relay.example.com", Port = 587, Username = "relay-login", Password = "relay-pw", From = "24seven <noreply@example.com>",
+    };
+
+    [Fact]
+    public async Task QueueSystem_WithoutASystemAccount_QueuesNothing()
+    {
+        Assert.False(await Outbox().QueueSystemAsync(_alice, Message("alice@test"), OutboxKind.EmailConfirmation));
+        Assert.Empty(_db.OutboxMessages);
+    }
+
+    [Fact]
+    public async Task SystemMail_GoesThroughTheSystemAccount_NotTheUsers_AndLeavesNoTokenBehind()
+    {
+        // Alice has an account of her own: account mail must still not pass through it.
+        await ConnectMailAsync(_alice, "alice@example.com");
+        var outbox = new MailOutbox(_db, _accounts, _clock, new NoSignal(), SystemMail);
+        Assert.True(await outbox.QueueSystemAsync(_alice, Message("alice@test", "Confirm"), OutboxKind.EmailConfirmation));
+        var server = new FakeServer();
+
+        await Job().RunAsync(_db, _accounts, new MailConnectionOptions(), connect: server.Connect, system: SystemMail);
+
+        var (user, delivered) = Assert.Single(server.Delivered);
+        Assert.Equal("relay-login", user);
+        Assert.Equal("noreply@example.com", delivered.From.Mailboxes.Single().Address);
+        Assert.Empty(_db.OutboxMessages.AsNoTracking()); // the link in it is a credential
+    }
+
+    [Fact]
+    public async Task SystemMail_IsHiddenFromTheUsersOutboxList()
+    {
+        var outbox = new MailOutbox(_db, _accounts, _clock, new NoSignal(), SystemMail);
+        await outbox.QueueSystemAsync(_alice, Message("alice@test"), OutboxKind.PasswordReset);
+
+        Assert.Empty(await _accounts.ListOutboxAsync(_alice));
+    }
 }

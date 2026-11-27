@@ -17,6 +17,13 @@ public interface IMailOutbox
     Task<bool> QueueAsync(
         Guid userId, MimeMessage message, OutboxKind kind, CancellationToken cancellationToken = default, bool save = true);
 
+    /// <summary>
+    /// Queues account mail about <paramref name="userId"/> for the operator's system account
+    /// (<see cref="SystemMailOptions"/>) and returns true — or false, queuing nothing, when none
+    /// is configured. Always saved at once.
+    /// </summary>
+    Task<bool> QueueSystemAsync(Guid userId, MimeMessage message, OutboxKind kind, CancellationToken cancellationToken = default);
+
     /// <summary>Saves what was staged with <c>save: false</c> and wakes the sender.</summary>
     Task FlushAsync(CancellationToken cancellationToken = default);
 }
@@ -28,7 +35,8 @@ public interface IOutboxSignal
 }
 
 public sealed class MailOutbox(
-    AppDbContext db, MailAccountService accounts, TimeProvider clock, IOutboxSignal signal) : IMailOutbox
+    AppDbContext db, MailAccountService accounts, TimeProvider clock, IOutboxSignal signal,
+    SystemMailOptions? systemMail = null) : IMailOutbox
 {
     /// <summary>Accounts already looked up in this scope — queuing an invitation to fifty guests
     /// shouldn't decrypt the same mailbox password fifty times.</summary>
@@ -51,6 +59,31 @@ public sealed class MailOutbox(
             message.From.Add(UserMailSender.FromOf(account));
         }
 
+        await StageAsync(userId, message, kind, viaSystem: false, cancellationToken);
+        if (save)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            signal.Poke();
+        }
+        return true;
+    }
+
+    public async Task<bool> QueueSystemAsync(Guid userId, MimeMessage message, OutboxKind kind, CancellationToken cancellationToken = default)
+    {
+        if (systemMail is not { IsConfigured: true })
+        {
+            return false;
+        }
+        message.From.Clear();
+        message.From.Add(systemMail.Sender);
+        await StageAsync(userId, message, kind, viaSystem: true, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        signal.Poke();
+        return true;
+    }
+
+    private async Task StageAsync(Guid userId, MimeMessage message, OutboxKind kind, bool viaSystem, CancellationToken cancellationToken)
+    {
         using var buffer = new MemoryStream();
         await message.WriteToAsync(buffer, cancellationToken);
         var now = clock.GetUtcNow().UtcDateTime;
@@ -58,6 +91,7 @@ public sealed class MailOutbox(
         {
             Id = Guid.NewGuid(),
             UserId = userId,
+            ViaSystem = viaSystem,
             Kind = kind,
             Status = OutboxStatus.Pending,
             Recipient = Clip(string.Join(", ", message.To.Mailboxes.Select(m => m.Address)), 320),
@@ -67,13 +101,6 @@ public sealed class MailOutbox(
             NextAttemptAtUtc = now,
             ExpiresAtUtc = now + LifetimeOf(kind),
         });
-
-        if (save)
-        {
-            await db.SaveChangesAsync(cancellationToken);
-            signal.Poke();
-        }
-        return true;
     }
 
     public async Task FlushAsync(CancellationToken cancellationToken = default)
@@ -90,7 +117,8 @@ public sealed class MailOutbox(
     public static TimeSpan LifetimeOf(OutboxKind kind) => kind switch
     {
         OutboxKind.Reminder => TimeSpan.FromHours(1),
-        OutboxKind.PasswordReset => TimeSpan.FromHours(2),
+        OutboxKind.PasswordReset or OutboxKind.EmailConfirmation => TimeSpan.FromHours(2),
+        OutboxKind.AdminNotice => TimeSpan.FromDays(1),
         _ => TimeSpan.FromDays(3),
     };
 

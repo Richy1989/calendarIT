@@ -127,7 +127,7 @@ public sealed class MailAccountService(
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var rows = await db.OutboxMessages.AsNoTracking()
-            .Where(m => m.UserId == userId)
+            .Where(m => m.UserId == userId && !m.ViaSystem) // the user's own account's mail only
             .OrderByDescending(m => m.CreatedAtUtc)
             .Take(50)
             .Select(m => new
@@ -148,7 +148,7 @@ public sealed class MailAccountService(
     public async Task<bool> RetryOutboxAsync(Guid userId, Guid messageId, CancellationToken cancellationToken = default)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var message = await db.OutboxMessages.SingleOrDefaultAsync(m => m.Id == messageId && m.UserId == userId, cancellationToken);
+        var message = await db.OutboxMessages.SingleOrDefaultAsync(m => m.Id == messageId && m.UserId == userId && !m.ViaSystem, cancellationToken);
         if (message is not { Status: OutboxStatus.Failed, Mime: not null } || message.ExpiresAtUtc <= now)
         {
             return false;
@@ -164,7 +164,7 @@ public sealed class MailAccountService(
     public async Task<bool> DiscardOutboxAsync(Guid userId, Guid messageId, CancellationToken cancellationToken = default)
     {
         var deleted = await db.OutboxMessages
-            .Where(m => m.Id == messageId && m.UserId == userId)
+            .Where(m => m.Id == messageId && m.UserId == userId && !m.ViaSystem)
             .ExecuteDeleteAsync(cancellationToken);
         return deleted > 0;
     }

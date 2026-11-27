@@ -482,6 +482,9 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("ViaSystem")
+                        .HasColumnType("boolean");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Status", "NextAttemptAtUtc");
@@ -710,6 +713,9 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("text");
+
+                    b.Property<DateTime?>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("DefaultCalendarView")
                         .HasColumnType("text");

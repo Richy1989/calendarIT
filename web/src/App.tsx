@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api/client'
 import { getProfile } from './api/profile'
-import { getAuthConfig, requestPasswordReset, resetPassword } from './api/password'
+import { confirmEmail, getAuthConfig, requestPasswordReset, resendActivation, resetPassword } from './api/password'
 import { getVisibleCalendars, getVisibleCategories, saveVisibleCalendars, saveVisibleCategories } from './prefs'
 import { getTokens, onTokensChangedElsewhere, setTokens, tokenChange, type AuthTokens } from './auth/authStorage'
 import { signOut } from './auth/session'
@@ -36,6 +36,15 @@ function readResetRequest(): { email: string; token: string } | null {
   return email && token ? { email, token } : null
 }
 
+/** The confirmation link lands on /confirm-email?email=…&token=…, signed in or not. */
+function readConfirmRequest(): { email: string; token: string } | null {
+  if (window.location.pathname !== '/confirm-email') return null
+  const params = new URLSearchParams(window.location.search)
+  const email = params.get('email')
+  const token = params.get('token')
+  return email && token ? { email, token } : null
+}
+
 /** Drops the token from the address bar so it isn't left in history or copied by accident. */
 function clearResetUrl() {
   window.history.replaceState(null, '', '/')
@@ -48,7 +57,7 @@ export default function App() {
   // null = calendar screen; otherwise the settings page, opened on that section.
   const [settingsSection, setSettingsSection] = useState<'general' | 'calendars' | 'categories' | null>(() => {
     const section = new URLSearchParams(window.location.search).get('settings')
-    return section === 'calendars' || section === 'categories' ? section : null
+    return section === 'general' || section === 'calendars' || section === 'categories' ? section : null
   })
   // A search pick sets this; CalendarView watches it and jumps to that day. The bumping
   // counter lets picking the same date twice re-trigger the navigation.
@@ -57,7 +66,15 @@ export default function App() {
   // Which calendars/categories are shown: null = all. Persisted locally so the choice sticks.
   const [visibleCals, setVisibleCals] = useState<string[] | null>(getVisibleCalendars())
   const [visibleCats, setVisibleCats] = useState<string[] | null>(getVisibleCategories())
-  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: getProfile, enabled: !!tokens })
+  const { data: profile } = useQuery({
+    queryKey: ['profile'],
+    queryFn: getProfile,
+    enabled: !!tokens,
+    // The admin's badge of waiting sign-ups stays current without a reload.
+    refetchInterval: (query) => (query.state.data?.isAdmin ? 5 * 60_000 : false),
+  })
+  // Arriving on a confirmation link shows its outcome first, whoever is signed in.
+  const [confirmRequest, setConfirmRequest] = useState(readConfirmRequest)
 
   const queryClient = useQueryClient()
 
@@ -139,6 +156,21 @@ export default function App() {
     ? { theme: profile.theme, accentColor: profile.accentColor, highlightColor: profile.highlightColor }
     : undefined
 
+  if (confirmRequest) {
+    return (
+      <ThemeProvider>
+        <ConfirmEmailScreen
+          request={confirmRequest}
+          onDone={() => {
+            clearResetUrl()
+            setConfirmRequest(null)
+            void queryClient.invalidateQueries({ queryKey: ['profile'] })
+          }}
+        />
+      </ThemeProvider>
+    )
+  }
+
   if (!tokens) {
     return (
       <ThemeProvider>
@@ -184,6 +216,7 @@ export default function App() {
     <ProfileMenu
       email={profile?.email}
       avatarUrl={profile?.avatarDataUrl}
+      pendingAccounts={Number(profile?.pendingAccounts ?? 0)}
       onOpenSettings={() => setSettingsSection('general')}
       onLogout={logout}
     />
@@ -267,6 +300,8 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => voi
   // Arriving on a reset link replaces the sign-in form until it's dealt with.
   const [resetRequest, setResetRequest] = useState(readResetRequest)
   const [forgot, setForgot] = useState(false)
+  // Signed up, waiting for activation: how it will happen ('email' or 'admin').
+  const [pending, setPending] = useState<string | null>(null)
   const { data: authConfig } = useQuery({ queryKey: ['auth-config'], queryFn: getAuthConfig })
   const registrationEnabled = authConfig?.registrationEnabled ?? true
   const [mode, setMode] = useState<Mode>('login')
@@ -278,19 +313,32 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => voi
   const [confirmBlurred, setConfirmBlurred] = useState(false)
 
   const mutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<AuthTokens | { activation: string }> => {
       const body = { email, password }
-      const { data, error } =
-        mode === 'login'
-          ? await api.POST('/api/auth/login', { body })
-          : await api.POST('/api/auth/register', { body })
-      if (error || !data) {
-        throw new Error(extractError(error) ?? 'Something went wrong. Try again.')
+      if (mode === 'login') {
+        const { data, error } = await api.POST('/api/auth/login', { body })
+        if (error || !data) {
+          throw new SignInError(
+            extractError(error) ?? 'Something went wrong. Try again.',
+            !!(error as { activationRequired?: unknown } | undefined)?.activationRequired,
+          )
+        }
+        return data
       }
-      return data
+      const { data, error, response } = await api.POST('/api/auth/register', { body })
+      if (error || !data) {
+        throw new SignInError(extractError(error) ?? 'Something went wrong. Try again.')
+      }
+      // 202: the account exists but waits for activation; only the server's first account signs in at once.
+      if (response.status === 202) return { activation: (data as { activation?: string }).activation ?? 'admin' }
+      return data as AuthTokens
     },
-    onSuccess: (data) => onAuthenticated(data),
+    onSuccess: (data) => {
+      if ('activation' in data) setPending(data.activation)
+      else onAuthenticated(data)
+    },
   })
+  const activationRequired = mutation.error instanceof SignInError && mutation.error.activationRequired
 
   // An instance with sign-up closed shouldn't offer a tab that can only fail.
   const isLogin = mode === 'login' || !registrationEnabled
@@ -311,6 +359,22 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => voi
 
   if (forgot) {
     return <ForgotPasswordForm onBack={() => setForgot(false)} />
+  }
+
+  if (pending) {
+    return (
+      <ActivationPending
+        email={email}
+        byEmail={pending === 'email'}
+        onBack={() => {
+          setPending(null)
+          setMode('login')
+          setPassword('')
+          setConfirm('')
+          mutation.reset()
+        }}
+      />
+    )
   }
 
   // Switching tabs starts a clean form: a half-typed confirmation (and any stale error) has
@@ -405,6 +469,7 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => voi
           )}
 
           {mutation.isError && <p className="error">{(mutation.error as Error).message}</p>}
+          {activationRequired && authConfig?.emailConfirmationAvailable && <ResendActivationButton email={email} />}
 
           <button className="btn-primary" type="submit" disabled={mutation.isPending}>
             {mutation.isPending ? (isLogin ? 'Signing in…' : 'Creating account…') : isLogin ? 'Sign in' : 'Create account'}
@@ -419,6 +484,91 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (t: AuthTokens) => voi
 
         <p className="auth-foot">Your calendar data stays on your own server.</p>
       </form>
+    </div>
+  )
+}
+
+/** A failed sign-in; `activationRequired`: the password was right, the account just isn't active yet. */
+class SignInError extends Error {
+  readonly activationRequired: boolean
+
+  constructor(message: string, activationRequired = false) {
+    super(message)
+    this.activationRequired = activationRequired
+  }
+}
+
+/** Mails the activation link again; one click, then it says it went. */
+function ResendActivationButton({ email }: { email: string }) {
+  const resend = useMutation({ mutationFn: () => resendActivation(email) })
+  return (
+    <>
+      <button type="button" className="link-button" onClick={() => resend.mutate()} disabled={resend.isPending || resend.isSuccess}>
+        {resend.isSuccess ? 'Sent — check your inbox' : resend.isPending ? 'Sending…' : 'Send the activation email again'}
+      </button>
+      {resend.isError && <p className="error">{(resend.error as Error).message}</p>}
+    </>
+  )
+}
+
+/** After signing up: the account exists, and this is how it gets activated. */
+function ActivationPending({ email, byEmail, onBack }: { email: string; byEmail: boolean; onBack: () => void }) {
+  return (
+    <div className="auth">
+      <div className="auth-card">
+        <div className="auth-head">
+          <Logo />
+          <h1 className="auth-title">{byEmail ? 'Check your email' : 'Almost there'}</h1>
+        </div>
+        <div className="form">
+          {byEmail ? (
+            <p>
+              We sent an activation link to <b>{email}</b>. Open it to activate your account, then sign in.
+            </p>
+          ) : (
+            <p>
+              Your account <b>{email}</b> is created. The server's admin needs to activate it before you can sign in.
+            </p>
+          )}
+          {byEmail && <ResendActivationButton email={email} />}
+          <button className="btn-primary" type="button" onClick={onBack}>
+            Back to sign in
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Activates the account from the mailed link, once, and says how it went. */
+function ConfirmEmailScreen({ request, onDone }: { request: { email: string; token: string }; onDone: () => void }) {
+  const mutation = useMutation({ mutationFn: () => confirmEmail(request.email, request.token) })
+  const { mutate } = mutation
+  useEffect(() => {
+    mutate()
+  }, [mutate])
+
+  return (
+    <div className="auth">
+      <div className="auth-card">
+        <div className="auth-head">
+          <Logo />
+          <h1 className="auth-title">
+            {mutation.isSuccess ? 'Account activated' : mutation.isError ? 'Link expired' : 'Activating…'}
+          </h1>
+        </div>
+        <div className="form">
+          {mutation.isSuccess && (
+            <p>
+              <b>{request.email}</b> is active. You can sign in now.
+            </p>
+          )}
+          {mutation.isError && <p className="error">{(mutation.error as Error).message}</p>}
+          <button className="btn-primary" type="button" onClick={onDone} disabled={mutation.isPending}>
+            Continue
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

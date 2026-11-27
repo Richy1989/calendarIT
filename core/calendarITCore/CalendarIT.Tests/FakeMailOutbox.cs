@@ -26,5 +26,21 @@ public sealed class FakeMailOutbox : IMailOutbox
         return Task.FromResult(true);
     }
 
+    /// <summary>Set true to act like a server with a system mail account (SMTP_*).</summary>
+    public bool HasSystemMail { get; set; }
+
+    /// <summary>What was queued for the system account.</summary>
+    public List<(Guid UserId, MimeMessage Message, OutboxKind Kind)> SentViaSystem { get; } = [];
+
+    public Task<bool> QueueSystemAsync(Guid userId, MimeMessage message, OutboxKind kind, CancellationToken cancellationToken = default)
+    {
+        if (!HasSystemMail)
+        {
+            return Task.FromResult(false);
+        }
+        SentViaSystem.Add((userId, message, kind));
+        return Task.FromResult(true);
+    }
+
     public Task FlushAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

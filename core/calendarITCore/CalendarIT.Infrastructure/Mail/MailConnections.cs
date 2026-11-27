@@ -36,7 +36,11 @@ public static class MailConnections
         try
         {
             await ConnectAsync(client, account.SmtpHost, account.SmtpPort, account.SmtpUseSsl, options, cancellationToken);
-            await client.AuthenticateAsync(account.Username, password, cancellationToken);
+            // A user's account always has a login; the operator's system relay may not need one.
+            if (!string.IsNullOrEmpty(account.Username))
+            {
+                await client.AuthenticateAsync(account.Username, password, cancellationToken);
+            }
             return client;
         }
         catch

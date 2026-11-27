@@ -29,7 +29,9 @@ public sealed class AuthService(
     IOptions<AuthOptions> authOptions,
     ILogger<AuthService> logger,
     IMemoryCache? cache = null,
-    CredentialEpochs? epochs = null) : IAuthService
+    CredentialEpochs? epochs = null,
+    IEmailConfirmations? confirmations = null,
+    IAdminSignupNotifier? adminNotifier = null) : IAuthService
 {
     /// <summary>
     /// How long after a token was rotated a second presentation of it is taken for a race, not a
@@ -42,7 +44,13 @@ public sealed class AuthService(
     /// without a cooldown anyone could fill a user's inbox with them.</summary>
     private static readonly TimeSpan ResetCooldown = TimeSpan.FromMinutes(2);
 
-    public AuthConfig GetConfig() => new(RegistrationEnabled: !authOptions.Value.DisableRegistration);
+    /// <summary>Shown only to someone who got the password right.</summary>
+    public const string NotActivatedMessage =
+        "This account isn't activated yet. Open the link in the activation email, or ask the server's admin to activate it.";
+
+    public AuthConfig GetConfig() => new(
+        RegistrationEnabled: !authOptions.Value.DisableRegistration,
+        EmailConfirmationAvailable: confirmations?.Available ?? false);
 
     public async Task<AuthResult> RegisterAsync(RegisterRequest request, AuthClient? client = null, CancellationToken cancellationToken = default)
     {
@@ -64,7 +72,8 @@ public sealed class AuthService(
         var user = new ApplicationUser
         {
             UserName = request.Email,
-            Email = request.Email
+            Email = request.Email,
+            CreatedAtUtc = timeProvider.GetUtcNow().UtcDateTime,
         };
 
         var created = await userManager.CreateAsync(user, request.Password);
@@ -78,7 +87,44 @@ public sealed class AuthService(
         CategoryDefaults.Seed(db, user.Id, timeProvider.GetUtcNow().UtcDateTime);
         await db.SaveChangesAsync(cancellationToken);
 
-        logger.LogInformation("Registered new user {UserId}", user.Id);
+        // The first account on a server has nobody to activate it: it is active at once, and is
+        // the admin who activates everyone after it.
+        if (!await db.Users.AnyAsync(u => u.Id != user.Id, cancellationToken))
+        {
+            user.EmailConfirmed = true;
+            await userManager.UpdateAsync(user);
+            await AdminRole.GrantAsync(db, user.Id);
+            logger.LogInformation("Registered new user {UserId}, the first account: active, and this server's admin", user.Id);
+        }
+        else
+        {
+            logger.LogInformation("Registered new user {UserId}, waiting for activation", user.Id);
+        }
+
+        // Everyone else signs in only once their address is activated — anyone can sign up with
+        // anyone's address. By the mailed link when the server can send one, else by the admin.
+        if (!user.EmailConfirmed)
+        {
+            var byEmail = confirmations?.Available == true;
+            if (byEmail)
+            {
+                try
+                {
+                    await confirmations!.SendAsync(user.Id, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The user can ask for it again; the sign-up itself stands.
+                    logger.LogWarning(ex, "Couldn't queue the activation mail for new user {UserId}", user.Id);
+                }
+            }
+            var activation = byEmail ? AccountActivation.Email : AccountActivation.Admin;
+            if (adminNotifier is not null)
+            {
+                await adminNotifier.NotifyAsync(activation, cancellationToken);
+            }
+            return AuthResult.Pending(activation);
+        }
         var tokens = await StartSessionAsync(user, client, cancellationToken);
         return AuthResult.Success(tokens);
     }
@@ -112,6 +158,11 @@ public sealed class AuthService(
         }
 
         await userManager.ResetAccessFailedCountAsync(user);
+        if (!user.EmailConfirmed)
+        {
+            // Said only after the password checked out, so it tells nobody else anything.
+            return AuthResult.NotActivated(NotActivatedMessage);
+        }
         var tokens = await StartSessionAsync(user, client, cancellationToken);
         return AuthResult.Success(tokens);
     }
@@ -148,7 +199,7 @@ public sealed class AuthService(
         }
 
         var user = await userManager.FindByIdAsync(stored.UserId.ToString());
-        if (user is null)
+        if (user is null || !user.EmailConfirmed)
         {
             return AuthResult.Failure("Invalid refresh token.");
         }

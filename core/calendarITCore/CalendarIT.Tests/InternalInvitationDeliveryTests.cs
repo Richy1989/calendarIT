@@ -34,7 +34,7 @@ public sealed class InternalInvitationDeliveryTests : IDisposable
         _db.Users.Add(new ApplicationUser
         {
             Id = _inviteeId, UserName = "bob@example.com", NormalizedUserName = "BOB@EXAMPLE.COM",
-            Email = "bob@example.com", NormalizedEmail = "BOB@EXAMPLE.COM",
+            Email = "bob@example.com", NormalizedEmail = "BOB@EXAMPLE.COM", EmailConfirmed = true,
         });
         _db.SaveChanges();
         _events = new EventService(_db, TimeProvider.System, new FakeInvitationMailer(),
@@ -68,6 +68,24 @@ public sealed class InternalInvitationDeliveryTests : IDisposable
         Assert.NotEqual(created.Id, copy.Id); // it's a distinct event row…
         Assert.Equal(await UidOf(created.Id), copy.Uid); // …sharing the meeting UID
         Assert.Equal(new DateTime(2026, 9, 1, 9, 0, 0, DateTimeKind.Utc), copy.StartUtc);
+    }
+
+    [Fact]
+    public async Task Invite_AnUnconfirmedAccount_CreatesNoCopy()
+    {
+        // Anyone can sign up with anyone's address: until the account proves it reads the
+        // mailbox, an invitation to that address isn't handed to it.
+        var squatterId = Guid.NewGuid();
+        _db.Users.Add(new ApplicationUser
+        {
+            Id = squatterId, UserName = "boss@example.com", NormalizedUserName = "BOSS@EXAMPLE.COM",
+            Email = "boss@example.com", NormalizedEmail = "BOSS@EXAMPLE.COM",
+        });
+        await _db.SaveChangesAsync();
+
+        await _events.CreateAsync(_organizerId, Request("Board meeting", "boss@example.com"));
+
+        Assert.Empty(await _db.Events.AsNoTracking().Where(e => e.Calendar!.OwnerUserId == squatterId).ToListAsync());
     }
 
     [Fact]

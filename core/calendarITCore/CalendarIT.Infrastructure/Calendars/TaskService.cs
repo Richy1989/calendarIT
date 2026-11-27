@@ -11,8 +11,10 @@ namespace CalendarIT.Infrastructure.Calendars;
 /// subscription) and sync to phones as VTODOs; subtasks are one level deep and always share their
 /// parent's calendar, so a task and its subtasks travel together.
 /// </summary>
-public sealed class TaskService(AppDbContext db, TimeProvider timeProvider) : ITaskService
+public sealed class TaskService(AppDbContext db, TimeProvider timeProvider, QuotaOptions? quotaOptions = null) : ITaskService
 {
+    private readonly QuotaOptions quotas = quotaOptions ?? QuotaOptions.Default;
+
     /// <summary>Done tasks listed at most — the oldest drop off the list (they stay stored).</summary>
     private const int MaxDoneListed = 500;
 
@@ -42,6 +44,7 @@ public sealed class TaskService(AppDbContext db, TimeProvider timeProvider) : IT
 
     public async Task<TaskDto> CreateAsync(Guid userId, SaveTaskRequest request, CancellationToken cancellationToken = default)
     {
+        await Quotas.EnsureTasksAsync(db, quotas, userId, 1, cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var task = new TaskItem
         {

@@ -6,7 +6,7 @@ namespace CalendarIT.Infrastructure.Calendars;
 
 /// <summary>
 /// Same-instance invitation delivery. When a guest's email belongs to another registered
-/// CalendarIT user, the event is mirrored straight onto that user's calendar (same UID) — no
+/// CalendarIT user whose address is confirmed, the event is mirrored straight onto that user's calendar (same UID) — no
 /// email round-trip, so it works even if the invited user never configured mail. The copies are
 /// kept in step as the organizer edits, and withdrawn when a guest is dropped or the event is
 /// deleted. External guests are unaffected (they still get the emailed iMIP invite).
@@ -37,7 +37,7 @@ public sealed class InternalInvitationDelivery(AppDbContext db, TimeProvider tim
 {
     public async Task SyncAsync(CalendarEvent master, Guid organizerUserId, IReadOnlyCollection<Attendee> removed, CancellationToken cancellationToken = default)
     {
-        var current = await LocalUserIdsAsync(master.Attendees.Select(a => a.Email), organizerUserId, cancellationToken);
+        var current = await LocalUserIdsAsync(master.Attendees.Select(a => a.Email), organizerUserId, cancellationToken, confirmedOnly: true);
         foreach (var inviteeId in current)
         {
             await UpsertCopyAsync(master, organizerUserId, inviteeId, cancellationToken);
@@ -64,8 +64,13 @@ public sealed class InternalInvitationDelivery(AppDbContext db, TimeProvider tim
     }
 
     /// <summary>Registered users whose email matches one of <paramref name="emails"/>, excluding
-    /// the organizer (never deliver a copy to yourself for inviting your own address).</summary>
-    private async Task<List<Guid>> LocalUserIdsAsync(IEnumerable<string> emails, Guid organizerUserId, CancellationToken cancellationToken)
+    /// the organizer (never deliver a copy to yourself for inviting your own address).
+    /// <paramref name="confirmedOnly"/>: only accounts that proved they read that address. Anyone
+    /// can sign up as anyone's address, and a copy carries the whole invitation — so an
+    /// unconfirmed account gets nothing delivered (the guest still gets the emailed invite).
+    /// Withdrawing needs no such check: it only ever deletes this organizer's own copies.</summary>
+    private async Task<List<Guid>> LocalUserIdsAsync(
+        IEnumerable<string> emails, Guid organizerUserId, CancellationToken cancellationToken, bool confirmedOnly = false)
     {
         var normalized = emails
             .Where(e => !string.IsNullOrWhiteSpace(e))
@@ -79,6 +84,7 @@ public sealed class InternalInvitationDelivery(AppDbContext db, TimeProvider tim
 
         var ids = await db.Users
             .Where(u => u.NormalizedEmail != null && normalized.Contains(u.NormalizedEmail))
+            .Where(u => !confirmedOnly || u.EmailConfirmed)
             .Select(u => u.Id)
             .ToListAsync(cancellationToken);
         return ids.Where(id => id != organizerUserId).Distinct().ToList();

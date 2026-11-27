@@ -39,10 +39,16 @@ public static class DependencyInjection
         services.AddSingleton(new VapidKeyStore(configuration, dbOptions));
 
         services.AddSingleton(Options.Create(ReadJwtOptions(configuration)));
+        var disableRegistration = configuration.GetValue("DISABLE_REGISTRATION", false);
         services.AddSingleton(Options.Create(new AuthOptions
         {
-            DisableRegistration = configuration.GetValue("DISABLE_REGISTRATION", false),
+            DisableRegistration = disableRegistration,
+            PublicBaseUrl = string.IsNullOrWhiteSpace(configuration["PUBLIC_BASE_URL"]) ? null : configuration["PUBLIC_BASE_URL"]!.Trim(),
         }));
+        // The operator's own mail account (SMTP_*), optional: account mail only (confirmation, reset).
+        services.AddSingleton(SystemMailOptions.FromConfiguration(configuration));
+        // Per-account storage limits (QUOTA_*).
+        services.AddSingleton(QuotaOptions.FromConfiguration(configuration));
         services.AddSingleton(TimeProvider.System);
 
         // Every save that changes a user's calendar data nudges their app devices (see DeviceNotifier).
@@ -92,6 +98,9 @@ public static class DependencyInjection
         services.AddScoped<SessionValidator>();
         services.AddSingleton<CredentialEpochs>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IEmailConfirmations, EmailConfirmations>();
+        services.AddScoped<IAccountAdmin, AccountAdmin>();
+        services.AddScoped<IAdminSignupNotifier, AdminSignupNotifier>();
         services.AddScoped<IEventService, EventService>();
         services.AddScoped<IInternalInvitationDelivery, InternalInvitationDelivery>();
         services.AddScoped<ICalendarService, CalendarService>();
@@ -117,13 +126,16 @@ public static class DependencyInjection
         services.AddScoped<IPasswordResetMailer, PasswordResetMailer>();
 
         // Outgoing mail is queued (IMailOutbox) and sent by OutboxDispatchJob — never inline.
-        // MAIL_HOST_POLICY bounds where users' mail servers may point: "private" (default: public
-        // internet + LAN, never this host or link-local), "public", or "any".
+        // MAIL_HOST_POLICY bounds where users' mail servers may point: "private" (public internet +
+        // LAN, never this host or link-local), "public", or "any". Unset, it is "public" while
+        // anyone can sign up — otherwise a stranger's account could point "test my mail account"
+        // at the server's own network (the database next door included) — and "private" once
+        // sign-up is closed and every account belongs to someone the operator let in.
         services.AddSingleton(new MailConnectionOptions
         {
             HostScope = Enum.TryParse<Net.OutboundHostScope>(configuration["MAIL_HOST_POLICY"], ignoreCase: true, out var scope)
                 ? scope
-                : Net.OutboundHostScope.Private,
+                : disableRegistration ? Net.OutboundHostScope.Private : Net.OutboundHostScope.Public,
         });
         services.AddScoped<IMailOutbox, MailOutbox>();
         services.AddSingleton<IOutboxSignal>(sp => new QuartzOutboxSignal(

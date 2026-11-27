@@ -32,6 +32,12 @@ public static class SecurityHeaders
                 // referer would repeat it in every request that page makes — into any proxy's log.
                 headers["Referrer-Policy"] = "strict-origin";
                 headers.ContentSecurityPolicy = ContentSecurityPolicy;
+                // Only over HTTPS (as the proxy reports it, X-Forwarded-Proto): a browser ignores
+                // it over plain HTTP anyway, and a dev server on http://localhost mustn't pin it.
+                if (context.Request.IsHttps)
+                {
+                    headers.StrictTransportSecurity = "max-age=31536000";
+                }
                 return Task.CompletedTask;
             });
             await next();
