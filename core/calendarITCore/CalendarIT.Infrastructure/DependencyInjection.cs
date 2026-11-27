@@ -39,7 +39,7 @@ public static class DependencyInjection
         services.AddSingleton(new VapidKeyStore(configuration, dbOptions));
 
         services.AddSingleton(Options.Create(ReadJwtOptions(configuration)));
-        var disableRegistration = configuration.GetValue("DISABLE_REGISTRATION", false);
+        var disableRegistration = configuration.Setting("DISABLE_REGISTRATION", false);
         services.AddSingleton(Options.Create(new AuthOptions
         {
             DisableRegistration = disableRegistration,
@@ -242,7 +242,7 @@ public static class DependencyInjection
         {
             Provider = provider,
             PostgresConnection = configuration["POSTGRES_CONNECTION"],
-            AppDataPath = configuration["APPDATA_PATH"] ?? "appdata"
+            AppDataPath = configuration.Text("APPDATA_PATH", "appdata")
         };
     }
 
@@ -258,8 +258,8 @@ public static class DependencyInjection
         return new JwtOptions
         {
             SigningKey = signingKey,
-            Issuer = configuration["JWT_ISSUER"] ?? "calendarit",
-            Audience = configuration["JWT_AUDIENCE"] ?? "calendarit",
+            Issuer = configuration.Text("JWT_ISSUER", "calendarit"),
+            Audience = configuration.Text("JWT_AUDIENCE", "calendarit"),
             AccessTokenMinutes = int.TryParse(configuration["JWT_ACCESS_TOKEN_MINUTES"], out var m) ? m : 15,
             RefreshTokenDays = int.TryParse(configuration["JWT_REFRESH_TOKEN_DAYS"], out var d) ? d : 14
         };

@@ -720,6 +720,9 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Property<string>("DefaultCalendarView")
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("DisabledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
@@ -730,6 +733,9 @@ namespace CalendarIT.Migrations.Postgres.Migrations
                     b.Property<string>("HighlightColor")
                         .HasMaxLength(7)
                         .HasColumnType("character varying(7)");
+
+                    b.Property<DateTime?>("LastActiveAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("boolean");

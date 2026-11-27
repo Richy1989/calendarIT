@@ -55,9 +55,9 @@ export default function App() {
   // early return, or the hook count changes between logged-out/in renders and React throws.
   const [tokens, setAuth] = useState<AuthTokens | null>(getTokens())
   // null = calendar screen; otherwise the settings page, opened on that section.
-  const [settingsSection, setSettingsSection] = useState<'general' | 'calendars' | 'categories' | null>(() => {
+  const [settingsSection, setSettingsSection] = useState<'general' | 'calendars' | 'categories' | 'users' | null>(() => {
     const section = new URLSearchParams(window.location.search).get('settings')
-    return section === 'general' || section === 'calendars' || section === 'categories' ? section : null
+    return section === 'general' || section === 'calendars' || section === 'categories' || section === 'users' ? section : null
   })
   // A search pick sets this; CalendarView watches it and jumps to that day. The bumping
   // counter lets picking the same date twice re-trigger the navigation.
@@ -217,7 +217,8 @@ export default function App() {
       email={profile?.email}
       avatarUrl={profile?.avatarDataUrl}
       pendingAccounts={Number(profile?.pendingAccounts ?? 0)}
-      onOpenSettings={() => setSettingsSection('general')}
+      // With accounts waiting, Settings opens where the admin deals with them.
+      onOpenSettings={() => setSettingsSection(Number(profile?.pendingAccounts ?? 0) > 0 ? 'users' : 'general')}
       onLogout={logout}
     />
   )

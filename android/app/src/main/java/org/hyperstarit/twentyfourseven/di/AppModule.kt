@@ -76,7 +76,8 @@ object AppModule {
     @Singleton
     fun database(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "app.db")
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
+            // The schema started over at version 1: a database from before (versions 2–5) is replaced.
+            .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
             .build()
 
     @Provides
@@ -148,10 +149,16 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun calDavSync(db: AppDatabase, accounts: Accounts, clock: Clock, changes: LocalChanges) =
+        org.hyperstarit.twentyfourseven.caldav.CalDavSync(db, { accounts.dav(it) }, clock, changes)
+
+    @Provides
+    @Singleton
     fun runner(
-        @ApplicationContext context: Context, db: AppDatabase, accounts: Accounts, calendarIt: CalendarItSync, reminders: org.hyperstarit.twentyfourseven.reminders.ReminderScheduler,
+        @ApplicationContext context: Context, db: AppDatabase, accounts: Accounts, calendarIt: CalendarItSync,
+        calDav: org.hyperstarit.twentyfourseven.caldav.CalDavSync, reminders: org.hyperstarit.twentyfourseven.reminders.ReminderScheduler,
         system: org.hyperstarit.twentyfourseven.system.SystemCalendar,
-    ) = SyncRunner(db, accounts, calendarIt, afterSync = {
+    ) = SyncRunner(db, accounts, calendarIt, calDav, afterSync = {
         reminders.reschedule()
         system.sync()
         org.hyperstarit.twentyfourseven.widget.MonthWidget.refresh(context)

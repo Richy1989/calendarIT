@@ -306,3 +306,61 @@ abstract class AccountDataDao {
         accounts.delete(accountId)
     }
 }
+
+@Dao
+interface DavDao {
+    @Query("SELECT * FROM dav_accounts WHERE accountId = :accountId")
+    suspend fun account(accountId: String): DavAccountEntity?
+
+    @Upsert
+    suspend fun putAccount(account: DavAccountEntity)
+
+    @Query("SELECT * FROM dav_calendars WHERE accountId = :accountId")
+    suspend fun calendars(accountId: String): List<DavCalendarEntity>
+
+    @Upsert
+    suspend fun putCalendars(calendars: List<DavCalendarEntity>)
+
+    @Query("UPDATE dav_calendars SET syncToken = :token, ctag = :ctag WHERE accountId = :accountId AND calendarId = :calendarId")
+    suspend fun setSynced(accountId: String, calendarId: String, token: String?, ctag: String?)
+
+    @Query("DELETE FROM dav_calendars WHERE accountId = :accountId AND calendarId NOT IN (:keep)")
+    suspend fun deleteOtherCalendars(accountId: String, keep: List<String>)
+
+    @Query("SELECT * FROM dav_resources WHERE accountId = :accountId AND kind = :kind AND entityId = :entityId")
+    suspend fun resource(accountId: String, kind: String, entityId: String): DavResourceEntity?
+
+    @Query("SELECT * FROM dav_resources WHERE accountId = :accountId AND href = :href")
+    suspend fun byHref(accountId: String, href: String): DavResourceEntity?
+
+    @Query("SELECT * FROM dav_resources WHERE accountId = :accountId AND calendarId = :calendarId")
+    suspend fun inCalendar(accountId: String, calendarId: String): List<DavResourceEntity>
+
+    @Query("SELECT * FROM dav_resources WHERE accountId = :accountId AND kind = 'task'")
+    suspend fun tasks(accountId: String): List<DavResourceEntity>
+
+    @Upsert
+    suspend fun putResource(resource: DavResourceEntity)
+
+    @Query("DELETE FROM dav_resources WHERE accountId = :accountId AND kind = :kind AND entityId = :entityId")
+    suspend fun deleteResource(accountId: String, kind: String, entityId: String)
+
+    @Query("DELETE FROM dav_resources WHERE accountId = :accountId AND calendarId NOT IN (:keep)")
+    suspend fun deleteResourcesOutside(accountId: String, keep: List<String>)
+
+    /** The categories the account's events name (CalDAV has no list of its own). */
+    @Query(
+        "SELECT categoryId FROM events WHERE accountId = :accountId AND categoryId IS NOT NULL " +
+            "UNION SELECT categoryId FROM overrides WHERE accountId = :accountId AND categoryId IS NOT NULL",
+    )
+    suspend fun categoryIds(accountId: String): List<String>
+
+    @Query("DELETE FROM dav_resources WHERE accountId = :accountId")
+    suspend fun deleteAccountResources(accountId: String)
+
+    @Query("DELETE FROM dav_calendars WHERE accountId = :accountId")
+    suspend fun deleteAccountCalendars(accountId: String)
+
+    @Query("DELETE FROM dav_accounts WHERE accountId = :accountId")
+    suspend fun deleteAccount(accountId: String)
+}

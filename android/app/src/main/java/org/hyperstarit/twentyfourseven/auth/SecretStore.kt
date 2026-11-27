@@ -19,17 +19,6 @@ data class Tokens(
     val refreshExpiresAt: Long,
 )
 
-/** The single session phase 1 kept, before there were accounts. */
-@Serializable
-data class LegacySession(
-    val server: String,
-    val email: String,
-    val accessToken: String,
-    val accessExpiresAt: Long,
-    val refreshToken: String,
-    val refreshExpiresAt: Long,
-)
-
 /** Where each account's tokens and this installation's device id are kept. */
 interface SecretStore {
     suspend fun tokens(accountId: String): Tokens?
@@ -39,8 +28,10 @@ interface SecretStore {
     /** This installation's id on servers (/api/devices), made once. */
     suspend fun deviceId(): String
 
-    /** Phase 1's session, handed over once to become an account. */
-    suspend fun takeLegacySession(): LegacySession?
+    /** A CalDAV account's password (CalDAV has no tokens: every request carries it). */
+    suspend fun password(accountId: String): String? = null
+
+    suspend fun savePassword(accountId: String, password: String?): Unit = throw UnsupportedOperationException()
 }
 
 /** [SecretStore] in DataStore, every secret sealed by a [SecretBox]. */
@@ -60,17 +51,19 @@ class DataStoreSecretStore(
         }
     }
 
+    override suspend fun password(accountId: String): String? = open(store.data.first()[passwordKey(accountId)])
+
+    override suspend fun savePassword(accountId: String, password: String?) {
+        store.edit { prefs ->
+            if (password == null) prefs.remove(passwordKey(accountId)) else prefs[passwordKey(accountId)] = seal(password)
+        }
+    }
+
     override suspend fun deviceId(): String {
         store.data.first()[DEVICE_ID]?.let { return it }
         val id = UUID.randomUUID().toString()
         store.edit { prefs -> if (prefs[DEVICE_ID] == null) prefs[DEVICE_ID] = id }
         return store.data.first()[DEVICE_ID]!!
-    }
-
-    override suspend fun takeLegacySession(): LegacySession? {
-        val sealed = store.data.first()[LEGACY_SESSION] ?: return null
-        store.edit { it.remove(LEGACY_SESSION) }
-        return open(sealed)?.let { runCatching { json.decodeFromString<LegacySession>(it) }.getOrNull() }
     }
 
     private fun seal(plain: String) = Base64.encodeToString(box.seal(plain.encodeToByteArray()), Base64.NO_WRAP)
@@ -79,9 +72,10 @@ class DataStoreSecretStore(
         sealed?.let { box.open(Base64.decode(it, Base64.NO_WRAP))?.decodeToString() }
 
     private companion object {
-        val LEGACY_SESSION = stringPreferencesKey("session")
         val DEVICE_ID = stringPreferencesKey("device_id")
 
         fun tokensKey(accountId: String) = stringPreferencesKey("tokens.$accountId")
+
+        fun passwordKey(accountId: String) = stringPreferencesKey("password.$accountId")
     }
 }

@@ -715,6 +715,9 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
                     b.Property<string>("DefaultCalendarView")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("DisabledAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
@@ -724,6 +727,9 @@ namespace CalendarIT.Migrations.Sqlite.Migrations
 
                     b.Property<string>("HighlightColor")
                         .HasMaxLength(7)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastActiveAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("LockoutEnabled")

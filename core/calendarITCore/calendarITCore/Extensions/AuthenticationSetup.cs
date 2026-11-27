@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using CalendarIT.Infrastructure;
 using CalendarIT.Infrastructure.Auth;
 using Microsoft.IdentityModel.Tokens;
 
@@ -16,8 +17,8 @@ public static class AuthenticationSetup
     {
         var signingKey = configuration["JWT_SIGNING_KEY"]
             ?? throw new InvalidOperationException("JWT_SIGNING_KEY must be set.");
-        var issuer = configuration["JWT_ISSUER"] ?? "calendarit";
-        var audience = configuration["JWT_AUDIENCE"] ?? "calendarit";
+        var issuer = configuration.Text("JWT_ISSUER", "calendarit");
+        var audience = configuration.Text("JWT_AUDIENCE", "calendarit");
 
         services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

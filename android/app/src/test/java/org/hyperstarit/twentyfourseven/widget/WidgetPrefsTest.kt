@@ -18,18 +18,11 @@ class WidgetPrefsTest {
     @Before
     fun clear() {
         context.getSharedPreferences("widgets", Context.MODE_PRIVATE).edit { clear() }
-        context.getSharedPreferences("appearance", Context.MODE_PRIVATE).edit { clear() }
     }
 
     @Test
     fun freshInstallGetsTheDefault() {
         assertEquals(WidgetLook.DEFAULT, WidgetPrefs(context).look(WidgetKind.MONTH))
-    }
-
-    @Test
-    fun keepsTheOpacitySetBeforeWidgetSettingsExisted() {
-        context.getSharedPreferences("appearance", Context.MODE_PRIVATE).edit { putInt("widget_opacity", 40) }
-        assertEquals(40, WidgetPrefs(context).look(WidgetKind.MONTH).background)
     }
 
     @Test

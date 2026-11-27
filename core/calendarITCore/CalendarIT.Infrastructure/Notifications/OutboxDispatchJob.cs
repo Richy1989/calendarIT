@@ -108,6 +108,15 @@ public sealed class OutboxDispatchJob(
         {
             return;
         }
+        // A disabled account sends nothing; what it queued isn't held for later either.
+        if (!viaSystem && await db.Users.AnyAsync(u => u.Id == userId && u.DisabledAtUtc != null, cancellationToken))
+        {
+            foreach (var m in live)
+            {
+                GiveUp(db, m, "The account is disabled.");
+            }
+            return;
+        }
 
         var loaded = viaSystem
             ? system is { IsConfigured: true } ? (Account: system.ToAccount(), Password: system.Password ?? string.Empty) : default((MailAccount Account, string Password)?)

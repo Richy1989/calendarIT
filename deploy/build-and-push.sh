@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Builds the single-container CalendarIT image for Unraid (linux/amd64) and pushes it to Docker Hub.
+# Builds the single-container 24seven image for Unraid (linux/amd64) and pushes it to Docker Hub.
 #
 # Prerequisites (one-time):
 #   docker login                 # log in as richy1989
 #   docker buildx version        # buildx ships with Docker Desktop / modern Docker Engine
 #
 # Usage:
-#   ./deploy/build-and-push.sh                 # builds & pushes richy1989/calendarit:dev
+#   ./deploy/build-and-push.sh                 # builds & pushes richy1989/24seven:dev
 #   ./deploy/build-and-push.sh --tag v0.1.0    # release: also pushes :latest and :v0.1.0
 #
 # :dev always tracks the newest build. :latest only moves on a release, i.e. when a real
 # version tag is passed — so a dev push can never clobber production.
 set -euo pipefail
 
-IMAGE="richy1989/calendarit"
+IMAGE="richy1989/24seven"
 TAG=""
 
 while [[ $# -gt 0 ]]; do

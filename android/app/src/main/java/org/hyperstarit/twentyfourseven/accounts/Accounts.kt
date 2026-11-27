@@ -13,6 +13,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import org.hyperstarit.twentyfourseven.auth.AccountAuth
 import org.hyperstarit.twentyfourseven.auth.SecretStore
+import org.hyperstarit.twentyfourseven.caldav.DavAuthException
+import org.hyperstarit.twentyfourseven.caldav.DavClient
+import org.hyperstarit.twentyfourseven.data.db.DavAccountEntity
 import org.hyperstarit.twentyfourseven.data.db.AccountEntity
 import org.hyperstarit.twentyfourseven.data.db.AccountKind
 import org.hyperstarit.twentyfourseven.data.db.AppDatabase
@@ -99,9 +102,58 @@ class Accounts(
         return account
     }
 
-    /** After the server ended the session: a new one for the same account, its data kept. */
+    fun dav(server: HttpUrl, username: String, password: String, pin: String?): DavClient =
+        DavClient(Certificates.clientFor(baseHttp, pin), server.host, username, password)
+
+    /** The account's CalDAV client, with its stored password. */
+    suspend fun dav(account: AccountEntity): DavClient {
+        val password = secrets.password(account.id) ?: run {
+            markSignedOut(account.id, "The password is missing. Sign in again.")
+            throw DavAuthException()
+        }
+        return dav(account.server.toHttpUrl(), account.username, password, account.certificatePin)
+    }
+
+    /**
+     * Adds a CalDAV account: finds the user's calendars from [server] (the server's address, its
+     * /.well-known/caldav, or a calendar's own address). Certificates are handled as for
+     * [addCalendarIt]: nothing is sent to a server whose certificate the user hasn't accepted.
+     */
+    suspend fun addCalDav(server: HttpUrl, username: String, password: String, pin: String?): AccountEntity {
+        val user = username.trim()
+        if (db.accounts().find(AccountKind.CALDAV, server.toString(), user) != null) throw DuplicateAccountException()
+        val found = withCertificateCheck(server, pin) { dav(server, user, password, pin).discover(server) }
+        val account = AccountEntity(
+            id = UUID.randomUUID().toString(),
+            kind = AccountKind.CALDAV,
+            server = server.toString(),
+            username = user,
+            certificatePin = pin,
+            createdAt = clock.millis(),
+        )
+        secrets.savePassword(account.id, password)
+        db.withTransaction {
+            db.accounts().insert(account)
+            db.dav().putAccount(DavAccountEntity(account.id, found.principal?.toString(), found.home.toString(), found.addresses.joinToString("\n")))
+        }
+        return account
+    }
+
+    /** After the server ended the session (or refused the password): signed in again, the account's data kept. */
     suspend fun signInAgain(accountId: String, password: String) {
         val account = db.accounts().get(accountId) ?: return
+        if (account.kind == AccountKind.CALDAV) {
+            val server = account.server.toHttpUrl()
+            val found = withCertificateCheck(server, account.certificatePin) {
+                dav(server, account.username, password, account.certificatePin).discover(server)
+            }
+            secrets.savePassword(account.id, password)
+            db.withTransaction {
+                db.dav().putAccount(DavAccountEntity(account.id, found.principal?.toString(), found.home.toString(), found.addresses.joinToString("\n")))
+                db.accounts().update(account.copy(needsSignIn = false, lastError = null))
+            }
+            return
+        }
         val server = account.server.toHttpUrl()
         val tokens = withCertificateCheck(server, account.certificatePin) {
             api(account.certificatePin).login(server, account.username, password)
@@ -128,35 +180,23 @@ class Accounts(
     /** Signs out on the server (when reachable) and removes the account and all of its data. */
     suspend fun remove(accountId: String) {
         val account = db.accounts().get(accountId) ?: return
-        val auth = auth(account)
-        runCatching {
-            auth.refreshToken()?.let { api(account.certificatePin).logout(auth.server, it) }
+        if (account.kind == AccountKind.CALENDARIT) {
+            val auth = auth(account)
+            runCatching {
+                auth.refreshToken()?.let { api(account.certificatePin).logout(auth.server, it) }
+            }
         }
         secrets.saveTokens(accountId, null)
+        if (account.kind == AccountKind.CALDAV) secrets.savePassword(accountId, null)
         forget(accountId)
         db.withTransaction {
+            db.dav().deleteAccountResources(accountId)
+            db.dav().deleteAccountCalendars(accountId)
+            db.dav().deleteAccount(accountId)
             db.accountData().deleteAll(
                 accountId, db.accounts(), db.calendars(), db.categories(), db.events(), db.tasks(), db.outbox(), db.notices(),
             )
         }
-    }
-
-    /** Phase 1 kept one session outside any account: it becomes the first account. */
-    suspend fun adoptLegacySession() {
-        val legacy = secrets.takeLegacySession() ?: return
-        if (db.accounts().find(AccountKind.CALENDARIT, legacy.server, legacy.email) != null) return
-        val account = AccountEntity(
-            id = UUID.randomUUID().toString(),
-            kind = AccountKind.CALENDARIT,
-            server = legacy.server,
-            username = legacy.email,
-            createdAt = clock.millis(),
-        )
-        secrets.saveTokens(
-            account.id,
-            org.hyperstarit.twentyfourseven.auth.Tokens(legacy.accessToken, legacy.accessExpiresAt, legacy.refreshToken, legacy.refreshExpiresAt),
-        )
-        db.accounts().insert(account)
     }
 
     suspend fun registerDevice(account: AccountEntity) {
@@ -178,9 +218,9 @@ class Accounts(
         registerDevice(account)
     }
 
-    private suspend fun markSignedOut(accountId: String) {
+    internal suspend fun markSignedOut(accountId: String, message: String = "Signed out by the server. Sign in again.") {
         db.accounts().get(accountId)?.let {
-            db.accounts().update(it.copy(needsSignIn = true, lastError = "Signed out by the server. Sign in again."))
+            db.accounts().update(it.copy(needsSignIn = true, lastError = message))
         }
     }
 

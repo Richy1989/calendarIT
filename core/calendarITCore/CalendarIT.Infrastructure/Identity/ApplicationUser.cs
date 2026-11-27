@@ -46,4 +46,12 @@ public sealed class ApplicationUser : IdentityUser<Guid>
 
     /// <summary>When the account signed up (UTC). Null for accounts from before it was recorded.</summary>
     public DateTime? CreatedAtUtc { get; set; }
+
+    /// <summary>Set when the admin disabled the account (UTC): it can't sign in anywhere, and its
+    /// mail, feeds and reminders pause. Its data stays. Null = enabled.</summary>
+    public DateTime? DisabledAtUtc { get; set; }
+
+    /// <summary>Last sign-in, token refresh or CalDAV login (UTC), recorded at most hourly
+    /// (<see cref="Auth.LastActive"/>). Null = not since it was recorded.</summary>
+    public DateTime? LastActiveAtUtc { get; set; }
 }

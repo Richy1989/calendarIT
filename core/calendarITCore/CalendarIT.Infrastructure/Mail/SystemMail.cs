@@ -39,7 +39,7 @@ public sealed class SystemMailOptions
 
     public static SystemMailOptions FromConfiguration(IConfiguration configuration)
     {
-        var port = configuration.GetValue("SMTP_PORT", 587);
+        var port = configuration.Setting("SMTP_PORT", 587);
         var from = configuration["SMTP_FROM"]?.Trim();
         if (!string.IsNullOrEmpty(from) && !MailboxAddress.TryParse(from, out _))
         {
@@ -49,7 +49,7 @@ public sealed class SystemMailOptions
         {
             Host = configuration["SMTP_HOST"]?.Trim(),
             Port = port,
-            UseSsl = configuration.GetValue("SMTP_USE_SSL", port == 465),
+            UseSsl = configuration.Setting("SMTP_USE_SSL", port == 465),
             Username = configuration["SMTP_USERNAME"],
             Password = configuration["SMTP_PASSWORD"],
             From = from,

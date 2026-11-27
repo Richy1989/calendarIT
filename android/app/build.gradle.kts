@@ -102,8 +102,6 @@ room {
     schemaDirectory("$projectDir/schemas")
 }
 
-// The migration tests (Robolectric, run on the debug variants) read the exported schemas as assets.
-android.sourceSets.getByName("debug").assets.directories.add("$projectDir/schemas")
 
 dependencies {
     implementation(libs.androidx.core.ktx)
@@ -146,7 +144,6 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.robolectric)
     testImplementation(libs.okhttp.tls)
-    testImplementation(libs.room.testing)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.work.testing)
 }

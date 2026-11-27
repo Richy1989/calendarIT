@@ -41,6 +41,7 @@ public sealed class InvitationInboxJob(
         // Only accounts with an IMAP server and scanning enabled are candidates.
         var candidates = await db.MailAccounts
             .Where(a => a.ImapHost != null && a.ScanIntervalMinutes > 0)
+            .Where(a => !db.Users.Any(u => u.Id == a.UserId && u.DisabledAtUtc != null)) // disabled: paused
             .ToListAsync(cancellationToken);
 
         foreach (var account in candidates)

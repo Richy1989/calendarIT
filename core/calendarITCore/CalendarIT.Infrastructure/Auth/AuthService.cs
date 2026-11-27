@@ -45,6 +45,8 @@ public sealed class AuthService(
     private static readonly TimeSpan ResetCooldown = TimeSpan.FromMinutes(2);
 
     /// <summary>Shown only to someone who got the password right.</summary>
+    public const string DisabledMessage = "This account has been disabled. Ask the server's admin.";
+
     public const string NotActivatedMessage =
         "This account isn't activated yet. Open the link in the activation email, or ask the server's admin to activate it.";
 
@@ -158,6 +160,11 @@ public sealed class AuthService(
         }
 
         await userManager.ResetAccessFailedCountAsync(user);
+        if (user.DisabledAtUtc is not null)
+        {
+            // Like "not activated": said only to someone who got the password right.
+            return AuthResult.Failure(DisabledMessage);
+        }
         if (!user.EmailConfirmed)
         {
             // Said only after the password checked out, so it tells nobody else anything.
@@ -199,7 +206,7 @@ public sealed class AuthService(
         }
 
         var user = await userManager.FindByIdAsync(stored.UserId.ToString());
-        if (user is null || !user.EmailConfirmed)
+        if (user is null || !user.EmailConfirmed || user.DisabledAtUtc is not null)
         {
             return AuthResult.Failure("Invalid refresh token.");
         }
@@ -434,6 +441,8 @@ public sealed class AuthService(
         DateTimeOffset refreshExpiresAt,
         CancellationToken cancellationToken)
     {
+        // Sign-in and every refresh: what the admin's user list shows as "last active".
+        await LastActive.TouchAsync(db, user.Id, timeProvider.GetUtcNow().UtcDateTime, cancellationToken);
         var roles = await userManager.GetRolesAsync(user);
         var claims = roles.Select(r => new Claim(ClaimTypes.Role, r))
             .Append(new Claim(JwtRegisteredClaimNames.Sid, sessionId.ToString()));

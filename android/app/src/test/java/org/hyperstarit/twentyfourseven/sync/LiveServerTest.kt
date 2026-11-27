@@ -16,7 +16,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.hyperstarit.twentyfourseven.accounts.Accounts
 import org.hyperstarit.twentyfourseven.accounts.DeviceInfo
 import org.hyperstarit.twentyfourseven.accounts.UntrustedCertificateException
-import org.hyperstarit.twentyfourseven.auth.LegacySession
 import org.hyperstarit.twentyfourseven.auth.SecretStore
 import org.hyperstarit.twentyfourseven.auth.Tokens
 import org.hyperstarit.twentyfourseven.data.db.AppDatabase
@@ -53,7 +52,6 @@ class LiveServerTest {
             override suspend fun tokens(accountId: String) = map[accountId]
             override suspend fun saveTokens(accountId: String, tokens: Tokens?) { if (tokens == null) map.remove(accountId) else map[accountId] = tokens }
             override suspend fun deviceId() = "live-test-device-0000-000000000000".let { "5b0c9a3e-1f0a-4c55-9d1e-0a7c1e0f0001" }
-            override suspend fun takeLegacySession(): LegacySession? = null
         }
         val device = object : DeviceInfo {
             override val name = "Live test"

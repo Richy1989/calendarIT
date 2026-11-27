@@ -84,7 +84,7 @@ public static class AccountActivation
     /// <summary>By the link mailed to its address (the server has a mail account of its own).</summary>
     public const string Email = "email";
 
-    /// <summary>By the server's admin (Settings → Accounts, or the confirm-email command).</summary>
+    /// <summary>By the server's admin (Settings → Users, or the confirm-email command).</summary>
     public const string Admin = "admin";
 }
 

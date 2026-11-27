@@ -53,7 +53,12 @@ Docker: one `Dockerfile`, two targets. The default (`runtime`, what `docker comp
 builds) is the .NET app serving API + SPA on :8080 next to Postgres; `--target bundle` (the
 published image, Unraid) puts nginx on :80 in front of it with all state under `/data`. Both run
 the app as an unprivileged user (`PUID`/`PGID`, default 1654) after chowning the data dir.
-Compose requires `JWT_SIGNING_KEY` (≥32 chars) in `.env`.
+Compose requires `JWT_SIGNING_KEY` (≥32 chars) in `.env`. `docker-compose.image.yml` runs the
+published bundle image (`richy1989/24seven`) instead of building. Operator settings are read with
+`Settings.Setting`/`Text` (`CalendarIT.Infrastructure/Settings.cs`): an empty value (`SETTING=`, as
+.env/Compose/Unraid pass a blank option) means the default — never `IConfiguration.GetValue`,
+which throws on "" for a number or bool and stopped the server. Operator commands
+(`AdminCommands`) run without `JWT_SIGNING_KEY` (in the bundle image only the server process has it).
 
 ### The build file-lock gotcha (hit this constantly)
 
@@ -238,12 +243,18 @@ UIDs are caller-supplied, so internal invite copies are matched by a server-stam
 activates itself and gets the `Admin` role (`AdminRole`, always checked in the DB, never from the
 token); later sign-ups get a 202 and are activated by the mailed link (`EmailConfirmations`, via
 the system account only) or by the admin (`AccountAdmin`, `/api/admin/pending-accounts`,
-Settings → New accounts), or the `activate-account`/`make-admin` commands. Accounts from before
+Settings → Users), or the `activate-account`/`make-admin` commands. Accounts from before
 the migration were backfilled active, and start-up makes the oldest the admin if none is.
 Internal invite copies also go only to activated accounts. Sign-ups notify the admins
 (`AdminSignupNotifier`: `OutboxKind.AdminNotice` via the system account, else the admin's own,
 one per admin per 15 min listing everyone waiting; `ProfileDto.PendingAccounts` drives the
-web badge). With sign-up open, `MAIL_HOST_POLICY` defaults to `public` (else `private`); every
+web badge). The admin's Users page (`AccountAdmin`, `/api/admin/users`, `web/src/UsersSection.tsx`)
+lists every account and activates, disables (`ApplicationUser.DisabledAtUtc`: sessions revoked,
+`CredentialEpochs` bumped, login/refresh/CalDAV refused, and the outbox/feed/inbox/reminder jobs
+skip the account), deletes (cascades), grants/revokes `Admin` and makes reset links. The caller's
+own account can't be disabled, deleted or demoted, so a server always keeps an admin.
+`LastActiveAtUtc` is touched (at most hourly, one conditional UPDATE) on login, refresh and a
+CalDAV cache miss. With sign-up open, `MAIL_HOST_POLICY` defaults to `public` (else `private`); every
 account has quotas (`Quotas`/`QuotaOptions`, `QUOTA_*`: own events incl. overrides — received
 invitations don't count — tasks, calendars, subscriptions, categories; 400 from the API, 507
 from CalDAV) and a global per-user token-bucket rate limit (`API_RATE_LIMIT_PER_MINUTE`; the
@@ -271,11 +282,10 @@ the built image's log for leaked tokens and raw escapes.
 ### Android app (24seven)
 
 Native Kotlin in `android/` (`org.hyperstarit.twentyfourseven`, minSdk 34): Compose + Material 3, Hilt,
-Room (the offline source of truth; schemas exported to `app/schemas`, never a destructive
-migration), DataStore, OkHttp + kotlinx.serialization (`net/ApiClient`, hand-written models of the
+Room (the offline source of truth; schema exported to `app/schemas`), DataStore, OkHttp + kotlinx.serialization (`net/ApiClient`, hand-written models of the
 sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app start).
 
-- **Accounts** (`accounts/Accounts`): several at once, kind `calendarit` (now) or `caldav` (later);
+- **Accounts** (`accounts/Accounts`): several at once, kind `calendarit` or `caldav`;
   every row carries `accountId`. First launch picks the kind. Per-account tokens sealed with an
   Android Keystore AES-GCM key (`SecretStore`/`KeystoreSecretBox`, never backed up); `AccountAuth`
   serializes refreshes (rotating tokens) and a refused refresh marks the account `needsSignIn` —
@@ -296,9 +306,25 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   ok → drop op and rebase queued ops on returned `versions`; conflict/notFound/invalid/forbidden →
   drop that thing's queue + a `notices` row, "apply mine anyway" re-queues on the new version;
   error → keep with backoff), then pull (paged; calendars/categories whole; a reset or first
-  listing deletes what it didn't name), then drop edits nothing is waiting on. Room schemas are
-  exported (`app/schemas`), `MIGRATION_1_2`/`MIGRATION_2_3` are validated in `MigrationTest` — never a destructive
-  migration.
+  listing deletes what it didn't name), then drop edits nothing is waiting on. The Room schema
+  started over at version 1 (2026-11-27, no migrations); a database from before (2–5) is dropped
+  on the downgrade. From here on a schema change bumps the version with a migration.
+- **CalDAV accounts** (`caldav/`, no 24seven server needed): `DavClient` is hand-written WebDAV over
+  OkHttp + XmlPullParser (no dav4jvm/JitPack): discovery (URL → `/.well-known/caldav` → principal →
+  calendar-home-set + calendar-user-address-set), Basic or Digest login sent **only to the account's
+  host**, password in `SecretStore.password` (sealed like tokens). Same Room store/edits/outbox as
+  24seven accounts; `CalDavSync` (picked by `SyncRunner` per kind) pushes each queued entity as its
+  **whole resource** built from its pending edit (+ predicted override edits): PUT `If-Match` the
+  edited version (ETag = `version`; 412 → conflict notice, server wins), `If-None-Match: *` for
+  creates, DELETE; a calendar change = create there + delete here; "this and following" also PUTs
+  the new series. Pull per calendar: skip on unchanged ctag/sync-token, else RFC 6578
+  sync-collection (fallback: compare every ETag), then calendar-multiget in 50s. `dav_resources`
+  keeps each resource's href/ETag/**raw iCalendar**: `DavMapping` writes edits over that text and
+  replaces only the properties whose value changed (`ICal` is an own line-level parser/writer), so
+  X- properties, attachments and alarms the app can't show survive. Calendar id = collection path;
+  categories = the first `CATEGORIES` name (`dav:<name>`, colour from the name); VALARM DISPLAY/AUDIO
+  before start (tasks: RELATED=END) ↔ `WebPush` reminders; `calendars.allowsEvents/allowsTasks` from
+  supported-calendar-component-set filter the editors. Tested against `FakeCalDav` (`CalDavSyncTest`).
 - **Calendar views** (`ui/calendar`): month (kizitonwose `HorizontalCalendar`), week/day (own
   hour grid, `calendar/TimelineLayout` puts overlaps side by side), agenda; a read-only detail
   sheet; calendar visibility and the last view are device prefs (`CalendarPrefs`, DataStore).
@@ -379,7 +405,7 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   Navigation: bottom bar Calendar · Tasks · Settings (device switches live in Settings; the drawer
   only picks visible calendars), Accounts → Add account pushed from Settings.
 - Tests: Robolectric + MockWebServer (`SyncEngineTest`, `CertificatesTest` with a real
-  self-signed TLS server, `MigrationTest`); `LiveServerTest` runs against a real backend only with
+  self-signed TLS server, `CalDavSyncTest` with `FakeCalDav`); `LiveServerTest` runs against a real backend only with
   `LIVE_SERVER_URL`/`_EMAIL`/`_PASSWORD` set (throwaway account).
 
 ### Frontend
@@ -440,7 +466,7 @@ localStorage for first paint and reconcile to the server profile.
   wording, issue numbers in brackets), commit them to `main`, then push a plain tag
   `git tag vX.Y.Z && git push origin vX.Y.Z`. `release.yml` first runs the full test suite
   (`test.yml`, which also runs on every push to main and every PR), then builds the bundle image, checks its
-  log, pushes (with SBOM + provenance attestations) `richy1989/calendarit:X.Y.Z` (+ `:latest` unless the tag has a `-suffix`), and creates
+  log, pushes (with SBOM + provenance attestations) `richy1989/24seven:X.Y.Z` (+ `:latest` unless the tag has a `-suffix`), and creates
   the GitHub Release from the notes file + Docker line + GitHub's changelog link. Versions are
   `0.x` (the `v8.0.0` tag was a typo for 0.8.0; the next after 0.9.0 is 0.10.0, never 8.x).
 - **Releasing the Android app** (own version line): bump `versionName` *and* `versionCode` in

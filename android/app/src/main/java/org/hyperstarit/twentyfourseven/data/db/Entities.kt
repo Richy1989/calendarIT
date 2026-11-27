@@ -58,6 +58,9 @@ data class CalendarEntity(
     val sortOrder: Int,
     val version: String,
     val subscriptionError: String? = null,
+    /** What the calendar can hold: a CalDAV task list takes no events, and some calendars no tasks. */
+    @ColumnInfo(defaultValue = "1") val allowsEvents: Boolean = true,
+    @ColumnInfo(defaultValue = "1") val allowsTasks: Boolean = true,
 )
 
 @Entity(tableName = "categories", primaryKeys = ["accountId", "id"])
@@ -197,3 +200,50 @@ data class NoticeEntity(
 
 /** A remote id made unique on the device: for maps that hold more than one account's rows. */
 fun scopedKey(accountId: String, id: String): String = "$accountId\u0000$id"
+
+// ---------------------------------------------------------------- CalDAV accounts
+
+/** Where a CalDAV account's calendars live, found at sign-in. */
+@Entity(tableName = "dav_accounts")
+data class DavAccountEntity(
+    @PrimaryKey val accountId: String,
+    val principalUrl: String?,
+    val homeUrl: String,
+    /** The user's own addresses (calendar-user-address-set, mailto: dropped), one per line: who "me" is among guests. */
+    val userAddresses: String,
+)
+
+/** A CalDAV collection behind a [CalendarEntity] (whose id is the collection's path). */
+@Entity(tableName = "dav_calendars", primaryKeys = ["accountId", "calendarId"])
+data class DavCalendarEntity(
+    val accountId: String,
+    val calendarId: String,
+    val href: String,
+    /** RFC 6578 sync token of the last complete pull; null = list everything. */
+    val syncToken: String?,
+    val ctag: String?,
+)
+
+/**
+ * One iCalendar resource on a CalDAV server, behind an event series or a task: its address and
+ * ETag, and the text as last read or written — edits are made on that text, so what this app
+ * doesn't understand goes back to the server as it was.
+ */
+@Entity(
+    tableName = "dav_resources",
+    primaryKeys = ["accountId", "kind", "entityId"],
+    indices = [Index("accountId", "href")],
+)
+data class DavResourceEntity(
+    val accountId: String,
+    /** "event" or "task". */
+    val kind: String,
+    val entityId: String,
+    val calendarId: String,
+    val href: String,
+    val uid: String,
+    val etag: String?,
+    val ics: String,
+    /** A task's RELATED-TO (its parent's UID), resolved to a parentId once the parent is known. */
+    val relatedUid: String? = null,
+)

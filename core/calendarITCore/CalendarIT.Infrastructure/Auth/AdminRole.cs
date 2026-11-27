@@ -39,11 +39,29 @@ public static class AdminRole
         await db.SaveChangesAsync();
     }
 
+    /// <summary>An admin who can act: in the role, activated, and not disabled.</summary>
     public static async Task<bool> IsAdminAsync(AppDbContext db, Guid userId, CancellationToken ct = default) =>
         await (from ur in db.UserRoles
                join r in db.Roles on ur.RoleId equals r.Id
-               where ur.UserId == userId && r.NormalizedName == "ADMIN"
+               join u in db.Users on ur.UserId equals u.Id
+               where ur.UserId == userId && r.NormalizedName == "ADMIN" && u.EmailConfirmed && u.DisabledAtUtc == null
                select ur).AnyAsync(ct);
+
+    /// <summary>Everyone in the role (disabled ones included).</summary>
+    public static async Task<List<Guid>> MemberIdsAsync(AppDbContext db, CancellationToken ct = default) =>
+        await (from ur in db.UserRoles
+               join r in db.Roles on ur.RoleId equals r.Id
+               where r.NormalizedName == "ADMIN"
+               select ur.UserId).ToListAsync(ct);
+
+    public static async Task RevokeAsync(AppDbContext db, Guid userId, CancellationToken ct = default)
+    {
+        var roleId = await db.Roles.Where(r => r.NormalizedName == "ADMIN").Select(r => (Guid?)r.Id).SingleOrDefaultAsync(ct);
+        if (roleId is { } id)
+        {
+            await db.UserRoles.Where(ur => ur.UserId == userId && ur.RoleId == id).ExecuteDeleteAsync(ct);
+        }
+    }
 
     /// <summary>
     /// A server whose accounts predate the admin role gets one: the oldest active account (by

@@ -38,7 +38,7 @@ public sealed class QuotaOptions
     };
 
     private static int Positive(IConfiguration configuration, string key, int fallback) =>
-        configuration.GetValue(key, fallback) is var v && v > 0 ? v : fallback;
+        configuration.Setting(key, fallback) is var v && v > 0 ? v : fallback;
 }
 
 /// <summary>Raised when a write would take an account over a <see cref="QuotaOptions"/> limit: a

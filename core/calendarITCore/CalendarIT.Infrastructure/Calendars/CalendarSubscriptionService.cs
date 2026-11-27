@@ -112,6 +112,8 @@ public sealed class CalendarSubscriptionService(
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var due = await db.Calendars
             .Where(c => c.SourceUrl != null && (c.NextFetchUtc == null || c.NextFetchUtc <= now))
+            // A disabled account's feeds pause (and pick up again when it is enabled).
+            .Where(c => !db.Users.Any(u => u.Id == c.OwnerUserId && u.DisabledAtUtc != null))
             .OrderBy(c => c.NextFetchUtc)
             .Take(BatchSize)
             .ToListAsync(cancellationToken);

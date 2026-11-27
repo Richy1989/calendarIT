@@ -41,7 +41,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     // client invent its own X-Forwarded-For, which would both falsify the logged IP and hand
     // out a free bypass of the per-IP auth rate limit below. Default 1 = the reverse proxy
     // directly in front (nginx in the shipped image); raise it when you chain another one.
-    options.ForwardLimit = builder.Configuration.GetValue("FORWARDED_PROXY_HOPS", 1);
+    options.ForwardLimit = builder.Configuration.Setting("FORWARDED_PROXY_HOPS", 1);
 });
 
 // Password guessing is throttled per account by Identity lockout; this caps the request rate
@@ -54,7 +54,7 @@ builder.Services.AddRateLimiter(options =>
     // and with open sign-up anyone can have one — can't keep the server busy with searches,
     // imports and expansions for everybody. A bucket, so a phone's first sync can burst.
     // API_RATE_LIMIT_PER_MINUTE=0 turns it off.
-    var perMinute = builder.Configuration.GetValue("API_RATE_LIMIT_PER_MINUTE", 1200);
+    var perMinute = builder.Configuration.Setting("API_RATE_LIMIT_PER_MINUTE", 1200);
     if (perMinute > 0)
     {
         options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
@@ -76,7 +76,7 @@ builder.Services.AddRateLimiter(options =>
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = builder.Configuration.GetValue("AUTH_RATE_LIMIT_PER_MINUTE", 20),
+            PermitLimit = builder.Configuration.Setting("AUTH_RATE_LIMIT_PER_MINUTE", 20),
             Window = TimeSpan.FromMinutes(1),
         }));
     // "Test my mail account" connects out to whatever host the user entered; a handful a minute
@@ -131,7 +131,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
 app.Lifetime.ApplicationStopping.Register(() => app.Logger.LogInformation("CalendarIT is shutting down"));
 
 // Apply pending migrations on startup unless explicitly disabled (APPLY_MIGRATIONS=false).
-if (app.Configuration.GetValue("APPLY_MIGRATIONS", true))
+if (app.Configuration.Setting("APPLY_MIGRATIONS", true))
 {
     var migration = await app.Services.MigrateDatabaseAsync();
     if (migration.Created)

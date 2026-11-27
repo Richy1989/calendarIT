@@ -3,9 +3,11 @@ using System.Text;
 using System.Text.Encodings.Web;
 using CalendarIT.Infrastructure.Auth;
 using CalendarIT.Infrastructure.Identity;
+using CalendarIT.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -117,6 +119,12 @@ public sealed class CalDavBasicAuthHandler(
         {
             return AuthenticateResult.Fail("This account isn't activated yet."); // and never cached
         }
+        if (user.DisabledAtUtc is not null)
+        {
+            return AuthenticateResult.Fail("This account is disabled."); // and never cached
+        }
+        // A cache miss is a real login: what the admin's user list shows as "last active".
+        await LastActive.TouchAsync(Context.RequestServices.GetRequiredService<AppDbContext>(), user.Id, DateTime.UtcNow);
 
         var userName = user.UserName ?? email;
         credentials.Store(email, password, new CalDavCredentialCache.CachedPrincipal(user.Id, userName));

@@ -13,7 +13,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import org.hyperstarit.twentyfourseven.accounts.Accounts
 import org.hyperstarit.twentyfourseven.accounts.DeviceInfo
-import org.hyperstarit.twentyfourseven.auth.LegacySession
 import org.hyperstarit.twentyfourseven.auth.SecretStore
 import org.hyperstarit.twentyfourseven.auth.Tokens
 import org.hyperstarit.twentyfourseven.data.db.AccountEntity
@@ -39,7 +38,6 @@ class SyncEngineTest {
             if (tokens == null) this.tokens.remove(accountId) else this.tokens[accountId] = tokens
         }
         override suspend fun deviceId() = "device-1"
-        override suspend fun takeLegacySession(): LegacySession? = null
     }
 
     private val fake = FakeServer()

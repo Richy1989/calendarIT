@@ -91,7 +91,7 @@ fun CalendarScreen(
     var askScope by remember { mutableStateOf<Pair<Occurrence, Boolean>?>(null) }
     val pending by viewModel.pendingDelete.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
-    val canCreate = calendars.any { !it.readOnly }
+    val canCreate = calendars.any { !it.readOnly && it.allowsEvents }
     val askPermission = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
     ) { }

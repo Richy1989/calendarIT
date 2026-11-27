@@ -482,11 +482,108 @@
   margin: 1.8rem 0;
 }
 
-/* Buttons at the end of a settings row (New accounts: Activate / Remove). */
-.settings-row-actions {
+/* Settings → Users (admin): one row per account, actions on the right; they wrap on a phone. */
+.users-filter {
+  margin: 0.4rem 0 1rem;
+}
+
+.users-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.users-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.users-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.users-email {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.users-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.users-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border: 1px solid var(--hairline);
+}
+
+.users-badge-admin {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.users-badge-waiting {
+  background: color-mix(in srgb, var(--highlight) 22%, transparent);
+  border-color: color-mix(in srgb, var(--highlight) 50%, transparent);
+}
+
+.users-badge-disabled {
+  opacity: 0.75;
+  text-decoration: line-through;
+}
+
+.users-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.btn-ghost.users-delete {
+  color: var(--danger);
+}
+
+.users-reset {
+  margin-top: 1rem;
+}
+
+.users-reset-row {
   display: flex;
   gap: 0.5rem;
-  flex-shrink: 0;
+}
+
+.users-reset-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+/* A count beside a settings nav item (Users: accounts waiting). */
+.settings-nav-count {
+  margin-left: auto;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
 }
 
 .settings-rows {

@@ -448,4 +448,20 @@ public sealed class OutboxTests : IDisposable
 
         Assert.Empty(await _accounts.ListOutboxAsync(_alice));
     }
+
+    [Fact]
+    public async Task ADisabledAccount_SendsNothing()
+    {
+        await ConnectMailAsync(_alice, "alice@example.com");
+        await Outbox().QueueAsync(_alice, Message("x@example.com"), OutboxKind.Invitation);
+        await _db.Users.Where(u => u.Id == _alice).ExecuteUpdateAsync(s => s.SetProperty(u => u.DisabledAtUtc, DateTime.UtcNow));
+        var server = new FakeServer();
+
+        await RunAsync(server);
+
+        Assert.Empty(server.Delivered);
+        var row = await _db.OutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(OutboxStatus.Failed, row.Status);
+        Assert.Equal("The account is disabled.", row.LastError);
+    }
 }

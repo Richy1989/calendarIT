@@ -106,7 +106,7 @@ class EventEditorViewModel @Inject constructor(
         base = null
         val form = form
         viewModelScope.launch {
-            val all = db.calendars().observeAll().first().filter { !it.readOnly }
+            val all = db.calendars().observeAll().first().filter { !it.readOnly && it.allowsEvents }
             categories = db.categories().observeAll().first()
             when (target) {
                 is EditTarget.New -> {

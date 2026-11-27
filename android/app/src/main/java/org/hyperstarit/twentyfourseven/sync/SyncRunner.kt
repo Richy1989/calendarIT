@@ -19,6 +19,7 @@ class SyncRunner(
     private val db: AppDatabase,
     private val accounts: Accounts,
     private val calendarIt: CalendarItSync,
+    private val calDav: org.hyperstarit.twentyfourseven.caldav.CalDavSync? = null,
     /** What changed may move reminders: they are set again after every sync. */
     private val afterSync: suspend () -> Unit = {},
 ) {
@@ -28,13 +29,22 @@ class SyncRunner(
     suspend fun syncAll(): Boolean = mutex.withLock {
         var allDone = true
         for (account in db.accounts().all()) {
-            if (account.needsSignIn || account.certificateChanged || account.kind != AccountKind.CALENDARIT) continue
+            if (account.needsSignIn || account.certificateChanged) continue
             try {
-                calendarIt.sync(account)
-                // Not needed for syncing; one that fails is tried again at the next sync.
-                runCatching { accounts.registerDeviceIfNeeded(account) }
+                when (account.kind) {
+                    AccountKind.CALENDARIT -> {
+                        calendarIt.sync(account)
+                        // Not needed for syncing; one that fails is tried again at the next sync.
+                        runCatching { accounts.registerDeviceIfNeeded(account) }
+                    }
+                    AccountKind.CALDAV -> calDav?.sync(account) ?: continue
+                    else -> continue
+                }
             } catch (_: SessionEndedException) {
                 // Accounts marked it as needing sign-in.
+            } catch (_: org.hyperstarit.twentyfourseven.caldav.DavAuthException) {
+                // Asking again with the same password could only walk the account into the server's lockout.
+                accounts.markSignedOut(account.id, "The server refused the password. Sign in again.")
             } catch (e: ProtocolException) {
                 db.accounts().setError(account.id, e.message)
             } catch (e: IOException) {

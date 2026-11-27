@@ -22,7 +22,7 @@ public interface IAdminSignupNotifier
 /// else through the admin's own connected account, to themselves. Bundled: at most one mail per
 /// admin per <see cref="Cooldown"/>, listing everyone waiting, so a burst of sign-ups (spam
 /// included) is one mail, not a flood. Without any mail account the web app's badge still shows
-/// who waits (Settings → New accounts).
+/// who waits (Settings → Users).
 /// </summary>
 public sealed class AdminSignupNotifier(
     AppDbContext db,
@@ -53,7 +53,7 @@ public sealed class AdminSignupNotifier(
         var admins = await (from u in db.Users
                             join ur in db.UserRoles on u.Id equals ur.UserId
                             join r in db.Roles on ur.RoleId equals r.Id
-                            where r.NormalizedName == "ADMIN" && u.EmailConfirmed && u.Email != null
+                            where r.NormalizedName == "ADMIN" && u.EmailConfirmed && u.DisabledAtUtc == null && u.Email != null
                             select new { u.Id, u.Email }).ToListAsync(cancellationToken);
         if (admins.Count == 0)
         {
@@ -78,8 +78,8 @@ public sealed class AdminSignupNotifier(
         }
 
         var settings = string.IsNullOrWhiteSpace(authOptions.Value.PublicBaseUrl)
-            ? "Settings → New accounts"
-            : $"Settings → New accounts: {authOptions.Value.PublicBaseUrl!.TrimEnd('/')}/?settings=general";
+            ? "Settings → Users"
+            : $"Settings → Users: {authOptions.Value.PublicBaseUrl!.TrimEnd('/')}/?settings=users";
         var how = activation == AccountActivation.Email
             ? "New accounts activate themselves with the link mailed to them. If you don't know someone, remove them before they do."
             : "They can't sign in until you activate them.";

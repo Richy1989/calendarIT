@@ -37,7 +37,8 @@ public static class TaskReminders
         var query = db.TaskReminders
             .Include(r => r.Task!).ThenInclude(t => t.Calendar)
             .Where(r => r.Task!.DueUtc != null && r.Task.DueUtc > lower && r.Task.DueUtc <= upper
-                && (r.Task.Status == TaskItemStatus.NeedsAction || r.Task.Status == TaskItemStatus.InProcess));
+                && (r.Task.Status == TaskItemStatus.NeedsAction || r.Task.Status == TaskItemStatus.InProcess))
+            .Where(r => !db.Users.Any(u => u.Id == r.Task!.Calendar!.OwnerUserId && u.DisabledAtUtc != null)); // disabled: paused
         if (ownerUserId is { } owner)
         {
             query = query.Where(r => r.Task!.Calendar!.OwnerUserId == owner);

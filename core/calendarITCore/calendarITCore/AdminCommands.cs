@@ -16,7 +16,7 @@ public static class AdminCommands
 
     /// <summary>Activates an account (confirms its address) — for servers without a system mail
     /// account, or a user whose activation mail doesn't arrive. The admin can do the same in
-    /// Settings → Accounts.</summary>
+    /// Settings → Users.</summary>
     public const string ConfirmEmail = "confirm-email";
 
     /// <summary>The same as <see cref="ConfirmEmail"/>, by the name the web app uses.</summary>
@@ -39,6 +39,16 @@ public static class AdminCommands
         var builder = WebApplication.CreateBuilder(args[2..]);
         // Nothing of this run belongs in the server's log (and the link must not reach any log).
         builder.Logging.ClearProviders();
+        // No command signs a token, but the services insist on a key. In the published image the
+        // key lives in /data and only the server process is handed it (entrypoint.sh), so a
+        // `docker exec` of a command has none — and used to stop right here.
+        if (string.IsNullOrWhiteSpace(builder.Configuration["JWT_SIGNING_KEY"]))
+        {
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["JWT_SIGNING_KEY"] = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48)),
+            });
+        }
         builder.Services.AddInfrastructure(builder.Configuration);
         await using var app = builder.Build();
         await using var scope = app.Services.CreateAsyncScope();
@@ -56,7 +66,7 @@ public static class AdminCommands
             user.EmailConfirmed = true;
             await users.UpdateAsync(user);
             await AdminRole.GrantAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), user.Id);
-            await output.WriteLineAsync($"{user.Email} is active and an admin: it can activate new accounts in Settings → Accounts.");
+            await output.WriteLineAsync($"{user.Email} is active and an admin: it can activate new accounts in Settings → Users.");
             return 0;
         }
 

@@ -15,7 +15,6 @@ import okhttp3.tls.HeldCertificate
 import org.hyperstarit.twentyfourseven.accounts.Accounts
 import org.hyperstarit.twentyfourseven.accounts.DeviceInfo
 import org.hyperstarit.twentyfourseven.accounts.UntrustedCertificateException
-import org.hyperstarit.twentyfourseven.auth.LegacySession
 import org.hyperstarit.twentyfourseven.auth.SecretStore
 import org.hyperstarit.twentyfourseven.auth.Tokens
 import org.hyperstarit.twentyfourseven.data.db.AppDatabase
@@ -89,7 +88,6 @@ class CertificatesTest {
             override suspend fun tokens(accountId: String): Tokens? = null
             override suspend fun saveTokens(accountId: String, tokens: Tokens?) {}
             override suspend fun deviceId() = "d"
-            override suspend fun takeLegacySession(): LegacySession? = null
         }
         val device = object : DeviceInfo {
             override val name = "T"

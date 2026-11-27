@@ -1,30 +1,30 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>CalendarIT-Traefik</Name>
-  <Repository>richy1989/calendarit:latest</Repository>
-  <Registry>https://hub.docker.com/r/richy1989/calendarit</Registry>
+  <Name>24seven-Traefik</Name>
+  <Repository>richy1989/24seven:latest</Repository>
+  <Registry>https://hub.docker.com/r/richy1989/24seven</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/Richy1989/calendarIT/issues</Support>
-  <Project>https://github.com/Richy1989/calendarIT</Project>
+  <Support>https://github.com/Richy1989/24seven/issues</Support>
+  <Project>https://github.com/Richy1989/24seven</Project>
   <Overview>A lightweight, modern, self-hosted calendar. Make events (one-off and recurring), get email or browser (Web Push) reminders, colour-code your events, import/export iCalendar (.ics), and sync to your phone with any CalDAV client. It does what you want — and just that. This variant ships with Traefik labels preconfigured for calendarit.home.lab.</Overview>
   <Category>Productivity:</Category>
   <WebUI>http://calendarit.home.lab/</WebUI>
   <TemplateURL/>
-  <Icon>https://raw.githubusercontent.com/Richy1989/calendarIT/refs/heads/main/public/logo.png</Icon>
+  <Icon>https://raw.githubusercontent.com/Richy1989/24seven/refs/heads/main/public/logo.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Description>CalendarIT — a lightweight, self-hosted calendar (React web UI + ASP.NET Core REST API), preconfigured to sit behind Traefik. The container carries Traefik labels that route Host(`calendarit.home.lab`) to nginx on container port 80 — no published host port required as long as Traefik reaches this container over a shared Docker network (set Network to the same custom network your Traefik container uses, e.g. proxynet, and point calendarit.home.lab at your Traefik IP in your local DNS). Recurring events (RRULE) with correct time zones and DST, colour-coded categories, email and browser (Web Push) reminders and invitations, and iCalendar (.ics) import/export. This single-container build runs the React UI behind nginx and the API together in one image, storing data in a built-in SQLite database (or point it at your own Postgres). Mount /data to your appdata share so your events and uploaded avatars survive container updates. A JWT signing key is auto-generated and persisted under /data on first run; set your own JWT Signing Key to override.
+  <Description>24seven (CalendarIT) — a lightweight, self-hosted calendar (React web UI + ASP.NET Core REST API), preconfigured to sit behind Traefik. The container carries Traefik labels that route Host(`calendarit.home.lab`) to nginx on container port 80 — no published host port required as long as Traefik reaches this container over a shared Docker network (set Network to the same custom network your Traefik container uses, e.g. proxynet, and point calendarit.home.lab at your Traefik IP in your local DNS). Recurring events (RRULE) with correct time zones and DST, colour-coded categories, email and browser (Web Push) reminders and invitations, and iCalendar (.ics) import/export. This single-container build runs the React UI behind nginx and the API together in one image, storing data in a built-in SQLite database (or point it at your own Postgres). Mount /data to your appdata share so your events and uploaded avatars survive container updates. A JWT signing key is auto-generated and persisted under /data on first run; set your own JWT Signing Key to override.
 
-There are no SMTP settings here: email is sent through each user's own mail account, connected inside the app under Settings — Email. Users without one simply get their reminders written to the container log instead.
+Invitations and reminders are sent through each user's own mail account, connected inside the app under Settings — Email. The optional Server Mail settings give the server an account of its own for activation links and password resets.
 
-Once you have created your account, set Disable Registration to true so nobody else can sign up on your server.</Description>
+Create your own account first: the first account is active at once and is the admin. Everyone who signs up after it must be activated — by an emailed link (set the Server Mail settings and Public Base URL) or by you in Settings → Users. Set Disable Registration to true once everyone has an account.</Description>
   <Networking>
     <Mode>bridge</Mode>
     <Publish/>
@@ -97,6 +97,51 @@ Once you have created your account, set Disable Registration to true so nobody e
       <Name>VAPID_SUBJECT</Name>
       <Mode/>
     </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>MAIL_HOST_POLICY</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SMTP_HOST</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>587</Value>
+      <Name>SMTP_PORT</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SMTP_USE_SSL</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SMTP_USERNAME</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SMTP_PASSWORD</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SMTP_FROM</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>1200</Value>
+      <Name>API_RATE_LIMIT_PER_MINUTE</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>FORWARDED_TRUSTED_NETWORKS</Name>
+      <Mode/>
+    </Variable>
   </Environment>
   <Labels>
     <Label>
@@ -120,15 +165,18 @@ Once you have created your account, set Disable Registration to true so nobody e
       <Mode/>
     </Label>
   </Labels>
-  <Config Name="App Data" Target="/data" Default="/mnt/user/appdata/calendarit" Mode="rw" Description="Host folder where CalendarIT stores its SQLite database, uploaded avatars, and the auto-generated JWT signing key. Point this at your appdata share to persist data across updates." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/calendarit</Config>
+  <Config Name="App Data" Target="/data" Default="/mnt/user/appdata/calendarit" Mode="rw" Description="Host folder where 24seven stores its SQLite database, uploaded avatars, and the auto-generated JWT signing key. Point this at your appdata share to persist data across updates." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/calendarit</Config>
   <Config Name="PUID" Target="PUID" Default="99" Description="User id the app runs as (it starts as root only to take ownership of the App Data folder, then drops to this user). 99 is Unraid's 'nobody'." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Description="Group id the app runs as. 100 is Unraid's 'users'." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
   <Config Name="Mail Host Policy" Target="MAIL_HOST_POLICY" Default="" Description="Optional. Which addresses users' mail servers (Settings → Email) may point at: private (internet and your LAN, never this server itself), public (internet only), or any (also loopback, e.g. a mail bridge running in this container's network). Empty = public while anyone can sign up (so a stranger's account can't reach into your network), private once Disable Registration is true." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
-  <Config Name="Server Mail Host" Target="SMTP_HOST" Default="" Description="Optional. The server&apos;s own outgoing mail server, used only for account mail: activation links for new sign-ups (needs Public Base URL) and password resets. New accounts can&apos;t sign in until activated; without this, the admin (the first account) activates them in Settings → New accounts, or you run: docker exec -u 99 &lt;container&gt; dotnet /app/calendarITCore.dll activate-account user@example.com" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Server Mail Host" Target="SMTP_HOST" Default="" Description="Optional. The server&apos;s own outgoing mail server, used only for account mail: activation links for new sign-ups (needs Public Base URL) and password resets. New accounts can&apos;t sign in until activated; without this, the admin (the first account) activates them in Settings → Users, or you run: docker exec -u 99 &lt;container&gt; dotnet /app/calendarITCore.dll activate-account user@example.com" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Server Mail Port" Target="SMTP_PORT" Default="587" Description="Optional. 587 (STARTTLS, default) or 465 (TLS on connect)." Type="Variable" Display="advanced" Required="false" Mask="false">587</Config>
   <Config Name="Server Mail Username" Target="SMTP_USERNAME" Default="" Description="Optional. Login for the server mail host; empty for a relay that needs none." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Server Mail Password" Target="SMTP_PASSWORD" Default="" Description="Optional. Password for the server mail host." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
   <Config Name="Server Mail From" Target="SMTP_FROM" Default="" Description="Optional (required with Server Mail Host). The sender, e.g. 24seven &lt;noreply@example.com&gt;." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Server Mail TLS on Connect" Target="SMTP_USE_SSL" Default="" Description="Optional. true = TLS from the first byte (port 465), false = STARTTLS. Empty = true for port 465, else false. TLS is required either way." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="API Rate Limit" Target="API_RATE_LIMIT_PER_MINUTE" Default="1200" Description="Optional. Requests per account (per IP before sign-in) per minute across the API and CalDAV, with bursts up to the same number for a phone&apos;s first sync. 0 turns it off." Type="Variable" Display="advanced" Required="false" Mask="false">1200</Config>
+  <Config Name="Trusted Proxy Networks" Target="FORWARDED_TRUSTED_NETWORKS" Default="" Description="Optional. Comma-separated networks your reverse proxy connects from (e.g. 172.16.0.0/12). Only those are believed about a visitor&apos;s IP address. Leave empty while nothing but your proxy can reach this container." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Traefik Enable" Target="traefik.enable" Default="true" Description="Tells Traefik's Docker provider to pick this container up. Leave at true — set to false only to take the container out of Traefik without removing it." Type="Label" Display="always" Required="true" Mask="false">true</Config>
   <Config Name="Traefik Router Rule" Target="traefik.http.routers.calendarit.rule" Default="Host(`calendarit.home.lab`)" Description="Traefik routing rule for the web UI. Default routes the hostname calendarit.home.lab to this container — make sure your local DNS (e.g. Pi-hole/AdGuard/Unbound) resolves it to your Traefik instance. Change the hostname here if you use a different domain." Type="Label" Display="always" Required="true" Mask="false">Host(`calendarit.home.lab`)</Config>
   <Config Name="Traefik Entrypoint" Target="traefik.http.routers.calendarit.entrypoints" Default="web" Description="Which Traefik entrypoint serves this router — must match an entrypoint name from your Traefik static config (commonly web for HTTP :80, websecure for HTTPS :443, or http/https depending on your setup)." Type="Label" Display="always" Required="true" Mask="false">web</Config>
@@ -137,8 +185,8 @@ Once you have created your account, set Disable Registration to true so nobody e
   <Config Name="Environment" Target="ASPNETCORE_ENVIRONMENT" Default="Production" Description="Optional. Production (default) or Development. Development also exposes the OpenAPI document at /openapi/v1.json." Type="Variable" Display="advanced" Required="false" Mask="false">Production</Config>
   <Config Name="Database Provider" Target="DATABASE_PROVIDER" Default="Sqlite" Description="Optional. Sqlite (built-in, default — recommended for most self-hosters) or Postgres. If set to Postgres, also fill in the Postgres Connection string." Type="Variable" Display="advanced" Required="false" Mask="false">Sqlite</Config>
   <Config Name="Postgres Connection" Target="POSTGRES_CONNECTION" Default="" Description="Optional. Full Npgsql connection string, required only when Database Provider is Postgres. Example: Host=192.168.1.10;Port=5432;Database=calendarit;Username=calendarit;Password=secret. Ignored while Database Provider is Sqlite." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
-  <Config Name="Disable Registration" Target="DISABLE_REGISTRATION" Default="false" Description="Optional. Set to true once everyone who needs an account has one. Your server is reachable by anyone who knows its address — that is what makes phone sync work — so leaving sign-up open means strangers can create accounts on it. Existing accounts keep working and the Register tab disappears from the sign-in screen." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
-  <Config Name="Public Base URL" Target="PUBLIC_BASE_URL" Default="" Description="Optional — required only for self-service password reset: the address users actually type, e.g. https://calendar.example.com. Reset links are built from this and never from the request Traefik passes through, because that address is a header anyone can set — otherwise a stranger could have a working reset link mailed to a site of their choosing. Leave empty and reset emails are simply not sent; sign-in and everything else still work." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Disable Registration" Target="DISABLE_REGISTRATION" Default="false" Description="Optional. Set to true once everyone who needs an account has one. Your server is reachable by anyone who knows its address — that is what makes phone sync work — so while sign-up is open strangers can create accounts. They can&apos;t sign in until activated (by the emailed link, or by the admin in Settings → Users), and the admin gets a notice. Existing accounts keep working and the Register tab disappears from the sign-in screen." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="Public Base URL" Target="PUBLIC_BASE_URL" Default="" Description="Optional — needed for links in emails (password reset, account activation, the admin&apos;s new-account notice): the address users actually type, e.g. https://calendar.example.com. Links are built from this and never from the request, because the address in a request is a header anyone can set — otherwise a stranger could have a working reset link mailed to a site of their choosing. Leave empty and those emails aren&apos;t sent; sign-in and everything else still work." Type="Variable" Display="always" Required="false" Mask="false"></Config>
   <Config Name="Trusted Proxy Hops" Target="FORWARDED_PROXY_HOPS" Default="2" Description="Optional. How many proxies sit in front of the app, used to work out each visitor&apos;s real IP address (which the login rate limit and the logs rely on). 2 is right for this template: Traefik, then the nginx inside the container. Add one for every further proxy in the chain — counting too few makes every visitor look like one address, too many lets visitors fake theirs." Type="Variable" Display="advanced" Required="false" Mask="false">2</Config>
   <Config Name="Auth Rate Limit" Target="AUTH_RATE_LIMIT_PER_MINUTE" Default="20" Description="Optional. How many sign-in, registration, and token-refresh requests one IP address may make per minute before being turned away. The default suits a household; raise it only if legitimate users share one address and hit the limit." Type="Variable" Display="advanced" Required="false" Mask="false">20</Config>
   <Config Name="Log Level" Target="Serilog__MinimumLevel__Default" Default="Information" Description="Optional. Minimum log level written to the container log: Verbose, Debug, Information (default), Warning, Error, or Fatal." Type="Variable" Display="advanced" Required="false" Mask="false">Information</Config>

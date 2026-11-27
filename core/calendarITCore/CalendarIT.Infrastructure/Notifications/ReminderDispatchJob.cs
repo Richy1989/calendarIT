@@ -95,6 +95,8 @@ public sealed class ReminderDispatchJob(
             .Where(r => r.Event!.RRule != null
                 || (r.Event!.StartUtc > windowStart && r.Event!.StartUtc <= horizon)
                 || (r.Event!.IsAllDay && r.Event!.StartUtc > allDayFrom && r.Event!.StartUtc <= allDayTo))
+            // A disabled account's reminders pause.
+            .Where(r => !db.Users.Any(u => u.Id == r.Event!.Calendar!.OwnerUserId && u.DisabledAtUtc != null))
             .ToListAsync(cancellationToken);
         if (reminders.Count == 0)
         {
@@ -306,6 +308,7 @@ public sealed class ReminderDispatchJob(
         var due = await db.ReminderSnoozes
             .Include(s => s.Reminder!).ThenInclude(r => r.Event!).ThenInclude(e => e.Calendar)
             .Where(s => s.SentAtUtc == null && s.DueAtUtc <= now)
+            .Where(s => !db.Users.Any(u => u.Id == s.Reminder!.Event!.Calendar!.OwnerUserId && u.DisabledAtUtc != null))
             .ToListAsync(cancellationToken);
         if (due.Count == 0)
         {

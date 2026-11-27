@@ -1,7 +1,6 @@
 package org.hyperstarit.twentyfourseven.ui.accounts
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -9,8 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
@@ -71,7 +68,7 @@ import org.hyperstarit.twentyfourseven.net.ServerUrl
 import org.hyperstarit.twentyfourseven.net.UnauthorizedException
 import org.hyperstarit.twentyfourseven.sync.SyncScheduler
 
-enum class AddStep { CHOOSE, CALENDARIT }
+enum class AddStep { CHOOSE, CALENDARIT, CALDAV }
 
 @HiltViewModel
 class AddAccountViewModel @Inject constructor(
@@ -99,7 +96,7 @@ class AddAccountViewModel @Inject constructor(
             is ServerUrl.Result.Ok -> parsed.url
         }
         if (email.isBlank() || password.text.isEmpty()) {
-            error = "Enter your email and password."
+            error = if (step == AddStep.CALDAV) "Enter your username and password." else "Enter your email and password."
             return
         }
         signIn(url, pin = null, onAdded)
@@ -122,16 +119,22 @@ class AddAccountViewModel @Inject constructor(
         error = null
         viewModelScope.launch {
             try {
-                accounts.addCalendarIt(url, email, password.text.toString(), pin)
+                if (step == AddStep.CALDAV) {
+                    accounts.addCalDav(url, email, password.text.toString(), pin)
+                } else {
+                    accounts.addCalendarIt(url, email, password.text.toString(), pin)
+                }
                 password.clearText()
                 scheduler.requestNow()
-                if (push.current() != null) push.registerAll()
+                if (step == AddStep.CALENDARIT && push.current() != null) push.registerAll()
                 onAdded()
             } catch (e: UntrustedCertificateException) {
                 pendingUrl = url
                 certificate = e.certificate
             } catch (e: UnauthorizedException) {
                 error = e.errors.firstOrNull() ?: "Wrong email or password."
+            } catch (_: org.hyperstarit.twentyfourseven.caldav.DavAuthException) {
+                error = "Wrong username or password."
             } catch (e: IOException) {
                 error = e.message?.takeIf { it.isNotBlank() } ?: "Couldn't reach the server."
             } finally {
@@ -145,7 +148,7 @@ class AddAccountViewModel @Inject constructor(
 @Composable
 fun AddAccountScreen(onAdded: () -> Unit, onCancel: (() -> Unit)?, viewModel: AddAccountViewModel = hiltViewModel()) {
     val back: (() -> Unit)? = when {
-        viewModel.step == AddStep.CALENDARIT -> ({ viewModel.step = AddStep.CHOOSE })
+        viewModel.step != AddStep.CHOOSE -> ({ viewModel.step = AddStep.CHOOSE })
         else -> onCancel
     }
     BackHandler(enabled = back != null) { back?.invoke() }
@@ -168,8 +171,21 @@ fun AddAccountScreen(onAdded: () -> Unit, onCancel: (() -> Unit)?, viewModel: Ad
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             when (viewModel.step) {
-                AddStep.CHOOSE -> ChooseKind(first = onCancel == null, onCalendarIt = { viewModel.step = AddStep.CALENDARIT })
-                AddStep.CALENDARIT -> CalendarItForm(viewModel, onAdded)
+                AddStep.CHOOSE -> ChooseKind(
+                    first = onCancel == null,
+                    onCalendarIt = { viewModel.step = AddStep.CALENDARIT },
+                    onCalDav = { viewModel.step = AddStep.CALDAV },
+                )
+                AddStep.CALENDARIT -> SignInForm(
+                    viewModel, onAdded, "Use the address of your 24seven server and the account you use on the web.",
+                    placeholder = "calendar.example.com", userLabel = "Email", email = true,
+                )
+                AddStep.CALDAV -> SignInForm(
+                    viewModel, onAdded,
+                    "The address of your CalDAV server (or of one of its calendars) and your login. " +
+                        "For iCloud use caldav.icloud.com and an app-specific password; Nextcloud works best with an app password too.",
+                    placeholder = "cloud.example.com/remote.php/dav", userLabel = "Username", email = false,
+                )
             }
         }
     }
@@ -194,7 +210,7 @@ private fun Hero(title: String, body: String) {
 }
 
 @Composable
-private fun ChooseKind(first: Boolean, onCalendarIt: () -> Unit) {
+private fun ChooseKind(first: Boolean, onCalendarIt: () -> Unit, onCalDav: () -> Unit) {
     val c = Brand.colors
     Hero(
         if (first) "Welcome to 24seven" else "Add an account",
@@ -214,33 +230,35 @@ private fun ChooseKind(first: Boolean, onCalendarIt: () -> Unit) {
             Icon(Glyphs.chevronRight, null, tint = c.textFaint, modifier = Modifier.size(20.dp))
         }
     }
-    Panel(modifier = Modifier.alpha(0.6f)) {
+    Panel(onClick = onCalDav) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconTile(Glyphs.globe, tint = c.textFaint)
+            IconTile(Glyphs.globe, background = c.accent.copy(alpha = 0.14f))
             Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
                 Text("CalDAV server", style = MaterialTheme.typography.titleMedium, color = c.text)
-                Text("Nextcloud, Radicale, Baïkal, iCloud and others.", style = MaterialTheme.typography.bodySmall, color = c.textDim, modifier = Modifier.padding(top = 2.dp))
+                Text(
+                    "Nextcloud, Radicale, Baïkal, iCloud and others. Events, tasks and reminders; syncs every 15 minutes and after each change.",
+                    style = MaterialTheme.typography.bodySmall, color = c.textDim, modifier = Modifier.padding(top = 2.dp),
+                )
             }
-            Text(
-                "SOON", style = Brand.label, color = c.textDim,
-                modifier = Modifier.clip(RoundedCornerShape(99.dp)).background(c.surface3).padding(horizontal = 8.dp, vertical = 3.dp),
-            )
+            Icon(Glyphs.chevronRight, null, tint = c.textFaint, modifier = Modifier.size(20.dp))
         }
     }
 }
 
 @Composable
-private fun CalendarItForm(viewModel: AddAccountViewModel, onAdded: () -> Unit) {
+private fun SignInForm(
+    viewModel: AddAccountViewModel, onAdded: () -> Unit, intro: String, placeholder: String, userLabel: String, email: Boolean,
+) {
     val c = Brand.colors
-    Hero("Sign in", "Use the address of your 24seven server and the account you use on the web.")
+    Hero("Sign in", intro)
     BrandTextField(
-        viewModel.server, { viewModel.server = it }, "Server address", placeholder = "calendar.example.com",
+        viewModel.server, { viewModel.server = it }, "Server address", placeholder = placeholder,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
     )
     BrandTextField(
-        viewModel.email, { viewModel.email = it }, "Email",
-        modifier = Modifier.semantics { contentType = ContentType.EmailAddress + ContentType.Username },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+        viewModel.email, { viewModel.email = it }, userLabel,
+        modifier = Modifier.semantics { contentType = if (email) ContentType.EmailAddress + ContentType.Username else ContentType.Username },
+        keyboardOptions = KeyboardOptions(keyboardType = if (email) KeyboardType.Email else KeyboardType.Text, imeAction = ImeAction.Next),
     )
     OutlinedSecureTextField(
         state = viewModel.password,

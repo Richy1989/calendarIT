@@ -189,14 +189,15 @@ public sealed class AccountActivationTests : IDisposable
 
         Assert.Equal(AccountActivation.Admin, signUp.Activation);
         Assert.Empty(_outbox.SentViaSystem);
-        var pending = Assert.Single((await Admin().ListPendingAsync(adminId))!);
-        Assert.Equal(Email, pending.Email);
-        Assert.NotNull(pending.CreatedAt);
+        var waiting = (await Admin().ListUsersAsync(adminId))!.First();
+        Assert.Equal(Email, waiting.Email);
+        Assert.False(waiting.Active);
+        Assert.NotNull(waiting.CreatedAt);
 
-        Assert.Equal(AccountAdminResult.Done, await Admin().ActivateAsync(adminId, pending.Id));
+        Assert.Equal(AccountAdminResult.Done, (await Admin().ActivateAsync(adminId, waiting.Id)).Result);
 
         Assert.True((await LogInAsync()).Succeeded);
-        Assert.Empty((await Admin().ListPendingAsync(adminId))!);
+        Assert.All((await Admin().ListUsersAsync(adminId))!, u => Assert.True(u.Active));
     }
 
     [Fact]
@@ -209,25 +210,15 @@ public sealed class AccountActivationTests : IDisposable
         await Auth().RegisterAsync(new RegisterRequest { Email = "third@test.com", Password = Password });
         var thirdId = await IdOf("third@test.com");
 
-        // An ordinary (active) account can't see, activate or remove anyone.
-        Assert.Null(await Admin().ListPendingAsync(newId));
-        Assert.Equal(AccountAdminResult.Forbidden, await Admin().ActivateAsync(newId, thirdId));
-        Assert.Equal(AccountAdminResult.Forbidden, await Admin().DeleteAsync(newId, thirdId));
+        // An ordinary (active) account can't see or touch anyone.
+        Assert.Null(await Admin().ListUsersAsync(newId));
+        Assert.Equal(AccountAdminResult.Forbidden, (await Admin().ActivateAsync(newId, thirdId)).Result);
+        Assert.Equal(AccountAdminResult.Forbidden, (await Admin().DeleteAsync(newId, thirdId)).Result);
+        Assert.Equal(AccountAdminResult.Forbidden, (await Admin().SetDisabledAsync(newId, adminId, true)).Result);
+        Assert.Equal(AccountAdminResult.Forbidden, (await Admin().SetAdminAsync(newId, newId, true)).Result);
+        Assert.Equal(AccountAdminResult.Forbidden, (await Admin().CreateResetLinkAsync(newId, adminId)).Result);
         // ...and an account still waiting can't activate itself.
-        Assert.Equal(AccountAdminResult.Forbidden, await Admin().ActivateAsync(thirdId, thirdId));
-    }
-
-    [Fact]
-    public async Task TheAdmin_CanRemoveAPendingAccount_ButNoActiveOne()
-    {
-        var adminId = await FirstAccountAsync();
-        await SignUpAsync(systemMail: false);
-        var pendingId = await IdOf(Email);
-
-        Assert.Equal(AccountAdminResult.NotFound, await Admin().DeleteAsync(adminId, adminId));
-        Assert.Equal(AccountAdminResult.Done, await Admin().DeleteAsync(adminId, pendingId));
-
-        Assert.Null(await Users().FindByEmailAsync(Email));
+        Assert.Equal(AccountAdminResult.Forbidden, (await Admin().ActivateAsync(thirdId, thirdId)).Result);
     }
 
     [Fact]
@@ -306,7 +297,7 @@ public sealed class AccountActivationTests : IDisposable
         Assert.Equal(adminId, to);
         Assert.Equal(AdminEmail, message.To.Mailboxes.Single().Address);
         Assert.Contains(Email, message.TextBody);
-        Assert.Contains(BaseUrl + "/?settings=general", message.TextBody);
+        Assert.Contains(BaseUrl + "/?settings=users", message.TextBody);
     }
 
     [Fact]
@@ -335,7 +326,7 @@ public sealed class AccountActivationTests : IDisposable
 
         var (_, message) = Assert.Single(Notices(viaSystem: true));
         Assert.Contains("spam0@test.com", message.TextBody); // the first sign-up's notice
-        Assert.Equal(5, (await Admin().ListPendingAsync(await IdOf(AdminEmail)))!.Count); // the app shows all
+        Assert.Equal(5, (await Admin().ListUsersAsync(await IdOf(AdminEmail)))!.Count(u => !u.Active)); // the app shows all
     }
 
     [Fact]

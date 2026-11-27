@@ -58,7 +58,7 @@ jobs:
       - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         id: meta
         with:
-          images: richy1989/calendarit
+          images: richy1989/24seven
           tags: |
             type=semver,pattern={{version}}
       # Build the image once into the runner's Docker and check it before anything is pushed; the
@@ -78,10 +78,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Start it
+        # With every optional setting passed blank, as .env.example, the Compose files and the
+        # Unraid templates do for an option left empty — a blank SMTP_USE_SSL once stopped 0.13.0
+        # at start-up, and a container started with no settings at all didn't show it.
         run: |
-          docker run -d --name calendarit -p 8080:80 calendarit:ci
+          blank=()
+          for v in PUBLIC_BASE_URL MAIL_HOST_POLICY SMTP_HOST SMTP_USE_SSL SMTP_USERNAME SMTP_PASSWORD SMTP_FROM \
+                   FORWARDED_TRUSTED_NETWORKS API_RATE_LIMIT_PER_MINUTE AUTH_RATE_LIMIT_PER_MINUTE DISABLE_REGISTRATION \
+                   QUOTA_EVENTS QUOTA_TASKS QUOTA_CALENDARS QUOTA_SUBSCRIPTIONS QUOTA_CATEGORIES \
+                   JWT_ISSUER JWT_AUDIENCE VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY VAPID_SUBJECT; do
+            blank+=(-e "$v=")
+          done
+          docker run -d --name calendarit -p 8080:80 "${blank[@]}" calendarit:ci
           for i in $(seq 1 60); do curl -sf http://localhost:8080/health >/dev/null && exit 0; sleep 1; done
           echo "the container never became healthy"; exit 1
+      - name: Operator commands run in the container
+        # The JWT key lives in /data and only the server process gets it; a command run with
+        # `docker exec` must still work (it once stopped for want of the key).
+        run: |
+          docker exec -u 1654 calendarit dotnet /app/calendarITCore.dll activate-account nobody@example.com 2>&1 | tee cmd.log || true
+          grep -q 'No account has that email address' cmd.log || { echo "the operator command didn't run"; exit 1; }
       - name: The container log holds no token from a URL, and no escape a request sent
         # A password-reset link carries its token in the page URL, and any query string could carry
         # a secret. The API logs a request's path only, and nginx logs only what never reached the
@@ -145,7 +161,7 @@ jobs:
             else
               echo "::warning::No $notes — the release gets only the Docker line and GitHub's generated notes." >&2
             fi
-            echo "**Docker:** \`docker pull richy1989/calendarit:${VERSION_NAME}\`"
+            echo "**Docker:** \`docker pull richy1989/24seven:${VERSION_NAME}\`"
             echo "Single-container image (SPA + API + nginx on :80). Mount \`/data\` to persist the"
             echo "SQLite db and uploads — see \`deploy/calendarit.unraid.xml\` for an Unraid template."
           } > release-notes.md

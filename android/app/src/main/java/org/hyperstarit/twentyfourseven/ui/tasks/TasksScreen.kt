@@ -88,7 +88,7 @@ data class TasksState(val open: List<TaskTree> = emptyList(), val done: List<Tas
 @HiltViewModel
 class TasksViewModel @Inject constructor(db: AppDatabase, private val changes: LocalChanges) : ViewModel() {
     val state = combine(db.tasks().observeLive(), db.calendars().observeAll()) { rows, calendars ->
-        val writable = calendars.filter { !it.readOnly }
+        val writable = calendars.filter { !it.readOnly && it.allowsTasks }
         val all = rows.map { it.data }.filter { t -> calendars.any { it.accountId == t.accountId && it.id == t.calendarId } }
         val children = all.filter { it.parentId != null }.groupBy { scopedKey(it.accountId, it.parentId!!) }
         val order = compareBy<TaskData>({ it.due == null }, { it.due }, { it.sortOrder }, { it.title.lowercase() })

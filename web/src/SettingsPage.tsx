@@ -20,7 +20,7 @@ import { REMINDER_OFFSETS } from './lib/eventForm'
 import { createCategory, deleteCategory, listCategories, updateCategory, type CategoryDto } from './api/categories'
 import { deleteMailAccount, getMailAccount, saveMailAccount, testMailAccount } from './api/mailAccount'
 import { changePassword } from './api/password'
-import { activateAccount, listPendingAccounts, removePendingAccount } from './api/admin'
+import UsersSection from './UsersSection'
 import { useClock } from './clock'
 import { useWeekStart, type WeekStartPref } from './weekStart'
 import { COLOR_PRESETS, THEMES, useAppearance, type ThemeId } from './lib/appearance'
@@ -39,7 +39,7 @@ import { nextCategoryColor } from './lib/categoryColors'
 import SessionsCard from './SessionsCard'
 import OutboxCard from './OutboxCard'
 
-type Section = 'general' | 'calendars' | 'categories' | 'sync' | 'security' | 'email' | 'about'
+export type Section = 'general' | 'calendars' | 'categories' | 'sync' | 'security' | 'email' | 'users' | 'about'
 
 /** Dedicated, full-page settings screen: sidebar nav + a content card per section. */
 export default function SettingsPage({
@@ -52,6 +52,8 @@ export default function SettingsPage({
   initialSection?: Section
 }) {
   const [section, setSection] = useState<Section>(initialSection ?? 'general')
+  // For the admin-only Users section (cached: the app has the profile already).
+  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: getProfile })
 
   return (
     <div className="settings">
@@ -83,6 +85,12 @@ export default function SettingsPage({
           <button className={navClass(section === 'email')} onClick={() => setSection('email')}>
             <MailIcon /> Email
           </button>
+          {profile?.isAdmin && (
+            <button className={navClass(section === 'users')} onClick={() => setSection('users')}>
+              <UsersIcon /> Users
+              {Number(profile.pendingAccounts) > 0 && <span className="settings-nav-count">{profile.pendingAccounts}</span>}
+            </button>
+          )}
           <button className={navClass(section === 'about')} onClick={() => setSection('about')}>
             <InfoIcon /> About
           </button>
@@ -103,6 +111,8 @@ export default function SettingsPage({
             <SyncSection />
           ) : section === 'email' ? (
             <EmailSection />
+          ) : section === 'users' && profile?.isAdmin ? (
+            <UsersSection />
           ) : section === 'about' ? (
             <AboutSection />
           ) : (
@@ -301,59 +311,6 @@ function NotificationsCard() {
   )
 }
 
-/** The admin's list of sign-ups waiting for activation: activate, or remove ones nobody knows. */
-function PendingAccountsCard() {
-  const queryClient = useQueryClient()
-  const { data: accounts = [], isLoading } = useQuery({ queryKey: ['pending-accounts'], queryFn: listPendingAccounts })
-  const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: ['pending-accounts'] })
-    void queryClient.invalidateQueries({ queryKey: ['profile'] }) // the badge's count
-  }
-  const activate = useMutation({ mutationFn: activateAccount, onSuccess: refresh })
-  const remove = useMutation({ mutationFn: removePendingAccount, onSuccess: refresh })
-  const busy = activate.isPending || remove.isPending
-  const error = activate.error ?? remove.error
-
-  return (
-    <div className="settings-card">
-      <h2>New accounts</h2>
-      <p className="settings-sub">
-        People who signed up and wait for you to activate them. Until then they can't sign in. Remove anyone you don't
-        know.
-      </p>
-      {!isLoading && accounts.length === 0 && <p className="field-hint">Nobody is waiting.</p>}
-      {accounts.length > 0 && (
-        <div className="settings-rows">
-          {accounts.map((a) => (
-            <div className="settings-row" key={a.id}>
-              <span className="settings-row-label">
-                {a.createdAt ? `Since ${new Date(a.createdAt).toLocaleDateString()}` : 'Waiting'}
-              </span>
-              <span className="settings-row-value">{a.email}</span>
-              <span className="settings-row-actions">
-                <button type="button" className="btn-primary" disabled={busy} onClick={() => activate.mutate(a.id)}>
-                  Activate
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  disabled={busy}
-                  onClick={() => {
-                    if (window.confirm(`Remove the account ${a.email}? It was never activated.`)) remove.mutate(a.id)
-                  }}
-                >
-                  Remove
-                </button>
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-      {error && <p className="error">{(error as Error).message}</p>}
-    </div>
-  )
-}
-
 function GeneralSection() {
   const queryClient = useQueryClient()
   const { hour12, setHour12 } = useClock()
@@ -515,8 +472,6 @@ function GeneralSection() {
         </div>
       </div>
     </div>
-
-    {profile?.isAdmin && <PendingAccountsCard />}
 
     <AppearanceCard />
 
@@ -1702,7 +1657,7 @@ const BACKEND_LIBRARIES: readonly Library[] = [
   { name: 'WebPush', license: 'MPL-2.0', url: 'https://github.com/web-push-libs/web-push-csharp' },
 ]
 
-const REPO_URL = 'https://github.com/Richy1989/calendarIT'
+const REPO_URL = 'https://github.com/Richy1989/24seven'
 
 /** One dependency row: name on the left, license pill + outbound link on the right. */
 function LibraryRow({ lib }: { lib: Library }) {
@@ -1779,6 +1734,9 @@ function ChevronLeft() {
 }
 function UserIcon() {
   return <svg {...iconProps}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+}
+function UsersIcon() {
+  return <svg {...iconProps}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
 }
 function ShieldIcon() {
   return <svg {...iconProps}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>

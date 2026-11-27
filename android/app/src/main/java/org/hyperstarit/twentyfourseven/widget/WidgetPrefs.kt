@@ -36,7 +36,7 @@ class WidgetPrefs @Inject constructor(@ApplicationContext private val context: C
         val d = WidgetLook.DEFAULT
         val k = kind.key
         return WidgetLook(
-            background = prefs.getInt("$k.background", legacyBackground(kind) ?: d.background),
+            background = prefs.getInt("$k.background", d.background),
             border = color("$k.border", d.border),
             today = color("$k.today", d.today),
         )
@@ -59,13 +59,6 @@ class WidgetPrefs @Inject constructor(@ApplicationContext private val context: C
     private fun android.content.SharedPreferences.Editor.putColor(key: String, c: WidgetColor) {
         if (c.rgb == null) remove("$key.rgb") else putInt("$key.rgb", c.rgb and 0xFFFFFF)
         putInt("$key.alpha", c.alpha.coerceIn(0, 100))
-    }
-
-    /** Versions up to 0.3.1 kept the month widget's opacity with the app's appearance. */
-    private fun legacyBackground(kind: WidgetKind): Int? {
-        if (kind != WidgetKind.MONTH) return null
-        val old = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
-        return if (old.contains("widget_opacity")) old.getInt("widget_opacity", 100) else null
     }
 }
 

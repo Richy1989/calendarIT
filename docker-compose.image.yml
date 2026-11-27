@@ -1,0 +1,52 @@
+# 24seven (CalendarIT) — the published image from Docker Hub, no checkout or build needed.
+#
+#   docker compose -f docker-compose.image.yml up -d
+#
+# One container: nginx on port 80 serves the web app and proxies the API and CalDAV. All data
+# (SQLite database, keys, avatars) lives in the volume mounted at /data; a JWT signing key is
+# generated there on first start. Put your HTTPS reverse proxy (Caddy / Traefik / nginx / ...) in
+# front of it: the port below is published to loopback only, because plain HTTP on a public IP
+# would send passwords and CalDAV logins in the clear.
+#
+# Settings go in a .env file next to this one (see .env.example for every option and its
+# meaning); the lines below pass on the ones most installs need.
+
+services:
+  app:
+    image: richy1989/24seven:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"   # your proxy forwards to http://127.0.0.1:8080
+    volumes:
+      - data:/data
+    environment:
+      # The address users type, e.g. https://calendar.example.com. Needed for links in emails
+      # (password reset, account activation, the admin's new-account notice).
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      # Sign-up: the first account is active at once and becomes the admin; later ones must be
+      # activated (by the emailed link, or by the admin in Settings → New accounts). Close
+      # sign-up once everyone has an account.
+      DISABLE_REGISTRATION: ${DISABLE_REGISTRATION:-false}
+      # Optional server mail account, for account mail only: activation links and password
+      # resets (invitations and reminders go through each user's own account). Port 465 = TLS
+      # on connect; 587 = STARTTLS.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}          # e.g. "24seven <noreply@example.com>"
+      # Where users' own mail servers may live. Empty = public while sign-up is open, private
+      # (also your LAN) once it is closed.
+      MAIL_HOST_POLICY: ${MAIL_HOST_POLICY:-}
+      # Proxies in front of the app: 2 = your reverse proxy + the nginx inside this container.
+      # Add one per further proxy (e.g. Cloudflare in front of yours).
+      FORWARDED_PROXY_HOPS: ${FORWARDED_PROXY_HOPS:-2}
+      # The user the app runs as; it takes ownership of /data at start.
+      PUID: ${PUID:-1654}
+      PGID: ${PGID:-1654}
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  data:
