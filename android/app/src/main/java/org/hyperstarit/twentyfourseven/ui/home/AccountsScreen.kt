@@ -60,6 +60,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.IOException
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -68,6 +69,8 @@ import kotlinx.coroutines.launch
 import org.hyperstarit.twentyfourseven.accounts.Accounts
 import org.hyperstarit.twentyfourseven.accounts.UntrustedCertificateException
 import org.hyperstarit.twentyfourseven.data.db.AccountEntity
+import org.hyperstarit.twentyfourseven.data.db.AccountKind
+import org.hyperstarit.twentyfourseven.ui.theme.SettingRow
 import org.hyperstarit.twentyfourseven.data.db.CalendarEntity
 import org.hyperstarit.twentyfourseven.data.db.NoticeEntity
 import org.hyperstarit.twentyfourseven.data.db.AppDatabase
@@ -132,6 +135,23 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /** Mails a reset link for an account that has to sign in again; [done] gets what to tell the user. */
+    fun forgotPassword(account: AccountEntity, done: (String) -> Unit) {
+        viewModelScope.launch {
+            done(
+                try {
+                    accounts.requestPasswordReset(account.server.toHttpUrl(), account.username, account.certificatePin)
+                    org.hyperstarit.twentyfourseven.ui.accounts.RESET_SENT
+                } catch (e: UntrustedCertificateException) {
+                    certificateReview = account.id to e.certificate
+                    "The server's certificate has changed."
+                } catch (e: IOException) {
+                    e.message ?: "Couldn't reach the server."
+                },
+            )
+        }
+    }
+
     fun reviewCertificate(account: AccountEntity) {
         viewModelScope.launch {
             try {
@@ -173,7 +193,7 @@ class HomeViewModel @Inject constructor(
 
 /** The accounts, their calendars, and what the user should know about their changes. */
 @Composable
-fun AccountsScreen(onBack: () -> Unit, onAddAccount: () -> Unit, viewModel: HomeViewModel = hiltViewModel()) {
+fun AccountsScreen(onBack: () -> Unit, onAddAccount: () -> Unit, onProfile: (AccountEntity) -> Unit, viewModel: HomeViewModel = hiltViewModel()) {
     androidx.activity.compose.BackHandler(onBack = onBack)
     val c = Brand.colors
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -211,6 +231,7 @@ fun AccountsScreen(onBack: () -> Unit, onAddAccount: () -> Unit, viewModel: Home
                     onSignIn = { signingIn = section.account },
                     onReviewCertificate = { viewModel.reviewCertificate(section.account) },
                     onRemove = { removing = section.account },
+                    onProfile = { onProfile(section.account) },
                 )
             }
             item {
@@ -238,7 +259,7 @@ fun AccountsScreen(onBack: () -> Unit, onAddAccount: () -> Unit, viewModel: Home
 }
 
 @Composable
-private fun AccountCard(section: AccountSection, onSignIn: () -> Unit, onReviewCertificate: () -> Unit, onRemove: () -> Unit) {
+private fun AccountCard(section: AccountSection, onSignIn: () -> Unit, onReviewCertificate: () -> Unit, onRemove: () -> Unit, onProfile: () -> Unit) {
     val c = Brand.colors
     val account = section.account
     var menu by remember { mutableStateOf(false) }
@@ -277,6 +298,15 @@ private fun AccountCard(section: AccountSection, onSignIn: () -> Unit, onReviewC
         }
         if (account.needsSignIn) PrimaryButton("Sign in again", onSignIn, Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 12.dp))
         if (account.certificateChanged) GhostButton("Review certificate", onReviewCertificate, Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 12.dp), icon = Glyphs.shield)
+        if (account.kind == AccountKind.CALENDARIT && !account.needsSignIn && !account.certificateChanged) {
+            Hairline()
+            SettingRow(
+                Glyphs.user, "Profile",
+                subtitle = "Picture, password and signed-in devices",
+                onClick = onProfile,
+                trailing = { Icon(Glyphs.chevronRight, null, tint = c.textFaint, modifier = Modifier.size(20.dp)) },
+            )
+        }
         if (section.calendars.isNotEmpty()) {
             Hairline()
             SectionLabel("Calendars", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
@@ -315,6 +345,7 @@ private fun NoticeCard(notice: NoticeEntity, onReapply: () -> Unit, onDismiss: (
 private fun SignInAgainDialog(account: AccountEntity, onDone: () -> Unit, viewModel: HomeViewModel) {
     val password = remember { TextFieldState() }
     var error by remember { mutableStateOf<String?>(null) }
+    var info by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDone,
@@ -324,6 +355,14 @@ private fun SignInAgainDialog(account: AccountEntity, onDone: () -> Unit, viewMo
                 Text("${account.username} on ${account.server}", color = Brand.colors.textDim)
                 OutlinedSecureTextField(state = password, label = { Text("Password") }, shape = RoundedCornerShape(12.dp), colors = fieldColors())
                 error?.let { Text(it, color = Brand.colors.dangerInk) }
+                info?.let { Text(it, color = Brand.colors.textDim) }
+                if (account.kind == AccountKind.CALENDARIT) {
+                    TextAction("Forgot password?", enabled = !busy, onClick = {
+                        busy = true
+                        error = null
+                        viewModel.forgotPassword(account) { busy = false; info = it }
+                    })
+                }
             }
         },
         confirmButton = {

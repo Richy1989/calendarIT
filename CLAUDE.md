@@ -291,6 +291,15 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   serializes refreshes (rotating tokens) and a refused refresh marks the account `needsSignIn` —
   nothing is sent for it until the user signs in again (server lockout). Removing an account
   deletes all of its rows.
+- **Profile** (`ui/profile`, from a 24seven account's card in Accounts): picture (picked, shrunk to
+  512 px JPEG, `POST /api/profile/avatar`), password change and signed-in sessions (sign out one /
+  all others), read live from the server, nothing stored. A password change ends every session
+  server-side, this one too: `Accounts.changePassword` signs in again with the new password and
+  hands the tokens to `AccountAuth.replaceTokens` (under its refresh lock, so a refused refresh of
+  the old session can't wipe them).
+  "Forgot password?" (sign-in form and the sign-in-again dialog, 24seven accounts only) posts
+  `/api/auth/forgot-password` through `Accounts.requestPasswordReset` (certificate checked first);
+  the mailed link opens the web app.
 - **Self-signed certificates**: trust on first use, per account. `Certificates.probe` reads the
   certificate (handshake only, then refused — nothing is ever sent), the user compares the
   SHA-256 fingerprint, `certificatePin` stores it; `Certificates.clientFor` accepts system-trusted

@@ -57,6 +57,37 @@ class ApiClient(private val http: OkHttpClient, private val json: Json) {
     suspend fun registerDevice(server: HttpUrl, token: String, deviceId: String, request: RegisterDeviceRequest): DeviceDto =
         send(request(server, "api/devices/$deviceId", token).put(body(request)), serializer())
 
+    /** Asks the server to mail a password-reset link. Answered alike whether or not the address has an account. */
+    suspend fun forgotPassword(server: HttpUrl, email: String) {
+        send<Unit>(request(server, "api/auth/forgot-password", null).post(body(ForgotPasswordRequest(email))), null)
+    }
+
+    suspend fun profile(server: HttpUrl, token: String): ProfileDto =
+        send(request(server, "api/profile", token).get(), serializer())
+
+    /** Uploads a new profile picture: the raw image bytes, as [contentType] (PNG, JPEG, WebP or GIF). */
+    suspend fun uploadAvatar(server: HttpUrl, token: String, bytes: ByteArray, contentType: String): ProfileDto =
+        send(request(server, "api/profile/avatar", token).post(bytes.toRequestBody(contentType.toMediaType())), serializer())
+
+    suspend fun removeAvatar(server: HttpUrl, token: String) {
+        send<Unit>(request(server, "api/profile/avatar", token).delete(), null)
+    }
+
+    /** Changes the password. The server then ends every session of the account, this one included. */
+    suspend fun changePassword(server: HttpUrl, token: String, current: String, new: String) {
+        send<Unit>(request(server, "api/auth/change-password", token).post(body(ChangePasswordRequest(current, new))), null)
+    }
+
+    suspend fun sessions(server: HttpUrl, token: String): List<SessionDto> =
+        send(request(server, "api/auth/sessions", token).get(), serializer())
+
+    suspend fun revokeSession(server: HttpUrl, token: String, sessionId: String) {
+        send<Unit>(request(server, "api/auth/sessions/$sessionId", token).delete(), null)
+    }
+
+    suspend fun revokeOtherSessions(server: HttpUrl, token: String): Int =
+        send<RevokedSessions>(request(server, "api/auth/sessions/revoke-others", token).post(ByteArray(0).toRequestBody(null)), serializer()).count
+
     private suspend inline fun <reified B, reified T> post(server: HttpUrl, path: String, token: String?, body: B): T =
         send(request(server, path, token).post(body(body)), serializer())
 
@@ -75,7 +106,7 @@ class ApiClient(private val http: OkHttpClient, private val json: Json) {
                 val text = response.body.string()
                 when {
                     response.code == 401 -> throw UnauthorizedException(errors(text))
-                    !response.isSuccessful -> throw ApiException(response.code, problem(text) ?: "The server answered ${response.code}.")
+                    !response.isSuccessful -> throw ApiException(response.code, problem(text) ?: errors(text).firstOrNull() ?: "The server answered ${response.code}.")
                     serializer == null -> @Suppress("UNCHECKED_CAST") (Unit as T)
                     else -> try {
                         json.decodeFromString(serializer, text)
@@ -94,7 +125,7 @@ class ApiClient(private val http: OkHttpClient, private val json: Json) {
     /** The title/detail of a ProblemDetails body, when it is one. */
     private fun problem(text: String): String? = runCatching {
         val obj = json.parseToJsonElement(text) as kotlinx.serialization.json.JsonObject
-        (obj["detail"] ?: obj["title"])?.let { (it as kotlinx.serialization.json.JsonPrimitive).content }
+        (obj["detail"] ?: obj["error"] ?: obj["title"])?.let { (it as kotlinx.serialization.json.JsonPrimitive).content }
     }.getOrNull()
 
     companion object {

@@ -175,3 +175,34 @@ data class DeviceDto(
     val createdAt: String,
     val lastSeenAt: String,
 )
+
+/** The signed-in user's profile (GET /api/profile). Only what the app shows is read. */
+@Serializable
+data class ProfileDto(
+    val email: String? = null,
+    /** A `data:image/…;base64,…` URL, or null for no picture. */
+    val avatarDataUrl: String? = null,
+    val emailConfirmed: Boolean = false,
+    val isAdmin: Boolean = false,
+)
+
+@Serializable
+data class ForgotPasswordRequest(val email: String)
+
+@Serializable
+data class ChangePasswordRequest(val currentPassword: String, val newPassword: String)
+
+/** One signed-in device or browser (GET /api/auth/sessions), the current one first. */
+@Serializable
+data class SessionDto(
+    val id: String,
+    val userAgent: String? = null,
+    val ipAddress: String? = null,
+    val startedAt: String,
+    val lastActiveAt: String,
+    val expiresAt: String,
+    val current: Boolean,
+)
+
+@Serializable
+data class RevokedSessions(val count: Int)

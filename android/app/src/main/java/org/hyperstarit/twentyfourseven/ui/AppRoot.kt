@@ -50,6 +50,7 @@ import org.hyperstarit.twentyfourseven.accounts.Accounts
 import org.hyperstarit.twentyfourseven.ui.accounts.AddAccountScreen
 import org.hyperstarit.twentyfourseven.ui.calendar.CalendarScreen
 import org.hyperstarit.twentyfourseven.ui.home.AccountsScreen
+import org.hyperstarit.twentyfourseven.ui.profile.ProfileScreen
 import org.hyperstarit.twentyfourseven.ui.settings.SettingsScreen
 import org.hyperstarit.twentyfourseven.ui.settings.WidgetSettingsScreen
 import org.hyperstarit.twentyfourseven.ui.tasks.TasksScreen
@@ -67,12 +68,15 @@ class RootViewModel @Inject constructor(accounts: Accounts) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
     var screen by mutableStateOf(Screen.CALENDAR)
 
+    /** The account whose profile [Screen.PROFILE] shows. */
+    var profileAccount by mutableStateOf<String?>(null)
+
     /** A day to open (from the widget), taken by the calendar once shown. */
     val openDate = kotlinx.coroutines.flow.MutableStateFlow<java.time.LocalDate?>(null)
 }
 
 /** The three tabs of the bottom bar, and the pages Settings leads to. */
-enum class Screen(val depth: Int) { CALENDAR(0), TASKS(0), SETTINGS(0), ACCOUNTS(1), ADD_ACCOUNT(2), WIDGETS(1) }
+enum class Screen(val depth: Int) { CALENDAR(0), TASKS(0), SETTINGS(0), ACCOUNTS(1), ADD_ACCOUNT(2), WIDGETS(1), PROFILE(2) }
 
 /** No account yet → the welcome and sign-in; otherwise the tabs (calendar, tasks, settings) and the account pages. */
 @Composable
@@ -110,7 +114,11 @@ fun AppRoot(viewModel: RootViewModel) {
                             bottomBar = bar, attention = attention, onAccounts = { go(Screen.ACCOUNTS) }, onWidgets = { go(Screen.WIDGETS) },
                         )
                         Screen.WIDGETS -> WidgetSettingsScreen(onBack = { go(Screen.SETTINGS) })
-                        Screen.ACCOUNTS -> AccountsScreen(onBack = { go(Screen.SETTINGS) }, onAddAccount = { go(Screen.ADD_ACCOUNT) })
+                        Screen.ACCOUNTS -> AccountsScreen(
+                            onBack = { go(Screen.SETTINGS) }, onAddAccount = { go(Screen.ADD_ACCOUNT) },
+                            onProfile = { viewModel.profileAccount = it.id; go(Screen.PROFILE) },
+                        )
+                        Screen.PROFILE -> viewModel.profileAccount?.let { id -> ProfileScreen(id, onBack = { go(Screen.ACCOUNTS) }) }
                         Screen.ADD_ACCOUNT -> AddAccountScreen(onAdded = { go(Screen.CALENDAR) }, onCancel = { go(Screen.ACCOUNTS) })
                     }
                 }

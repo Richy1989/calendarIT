@@ -54,6 +54,16 @@ class AccountAuth(
         }
     }
 
+    /**
+     * Takes over a new session (after a password change ended the old one). Under the same lock as
+     * refreshes, so a refresh refused for the old session can't wipe these tokens afterwards.
+     */
+    suspend fun replaceTokens(t: Tokens) = mutex.withLock {
+        tokens = t
+        loaded = true
+        secrets.saveTokens(accountId, t)
+    }
+
     /** The server's word on whether we are still signed in, for signing out. */
     suspend fun refreshToken(): String? = mutex.withLock { load()?.refreshToken }
 

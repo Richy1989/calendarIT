@@ -164,6 +164,34 @@ class Accounts(
         db.accounts().update(account.copy(needsSignIn = false, lastError = null))
     }
 
+    /**
+     * Changes the account's password. The server ends every session on a change, this one too, so
+     * the app signs in again with the new password and keeps syncing; when that fails, the account
+     * asks for a sign-in like any ended session.
+     */
+    suspend fun changePassword(account: AccountEntity, current: String, new: String) {
+        val auth = auth(account)
+        val api = api(account.certificatePin)
+        auth.authorized { server, token -> api.changePassword(server, token, current, new) }
+        val tokens = try {
+            api.login(auth.server, account.username, new)
+        } catch (e: IOException) {
+            markSignedOut(account.id, "Your password was changed. Sign in again.")
+            throw e
+        }
+        auth.replaceTokens(AccountAuth.tokensOf(tokens))
+        registered.remove(account.id)
+        db.accounts().get(account.id)?.let { db.accounts().update(it.copy(needsSignIn = false, lastError = null)) }
+    }
+
+    /**
+     * Asks a CalendarIT server to mail a reset link to [email] (the link opens the web app). The
+     * certificate is checked as for [addCalendarIt]: nothing is sent to a server the user hasn't accepted.
+     */
+    suspend fun requestPasswordReset(server: HttpUrl, email: String, pin: String?) {
+        withCertificateCheck(server, pin) { api(pin).forgotPassword(server, email.trim()) }
+    }
+
     /** The user looked at a changed certificate and trusts the new one. */
     suspend fun trustCertificate(accountId: String, sha256: String) {
         val account = db.accounts().get(accountId) ?: return

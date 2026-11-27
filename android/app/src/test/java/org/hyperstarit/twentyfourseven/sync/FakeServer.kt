@@ -23,6 +23,13 @@ class FakeServer {
     /** Device registrations answered with a server error while > 0 (counts down). */
     var failDeviceRegistrations = 0
     var refreshRefused = false
+    /** The account's password: a login needs it, and a password change replaces it. */
+    var password = "pw"
+    val passwordChanges = AtomicInteger()
+    /** The addresses reset links were asked for. */
+    val resetRequests = CopyOnWriteArrayList<String>()
+    /** After a password change: no refresh is accepted until the next login. */
+    private var sessionsEnded = false
     var accessValidFor = 900L
 
     /** Pull pages handed out in order (the last one repeats). */
@@ -36,10 +43,35 @@ class FakeServer {
     init {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse = when (request.url.encodedPath) {
-                "/api/auth/login" -> { logins.incrementAndGet(); tokens() }
+                "/api/auth/login" -> {
+                    val sent = json.parseToJsonElement(request.body!!.utf8()).jsonObject["password"]!!.jsonPrimitive.content
+                    if (sent != password) {
+                        response(401, """{"errors":["Wrong email or password."]}""")
+                    } else {
+                        logins.incrementAndGet()
+                        sessionsEnded = false // a new session
+                        tokens()
+                    }
+                }
+                "/api/auth/forgot-password" -> {
+                    resetRequests += json.parseToJsonElement(request.body!!.utf8()).jsonObject["email"]!!.jsonPrimitive.content
+                    response(202, "")
+                }
+                "/api/auth/change-password" -> {
+                    val body = json.parseToJsonElement(request.body!!.utf8()).jsonObject
+                    if (body["currentPassword"]!!.jsonPrimitive.content != password) {
+                        response(400, """{"errors":["Incorrect password."]}""")
+                    } else {
+                        // Like the server: every session ends, the caller's included.
+                        password = body["newPassword"]!!.jsonPrimitive.content
+                        passwordChanges.incrementAndGet()
+                        sessionsEnded = true
+                        response(204, "")
+                    }
+                }
                 "/api/auth/refresh" -> {
                     refreshes.incrementAndGet()
-                    if (refreshRefused) response(401, """{"errors":["Session ended."]}""") else tokens()
+                    if (refreshRefused || sessionsEnded) response(401, """{"errors":["Session ended."]}""") else tokens()
                 }
                 "/api/devices/${request.url.pathSegments.last()}" -> if (failDeviceRegistrations > 0) {
                     failDeviceRegistrations--

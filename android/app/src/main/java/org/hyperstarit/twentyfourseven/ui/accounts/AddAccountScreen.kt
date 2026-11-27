@@ -22,6 +22,7 @@ import org.hyperstarit.twentyfourseven.ui.theme.BrandTextField
 import org.hyperstarit.twentyfourseven.ui.theme.PrimaryButton
 import org.hyperstarit.twentyfourseven.ui.theme.RoundIconButton
 import org.hyperstarit.twentyfourseven.ui.theme.SectionLabel
+import org.hyperstarit.twentyfourseven.ui.theme.TextAction
 import org.hyperstarit.twentyfourseven.ui.theme.TopBar
 import org.hyperstarit.twentyfourseven.ui.theme.fieldColors
 import androidx.compose.foundation.layout.Arrangement
@@ -88,6 +89,45 @@ class AddAccountViewModel @Inject constructor(
     var certificate by mutableStateOf<CertificateInfo?>(null)
         private set
     private var pendingUrl: HttpUrl? = null
+    /** What the certificate under review was for: a sign-in, or a reset link. */
+    private var pendingReset = false
+    /** Set once a reset link was asked for: what to tell the user. */
+    var resetSent by mutableStateOf<String?>(null)
+        private set
+
+    /** Mails a password-reset link for [email] on [server] (24seven accounts only). */
+    fun forgotPassword() {
+        if (busy) return
+        val url = when (val parsed = ServerUrl.parse(server, allowCleartext = BuildConfig.DEBUG)) {
+            is ServerUrl.Result.Invalid -> { error = parsed.message; return }
+            is ServerUrl.Result.Ok -> parsed.url
+        }
+        if (email.isBlank()) {
+            error = "Enter your email first, then tap “Forgot password?” again."
+            return
+        }
+        requestReset(url, pin = null)
+    }
+
+    private fun requestReset(url: HttpUrl, pin: String?) {
+        busy = true
+        error = null
+        resetSent = null
+        viewModelScope.launch {
+            try {
+                accounts.requestPasswordReset(url, email, pin)
+                resetSent = RESET_SENT
+            } catch (e: UntrustedCertificateException) {
+                pendingUrl = url
+                pendingReset = true
+                certificate = e.certificate
+            } catch (e: IOException) {
+                error = e.message?.takeIf { it.isNotBlank() } ?: "Couldn't reach the server."
+            } finally {
+                busy = false
+            }
+        }
+    }
 
     fun submit(onAdded: () -> Unit) {
         if (busy) return
@@ -106,17 +146,24 @@ class AddAccountViewModel @Inject constructor(
         val info = certificate ?: return
         val url = pendingUrl ?: return
         certificate = null
-        signIn(url, pin = info.sha256, onAdded)
+        if (pendingReset) {
+            pendingReset = false
+            requestReset(url, pin = info.sha256)
+        } else {
+            signIn(url, pin = info.sha256, onAdded)
+        }
     }
 
     fun rejectCertificate() {
         certificate = null
-        error = "Not signed in: the server's certificate wasn't trusted."
+        error = if (pendingReset) "Nothing was sent: the server's certificate wasn't trusted." else "Not signed in: the server's certificate wasn't trusted."
+        pendingReset = false
     }
 
     private fun signIn(url: HttpUrl, pin: String?, onAdded: () -> Unit) {
         busy = true
         error = null
+        resetSent = null
         viewModelScope.launch {
             try {
                 if (step == AddStep.CALDAV) {
@@ -143,6 +190,10 @@ class AddAccountViewModel @Inject constructor(
         }
     }
 }
+
+/** What a reset request answers: the server never says whether the address has an account. */
+internal const val RESET_SENT =
+    "If that address has an account here, a reset link is on its way. Open it in a browser, set a new password, then sign in here with it."
 
 /** Adding an account: first which kind, then its sign-in. [onCancel] is null for the first account. */
 @Composable
@@ -270,7 +321,13 @@ private fun SignInForm(
         modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.Password },
     )
     viewModel.error?.let { Banner(it) }
+    viewModel.resetSent?.let { Banner(it, warning = false) }
     PrimaryButton("Sign in", { viewModel.submit(onAdded) }, Modifier.fillMaxWidth().padding(top = 6.dp), loading = viewModel.busy)
+    if (email) {
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            TextAction("Forgot password?", viewModel::forgotPassword, enabled = !viewModel.busy)
+        }
+    }
     Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         Icon(Glyphs.shield, null, tint = c.textFaint, modifier = Modifier.size(14.dp))
         Text(
