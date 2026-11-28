@@ -91,7 +91,9 @@ internal fun CalendarSidebar(
                 RoundIconButton(Glyphs.close, "Close sidebar", onClose, filled = false)
             }
             PrimaryButton("New appointment", onNew, Modifier.fillMaxWidth(), enabled = calendars.any { !it.readOnly && it.allowsEvents }, icon = Glyphs.plus)
-            TextAction("Tasks", onTasks)
+            Spacer(Modifier.height(8.dp))
+            PrimaryButton("Tasks", onTasks, Modifier.fillMaxWidth(), icon = Glyphs.tasks)
+            Spacer(Modifier.height(8.dp))
             SidebarMonth(model, focus, formats, onDate)
             listOf(false, true).forEach { subscription ->
                 val rows = calendars.filter { it.readOnly == subscription }
