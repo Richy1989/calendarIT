@@ -215,7 +215,9 @@ CalDAV logins.
   The optional `SMTP_*` system account (`SystemMailOptions`) carries account mail only —
   activation links (only ever through it: a user's own SMTP server could read the code)
   and password resets (preferred over the user's account); `OutboxMessage.ViaSystem` rows. Per-reminder failures are isolated (logged, never abort the
-  run). WebPush reminders are VAPID-signed (`WebPushSender`); keys come from `VAPID_*` env or
+  run). WebPush reminders are VAPID-signed (`WebPushSender`) and encrypted as RFC 8291 `aes128gcm`
+  (`WebPushEncryption`, tested against the RFC's example) — never the WebPush library's `aesgcm`,
+  which UnifiedPush can't decrypt (its salt/key ride in headers a distributor doesn't forward); keys come from `VAPID_*` env or
   are auto-generated and persisted (`VapidKeyStore`, `vapid.json`). Browsers
   without a push service fall back to polling `GET /api/reminders/due` (`web/src/push/localReminders.ts`).
   Browser reminders carry a **snooze token** (`ReminderSnoozes`: data-protection sealed, 2 days,

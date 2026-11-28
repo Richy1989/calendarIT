@@ -1,6 +1,9 @@
+using System.Globalization;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Sockets;
 using CalendarIT.Infrastructure.Net;
+using System.Text;
 using System.Text.Json;
 using CalendarIT.Application.Notifications;
 using Microsoft.Extensions.Logging;
@@ -10,8 +13,10 @@ using DomainPushSubscription = CalendarIT.Domain.PushSubscription;
 namespace CalendarIT.Infrastructure.Notifications;
 
 /// <summary>
-/// Sends VAPID-signed Web Push messages via the <c>WebPush</c> library. Stateless and thread-safe
-/// (one reusable <see cref="WebPushClient"/>), so it's registered as a singleton. Reports a gone
+/// Sends VAPID-signed Web Push messages, encrypted as RFC 8291 <c>aes128gcm</c>
+/// (<see cref="WebPushEncryption"/>; the <c>WebPush</c> library is used for the VAPID token and keys
+/// only — it encrypts as the older <c>aesgcm</c>, which UnifiedPush can't read). Stateless and
+/// thread-safe (one reusable <see cref="HttpClient"/>), so it's registered as a singleton. Reports a gone
 /// subscription (HTTP 404/410) back to the caller as <see cref="PushSendResult.Expired"/> so the
 /// dispatcher can prune it.
 /// </summary>
@@ -23,7 +28,7 @@ public sealed class WebPushSender(VapidKeyStore vapid, ILogger<WebPushSender> lo
     /// address actually dialled (DNS included): an "endpoint" pointing into the server's own
     /// network is refused instead of being POSTed to once per reminder.
     /// </summary>
-    private readonly WebPushClient _client = new(new HttpClient(new SocketsHttpHandler
+    private readonly HttpClient _http = new(new SocketsHttpHandler
     {
         ConnectTimeout = TimeSpan.FromSeconds(10),
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
@@ -36,7 +41,10 @@ public sealed class WebPushSender(VapidKeyStore vapid, ILogger<WebPushSender> lo
     })
     {
         Timeout = TimeSpan.FromSeconds(30),
-    });
+    };
+
+    /// <summary>How long a push service keeps an undelivered message: a day (a reminder or nudge older than that is stale).</summary>
+    private const int TimeToLiveSeconds = 24 * 60 * 60;
 
     public bool IsConfigured => vapid.IsConfigured;
 
@@ -61,22 +69,41 @@ public sealed class WebPushSender(VapidKeyStore vapid, ILogger<WebPushSender> lo
             return PushSendResult.Failed;
         }
 
-        var sub = new WebPush.PushSubscription(target.Endpoint, target.P256dh, target.Auth);
-        var details = new VapidDetails(vapid.Subject, vapid.PublicKey, vapid.PrivateKey);
-
         try
         {
-            await _client.SendNotificationAsync(sub, payload, details, cancellationToken);
-            return PushSendResult.Sent;
+            if (!Uri.TryCreate(target.Endpoint, UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps)
+            {
+                throw new InvalidOperationException("The endpoint isn't an https URL.");
+            }
+            // VAPID (RFC 8292): a token signed for the push service's origin, sent with our public key.
+            var vapidHeaders = VapidHelper.GetVapidHeaders(
+                endpoint.GetLeftPart(UriPartial.Authority), vapid.Subject, vapid.PublicKey, vapid.PrivateKey);
+            var token = vapidHeaders["Authorization"]["WebPush ".Length..];
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+            {
+                Content = new ByteArrayContent(WebPushEncryption.Encrypt(Encoding.UTF8.GetBytes(payload), target.P256dh, target.Auth)),
+            };
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+            request.Content.Headers.ContentEncoding.Add("aes128gcm");
+            request.Headers.TryAddWithoutValidation("Authorization", $"vapid t={token}, k={vapid.PublicKey}");
+            request.Headers.Add("TTL", TimeToLiveSeconds.ToString(CultureInfo.InvariantCulture));
+            request.Headers.Add("Urgency", "high");
+
+            using var response = await _http.SendAsync(request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return PushSendResult.Sent;
+            }
+            if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone)
+            {
+                logger.LogInformation("Push endpoint at {Host} is gone ({Status}); pruning it", HostOf(target.Endpoint), (int)response.StatusCode);
+                return PushSendResult.Expired;
+            }
+            logger.LogWarning("Web Push to {Host} was refused: {Status}", HostOf(target.Endpoint), (int)response.StatusCode);
+            return PushSendResult.Failed;
         }
-        // An endpoint is a capability URL (a UnifiedPush/ntfy topic is the secret itself): only its
-        // host is ever logged.
-        catch (WebPushException ex) when (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone)
-        {
-            logger.LogInformation("Push endpoint at {Host} is gone ({Status}); pruning it", HostOf(target.Endpoint), ex.StatusCode);
-            return PushSendResult.Expired;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning("Web Push to {Host} failed: {Error}", HostOf(target.Endpoint), ex.Message);
             return PushSendResult.Failed;
