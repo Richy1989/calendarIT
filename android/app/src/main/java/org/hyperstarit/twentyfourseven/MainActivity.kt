@@ -53,9 +53,11 @@ class MainActivity : ComponentActivity() {
             override fun onStart(owner: LifecycleOwner) = scheduler.requestNow()
         })
         // Instant updates when a UnifiedPush distributor is set (or the only one installed); this
-        // also renews the endpoints at every start.
-        org.unifiedpush.android.connector.UnifiedPush.tryUseCurrentOrDefaultDistributor(this) { ok ->
-            if (ok) scope.launch { push.registerAll() }
+        // also renews the endpoints at every start. Not when the user turned them off.
+        if (!push.turnedOff) {
+            org.unifiedpush.android.connector.UnifiedPush.tryUseCurrentOrDefaultDistributor(this) { ok ->
+                if (ok) scope.launch { push.registerAll() }
+            }
         }
         openFrom(intent)
         setContent {

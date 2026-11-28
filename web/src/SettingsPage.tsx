@@ -281,8 +281,8 @@ function NotificationsCard() {
     <div className="settings-card">
       <h2>Browser notifications</h2>
       <p className="settings-sub">
-        Get reminders as desktop/phone notifications on this device. Choose “Browser” on an
-        appointment’s reminder to use it.
+        Get reminders as notifications in this browser. Choose “Notification” on an appointment’s
+        reminder to use it — the 24seven app on your phone rings those too, whatever you set here.
       </p>
       {supported ? (
         <>
@@ -1131,9 +1131,9 @@ function DefaultRemindersEditor({ calendar, onChange }: { calendar: CalendarDto;
             ))}
           </select>
           <span aria-hidden="true">·</span>
-          <select value={r.channel} aria-label="Delivery" onChange={(e) => update(i, { channel: e.target.value })}>
+          <select value={r.channel} aria-label="Delivery" title="Notification: rings in this browser and in the 24seven app on your phone. Email: sent by the server." onChange={(e) => update(i, { channel: e.target.value })}>
             <option value="Email">Email</option>
-            <option value="WebPush">Browser</option>
+            <option value="WebPush">Notification</option>
           </select>
           <button type="button" className="reminder-chip-remove" aria-label="Remove default reminder" onClick={() => onChange(reminders.filter((_, idx) => idx !== i))}>
             ✕

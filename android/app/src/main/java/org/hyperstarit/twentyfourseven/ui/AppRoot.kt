@@ -76,7 +76,7 @@ class RootViewModel @Inject constructor(accounts: Accounts) : ViewModel() {
 }
 
 /** The three tabs of the bottom bar, and the pages Settings leads to. */
-enum class Screen(val depth: Int) { CALENDAR(0), TASKS(0), SETTINGS(0), ACCOUNTS(1), ADD_ACCOUNT(2), WIDGETS(1), PROFILE(2) }
+enum class Screen(val depth: Int) { CALENDAR(0), TASKS(0), SETTINGS(0), ACCOUNTS(1), ADD_ACCOUNT(2), WIDGETS(1), PROFILE(2), INSTANT_UPDATES(1) }
 
 /** No account yet → the welcome and sign-in; otherwise the tabs (calendar, tasks, settings) and the account pages. */
 @Composable
@@ -111,9 +111,10 @@ fun AppRoot(viewModel: RootViewModel) {
                         )
                         Screen.TASKS -> TasksScreen(bottomBar = bar)
                         Screen.SETTINGS -> SettingsScreen(
-                            bottomBar = bar, attention = attention, onAccounts = { go(Screen.ACCOUNTS) }, onWidgets = { go(Screen.WIDGETS) },
+                            bottomBar = bar, attention = attention, onAccounts = { go(Screen.ACCOUNTS) }, onWidgets = { go(Screen.WIDGETS) }, onInstantUpdates = { go(Screen.INSTANT_UPDATES) },
                         )
                         Screen.WIDGETS -> WidgetSettingsScreen(onBack = { go(Screen.SETTINGS) })
+                        Screen.INSTANT_UPDATES -> org.hyperstarit.twentyfourseven.ui.settings.InstantUpdatesScreen(onBack = { go(Screen.SETTINGS) })
                         Screen.ACCOUNTS -> AccountsScreen(
                             onBack = { go(Screen.SETTINGS) }, onAddAccount = { go(Screen.ADD_ACCOUNT) },
                             onProfile = { viewModel.profileAccount = it.id; go(Screen.PROFILE) },

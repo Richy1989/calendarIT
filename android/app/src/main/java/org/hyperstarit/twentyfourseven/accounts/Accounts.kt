@@ -241,6 +241,13 @@ class Accounts(
      * that had ended) or a push endpoint that changed since is tried again at the next sync,
      * per account.
      */
+    /** Tells the server where to push again (it may have forgotten), then has it send a test push. */
+    suspend fun testPush(account: AccountEntity): org.hyperstarit.twentyfourseven.net.TestPushDto {
+        registerDevice(account)
+        val id = secrets.deviceId()
+        return auth(account).authorized { server, token -> api(account.certificatePin).testPush(server, token, id) }
+    }
+
     suspend fun registerDeviceIfNeeded(account: AccountEntity) {
         if (registered[account.id] == Registration(pushFor(account.id))) return
         registerDevice(account)

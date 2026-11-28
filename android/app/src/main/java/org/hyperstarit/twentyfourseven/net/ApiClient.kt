@@ -57,6 +57,10 @@ class ApiClient(private val http: OkHttpClient, private val json: Json) {
     suspend fun registerDevice(server: HttpUrl, token: String, deviceId: String, request: RegisterDeviceRequest): DeviceDto =
         send(request(server, "api/devices/$deviceId", token).put(body(request)), serializer())
 
+    /** Has the server send this device a test push through its UnifiedPush endpoint. */
+    suspend fun testPush(server: HttpUrl, token: String, deviceId: String): TestPushDto =
+        send(request(server, "api/devices/$deviceId/test-push", token).post(ByteArray(0).toRequestBody(null)), serializer())
+
     /** Asks the server to mail a password-reset link. Answered alike whether or not the address has an account. */
     suspend fun forgotPassword(server: HttpUrl, email: String) {
         send<Unit>(request(server, "api/auth/forgot-password", null).post(body(ForgotPasswordRequest(email))), null)

@@ -20,10 +20,32 @@ class PushPrefs(context: Context) {
     fun setEndpoint(accountId: String, push: DevicePushInput?) = prefs.edit {
         if (push == null) {
             remove("$accountId.url"); remove("$accountId.p256dh"); remove("$accountId.auth")
+            remove("$accountId.lastPush"); remove("$accountId.lastTest")
         } else {
             putString("$accountId.url", push.endpoint); putString("$accountId.p256dh", push.p256dh); putString("$accountId.auth", push.auth)
         }
     }
+
+    /** When a push last arrived for [accountId] (epoch ms), and when a test push last did. */
+    fun lastPush(accountId: String): Long? = prefs.getLong("$accountId.lastPush", 0L).takeIf { it > 0 }
+    fun lastTest(accountId: String): Long? = prefs.getLong("$accountId.lastTest", 0L).takeIf { it > 0 }
+
+    fun received(accountId: String, test: Boolean, at: Long = System.currentTimeMillis()) = prefs.edit {
+        putLong("$accountId.lastPush", at)
+        if (test) putLong("$accountId.lastTest", at)
+    }
+
+    /** Calls [onChange] whenever something here changes, until the returned function is called. */
+    fun observe(onChange: () -> Unit): () -> Unit {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> onChange() }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    /** The user turned instant updates off: the app no longer picks a distributor by itself at start. */
+    var turnedOff: Boolean
+        get() = prefs.getBoolean("turnedOff", false)
+        set(value) = prefs.edit { putBoolean("turnedOff", value) }
 
     fun hasAny(): Boolean = prefs.all.keys.any { it.endsWith(".url") }
 }

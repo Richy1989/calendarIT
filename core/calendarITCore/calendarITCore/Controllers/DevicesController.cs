@@ -28,4 +28,11 @@ public sealed class DevicesController(IDeviceService devices) : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Remove(Guid id, CancellationToken cancellationToken)
         => await devices.RemoveAsync(User.GetUserId(), id, cancellationToken) ? NoContent() : NotFound();
+
+    /// <summary>Sends this device a test push ("instant updates" check in the app).</summary>
+    [HttpPost("{id:guid}/test-push")]
+    [ProducesResponseType<TestPushDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<TestPushDto>> TestPush(Guid id, CancellationToken cancellationToken)
+        => await devices.TestPushAsync(User.GetUserId(), id, cancellationToken) is { } result ? result : NotFound();
 }

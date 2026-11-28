@@ -50,4 +50,14 @@ public interface IDeviceService
     Task<DeviceDto> RegisterAsync(Guid userId, Guid deviceId, RegisterDeviceRequest request, CancellationToken cancellationToken = default);
 
     Task<bool> RemoveAsync(Guid userId, Guid deviceId, CancellationToken cancellationToken = default);
+
+    /// <summary>Sends the device a test push, so the app can show the user that instant updates work.
+    /// Null when the user has no such device.</summary>
+    Task<TestPushDto?> TestPushAsync(Guid userId, Guid deviceId, CancellationToken cancellationToken = default);
 }
+
+/// <summary>What became of a test push: "sent" (the push service took it; the device should get it
+/// within seconds), "noEndpoint" (the device gave no push address), "notConfigured" (the server has
+/// no push keys), "gone" (the push service no longer knows the address; it was forgotten) or
+/// "failed" (the push service refused it), with a sentence for the user.</summary>
+public sealed record TestPushDto(string Result, string Message);

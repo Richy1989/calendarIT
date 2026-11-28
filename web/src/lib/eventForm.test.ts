@@ -30,7 +30,7 @@ describe('defaultRemindersFor', () => {
 
 describe('reminder helpers', () => {
   it('describes a reminder briefly', () => {
-    expect(describeReminder({ minutesBefore: 15, channel: 'WebPush' })).toBe('15 min before · Browser')
+    expect(describeReminder({ minutesBefore: 15, channel: 'WebPush' })).toBe('15 min before · Notification')
     expect(describeReminder({ minutesBefore: 7, channel: 'Email' })).toBe('7 min before · Email')
   })
 

@@ -30,7 +30,7 @@ function dueField(t: TaskDto | null): { value: string; allDay: boolean } | null 
 }
 
 
-/** "1 day before · Browser", or "When due · Email" for no lead time ("At start" fits appointments). */
+/** "1 day before · Notification", or "When due · Email" for no lead time ("At start" fits appointments). */
 const taskReminderLabel = (r: ReminderValue) =>
   r.minutesBefore === 0 ? describeReminder(r).replace(/^At start/, 'When due') : describeReminder(r)
 
@@ -172,8 +172,8 @@ export default function TaskEditor({
                     </option>
                   ))}
                 </select>
-                <select className="form-select" aria-label="How" value={addChannel} onChange={(e) => setAddChannel(e.target.value)}>
-                  <option value="WebPush">Browser</option>
+                <select className="form-select" aria-label="How" title="Notification: rings in this browser and in the 24seven app on your phone. Email: sent by the server." value={addChannel} onChange={(e) => setAddChannel(e.target.value)}>
+                  <option value="WebPush">Notification</option>
                   <option value="Email">Email</option>
                 </select>
                 <button

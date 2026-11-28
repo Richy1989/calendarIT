@@ -165,6 +165,10 @@ data class DevicePushInput(val kind: String, val endpoint: String, val p256dh: S
 @Serializable
 data class VapidPublicKeyDto(val publicKey: String)
 
+/** What became of a test push: sent / noEndpoint / notConfigured / gone / failed, and a sentence for the user. */
+@Serializable
+data class TestPushDto(val result: String, val message: String)
+
 @Serializable
 data class DeviceDto(
     val id: String,

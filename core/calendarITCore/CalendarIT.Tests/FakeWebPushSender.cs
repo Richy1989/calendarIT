@@ -14,6 +14,9 @@ public sealed class FakeWebPushSender : IWebPushSender
     /// <summary>Endpoints the fake push service reports as gone (410) — the caller should prune them.</summary>
     public HashSet<string> ExpiredEndpoints { get; } = [];
 
+    /// <summary>Endpoints the fake push service refuses (any other error).</summary>
+    public HashSet<string> FailingEndpoints { get; } = [];
+
     public Task<PushSendResult> SendAsync(
         PushSubscription subscription, PushMessage message, CancellationToken cancellationToken = default)
     {
@@ -33,6 +36,10 @@ public sealed class FakeWebPushSender : IWebPushSender
         if (ExpiredEndpoints.Contains(target.Endpoint))
         {
             return Task.FromResult(PushSendResult.Expired);
+        }
+        if (FailingEndpoints.Contains(target.Endpoint))
+        {
+            return Task.FromResult(PushSendResult.Failed);
         }
         RawSent.Add((target, payload));
         return Task.FromResult(PushSendResult.Sent);

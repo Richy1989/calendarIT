@@ -13,17 +13,21 @@ import org.unifiedpush.android.connector.data.PushEndpoint
 import org.unifiedpush.android.connector.data.PushMessage
 
 /**
- * Receives UnifiedPush events from the distributor. A message is only ever "sync" (the server sends
- * no content); whatever it says, the answer is the same: sync now.
+ * Receives UnifiedPush events from the distributor. A message carries no calendar content: it is
+ * "sync" (sync now) or "test" (only noted, for Settings → Instant updates).
  */
 @AndroidEntryPoint
 class SyncPushService : PushService() {
     @Inject lateinit var registrar: PushRegistrar
     @Inject lateinit var scheduler: SyncScheduler
     @Inject lateinit var scope: CoroutineScope
+    @Inject lateinit var prefs: PushPrefs
 
+    /** "sync" (something changed: sync now) or "test" (Settings → Instant updates asked for one). */
     override fun onMessage(message: PushMessage, instance: String) {
-        scheduler.requestNow()
+        val test = message.decrypted && message.content.decodeToString().contains("\"test\"")
+        prefs.received(instance, test)
+        if (!test) scheduler.requestNow()
     }
 
     override fun onNewEndpoint(endpoint: PushEndpoint, instance: String) {

@@ -409,7 +409,7 @@ public sealed class SyncServiceTests : IDisposable
     [Fact]
     public async Task Devices_RegisterUnderTheirOwnId_AndOnlyReachablePushEndpointsAreKept()
     {
-        var devices = new DeviceService(_db, _clock);
+        var devices = new DeviceService(_db, _clock, new FakeWebPushSender());
         var id = Guid.NewGuid();
 
         await devices.RegisterAsync(_userId, id, new RegisterDeviceRequest
@@ -430,5 +430,35 @@ public sealed class SyncServiceTests : IDisposable
             devices.RegisterAsync(_otherUserId, id, new RegisterDeviceRequest { Name = "Mine?", Platform = "android" }));
         Assert.True(await devices.RemoveAsync(_userId, id));
         Assert.Empty(await devices.ListAsync(_userId));
+    }
+
+    [Fact]
+    public async Task TestPush_ReachesOnlyTheCallersDevice_AndSaysWhatHappened()
+    {
+        var sender = new FakeWebPushSender();
+        var devices = new DeviceService(_db, _clock, sender);
+        var id = Guid.NewGuid();
+        await devices.RegisterAsync(_userId, id, new RegisterDeviceRequest { Name = "Pixel", Platform = "android" });
+
+        Assert.Null(await devices.TestPushAsync(_otherUserId, id));
+        Assert.Equal("noEndpoint", (await devices.TestPushAsync(_userId, id))!.Result);
+
+        const string endpoint = "https://ntfy.example.com/up123";
+        await devices.RegisterAsync(_userId, id, new RegisterDeviceRequest
+        {
+            Name = "Pixel", Platform = "android",
+            Push = new DevicePushInput { Kind = "unifiedpush", Endpoint = endpoint, P256dh = "k", Auth = "a" },
+        });
+        Assert.Equal("sent", (await devices.TestPushAsync(_userId, id))!.Result);
+        var (target, payload) = Assert.Single(sender.RawSent);
+        Assert.Equal(endpoint, target.Endpoint);
+        Assert.Equal(DeviceService.TestPayload, payload);
+
+        sender.FailingEndpoints.Add(endpoint);
+        Assert.Equal("failed", (await devices.TestPushAsync(_userId, id))!.Result);
+
+        sender.ExpiredEndpoints.Add(endpoint);
+        Assert.Equal("gone", (await devices.TestPushAsync(_userId, id))!.Result);
+        Assert.Null(Assert.Single(await devices.ListAsync(_userId)).PushKind);
     }
 }

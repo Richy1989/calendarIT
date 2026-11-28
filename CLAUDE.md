@@ -391,6 +391,10 @@ sync protocol), WorkManager (`SyncWorker`: every 15 min + after each change/app 
   endpoint. Endpoints are capability URLs: only their host is ever logged. Push targets go through
   the same public-only `OutboundHostPolicy` as browser pushes (a home-network ntfy is refused).
   ntfy.sh answers 507 until the ntfy app has connected to the new topic.
+  Settings → Instant updates (`ui/settings/InstantUpdatesScreen`) is the guided setup: install
+  (ntfy store link) → turn on → per account a test push (`POST /api/devices/{id}/test-push`,
+  payload `{"type":"test"}`, only noted in `PushPrefs`, no sync). Turning it off sets
+  `PushPrefs.turnedOff`, so `MainActivity` stops picking a distributor at start.
 - **Month widget** (`widget/`, Jetpack Glance): `MonthModel` (pure: whole weeks from the locale's
   first day, per-day chips that fit — all-day first — and "+n") drawn by `MonthWidget`
   (SizeMode.Exact: rows per cell computed from the widget's height), ‹ › and the month name

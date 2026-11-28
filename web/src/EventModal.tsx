@@ -168,24 +168,22 @@ export default function EventModal({
   const removeReminder = (i: number) => setReminders((rs) => rs.filter((_, idx) => idx !== i))
   const setReminderOffset = (i: number, minutesBefore: number) =>
     setReminders((rs) => rs.map((r, idx) => (idx === i ? { ...r, minutesBefore } : r)))
-  // Switching a reminder to Browser needs notifications enabled on this device first. This tries
-  // real Web Push, and on a browser that can't subscribe (e.g. Brave with Google services off)
-  // falls back to local mode — notifications shown while 24seven is open. Only if the user
-  // blocks the permission (or the browser can't notify at all) do we keep the row on Email.
+  // A Notification reminder rings in the browser and in the phone app. Switching to it asks this
+  // browser for notifications: real Web Push, or on a browser that can't subscribe (e.g. Brave
+  // with Google services off) local mode — notifications shown while 24seven is open. A browser
+  // that blocks them (or can't notify at all) only gets a hint: the phone app still rings.
   const setReminderChannel = async (i: number, channel: string) => {
     if (channel === 'WebPush') {
       const result = await enableNotifications()
       if (result === 'denied' || result === 'unsupported') {
         setPushHint(
           result === 'denied'
-            ? 'Browser notifications are blocked — enable them in your browser settings, then try again.'
-            : "This browser can't show notifications.",
+            ? 'Notifications are blocked in this browser (enable them in its settings to get them here). The 24seven app on your phone still rings.'
+            : "This browser can't show notifications. The 24seven app on your phone still rings.",
         )
-        return
-      }
-      // 'push' or 'local' — the reminder can be delivered. In local mode this device only shows
-      // notifications while 24seven is open, so start the poller now and say so.
-      if (result === 'local') {
+      } else if (result === 'local') {
+        // In local mode this browser only shows notifications while 24seven is open, so start
+        // the poller now and say so.
         startLocalReminderPoller()
         setPushHint('This browser will show reminders while 24seven is open in a tab or installed as an app.')
       } else {
@@ -474,9 +472,9 @@ export default function EventModal({
                     ))}
                   </select>
                   <span aria-hidden="true">·</span>
-                  <select value={r.channel} onChange={(e) => setReminderChannel(i, e.target.value)} aria-label="Delivery">
+                  <select value={r.channel} onChange={(e) => setReminderChannel(i, e.target.value)} aria-label="Delivery" title="Notification: rings in this browser and in the 24seven app on your phone. Email: sent by the server.">
                     <option value="Email">Email</option>
-                    <option value="WebPush">Browser</option>
+                    <option value="WebPush">Notification</option>
                   </select>
                   <button type="button" className="reminder-chip-remove" onClick={() => removeReminder(i)} aria-label="Remove reminder">
                     ✕

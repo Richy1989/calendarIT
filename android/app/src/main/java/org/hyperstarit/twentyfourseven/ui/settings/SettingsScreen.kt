@@ -37,7 +37,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
@@ -81,14 +80,9 @@ class SettingsViewModel @Inject constructor(
     /** The UnifiedPush distributor in use (package name), or null: then the app syncs on a schedule. */
     var pushDistributor by mutableStateOf(push.current())
         private set
-    val pushInstalled: Boolean get() = push.distributors().isNotEmpty()
 
-    /** Picks (or confirms) the distributor — asking the user when there are several — and registers. */
-    fun setUpInstantUpdates(activity: android.app.Activity) {
-        org.unifiedpush.android.connector.UnifiedPush.tryPickDistributor(activity) { ok ->
-            pushDistributor = push.current()
-            if (ok) appScope.launch { push.registerAll() }
-        }
+    fun refreshPush() {
+        pushDistributor = push.current()
     }
 
     var remindersOn by mutableStateOf(reminderPrefs.enabled)
@@ -123,6 +117,7 @@ fun SettingsScreen(
     attention: Boolean,
     onAccounts: () -> Unit,
     onWidgets: () -> Unit,
+    onInstantUpdates: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -132,6 +127,7 @@ fun SettingsScreen(
     // Coming back from the system's notification settings.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         notificationsAllowed = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+        viewModel.refreshPush()
     }
     val askCalendar = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         if (granted.values.all { it }) viewModel.showInSystemCalendar(true)
@@ -202,21 +198,15 @@ fun SettingsScreen(
                 Hairline(Modifier.padding(start = 66.dp))
                 SettingRow(
                     Glyphs.zap, "Instant updates",
-                    subtitle = when {
-                        viewModel.pushDistributor != null -> "On, through ${appLabel(context, viewModel.pushDistributor!!)}."
-                        viewModel.pushInstalled -> "Tap to receive changes at once through your UnifiedPush app."
-                        else -> "Changes from elsewhere arrive within 15 minutes. Install a UnifiedPush app such as ntfy to get them at once."
-                    },
-                    onClick = {
-                        if (viewModel.pushInstalled) {
-                            (context as? android.app.Activity)?.let(viewModel::setUpInstantUpdates)
-                        } else {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, "https://unifiedpush.org/users/distributors/".toUri()))
+                    subtitle = viewModel.pushDistributor?.let { "On, through ${appLabel(context, it)}. Changes made elsewhere show up within seconds." }
+                        ?: "Off: changes made elsewhere arrive within 15 minutes. Tap to set up.",
+                    onClick = onInstantUpdates,
+                    trailing = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (viewModel.pushDistributor != null) StatusPill("On")
+                            Icon(Glyphs.chevronRight, null, tint = c.textFaint, modifier = Modifier.size(20.dp))
                         }
                     },
-                    trailing = if (viewModel.pushDistributor != null) {
-                        { StatusPill("On") }
-                    } else null,
                 )
                 Hairline(Modifier.padding(start = 66.dp))
                 SettingRow(
@@ -281,7 +271,7 @@ private fun StatusPill(text: String) {
 }
 
 /** An installed app's name, for "through ntfy". */
-private fun appLabel(context: android.content.Context, packageName: String): String = runCatching {
+internal fun appLabel(context: android.content.Context, packageName: String): String = runCatching {
     val pm = context.packageManager
     pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
 }.getOrDefault(packageName)

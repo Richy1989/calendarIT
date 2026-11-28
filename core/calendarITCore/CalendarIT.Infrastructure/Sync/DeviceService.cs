@@ -1,4 +1,5 @@
 using CalendarIT.Application;
+using CalendarIT.Application.Notifications;
 using CalendarIT.Application.Sync;
 using CalendarIT.Domain;
 using CalendarIT.Infrastructure.Net;
@@ -8,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace CalendarIT.Infrastructure.Sync;
 
 /// <summary>EF Core-backed <see cref="IDeviceService"/>.</summary>
-public sealed class DeviceService(AppDbContext db, TimeProvider timeProvider) : IDeviceService
+public sealed class DeviceService(AppDbContext db, TimeProvider timeProvider, IWebPushSender sender) : IDeviceService
 {
     /// <summary>Devices per account: each one is a push per change, so the list can't be open-ended.</summary>
     public const int MaxDevices = 20;
@@ -64,6 +65,42 @@ public sealed class DeviceService(AppDbContext db, TimeProvider timeProvider) : 
 
     public async Task<bool> RemoveAsync(Guid userId, Guid deviceId, CancellationToken cancellationToken = default) =>
         await db.Devices.Where(d => d.Id == deviceId && d.UserId == userId).ExecuteDeleteAsync(cancellationToken) > 0;
+
+    public const string TestPayload = """{"type":"test"}""";
+
+    public async Task<TestPushDto?> TestPushAsync(Guid userId, Guid deviceId, CancellationToken cancellationToken = default)
+    {
+        var device = await db.Devices.SingleOrDefaultAsync(d => d.Id == deviceId && d.UserId == userId, cancellationToken);
+        if (device is null)
+        {
+            return null;
+        }
+        if (device.PushKind != UnifiedPush || device.PushEndpoint is null)
+        {
+            return new("noEndpoint", "This device gave the server no push address yet. Set up instant updates on it first.");
+        }
+        if (!sender.IsConfigured)
+        {
+            return new("notConfigured", "The server can't send pushes: it has no push keys (VAPID).");
+        }
+        var result = await sender.SendAsync(
+            new PushTarget(device.PushEndpoint, device.PushP256dh ?? "", device.PushAuth ?? ""), TestPayload, cancellationToken);
+        switch (result)
+        {
+            case PushSendResult.Sent:
+                return new("sent", "Sent. It should arrive within a few seconds.");
+            case PushSendResult.Expired:
+                device.PushKind = null;
+                device.PushEndpoint = null;
+                device.PushP256dh = null;
+                device.PushAuth = null;
+                await db.SaveChangesAsync(cancellationToken);
+                return new("gone", "The push service no longer knows this device's address. Set up instant updates again.");
+            default:
+                return new("failed", "The push service refused it. Open your UnifiedPush app (e.g. ntfy) once so it connects, then try again. "
+                    + "A push server on your home network can't be used: the server only pushes to public addresses.");
+        }
+    }
 
     /// <summary>
     /// A UnifiedPush endpoint is a Web Push URL the server will POST to, so it is held to what a

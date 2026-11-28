@@ -44,9 +44,9 @@ export const REMINDER_OFFSETS: { label: string; short: string; value: number }[]
   { label: '1 week before', short: '1 week before', value: 10080 },
 ]
 
-export const channelLabel = (channel: string) => (channel === 'WebPush' ? 'Browser' : 'Email')
+export const channelLabel = (channel: string) => (channel === 'WebPush' ? 'Notification' : 'Email')
 
-/** "15 min before · Browser" — or a plain minute count for an offset no preset names. */
+/** "15 min before · Notification" — or a plain minute count for an offset no preset names. */
 export function describeReminder(r: ReminderValue): string {
   const preset = REMINDER_OFFSETS.find((o) => o.value === r.minutesBefore)
   return `${preset?.short ?? `${r.minutesBefore} min before`} · ${channelLabel(r.channel)}`
